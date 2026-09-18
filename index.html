@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CENTRE DE CONTRÔLE LAPERLE</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="side-brand">
+      <img src="logo-laperle.jpg" alt="LAPERLE TOUR HT">
+    </div>
+    <nav id="mainNav"></nav>
+    <div class="side-footer">
+      <b>LAPERLE TOUR HT</b>
+      <span>Un coup d'œil sur Haïti</span>
+      <small>Version 3.0</small>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="header">
+      <div class="header-brand">
+        <div class="mini-logo"><img src="logo-laperle.jpg" alt=""></div>
+        <div>
+          <div class="header-title"><span>CENTRE DE CONTRÔLE</span> <em>LAPERLE</em></div>
+          <div class="header-subtitle">LAPERLE TOUR HT</div>
+          <div class="header-services">Transport • Tourisme • Location • Abonnement • Taxi</div>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="top-icons">
+          <button class="icon-btn" id="notificationBtn" title="Notifications">🔔<span id="notifDot">0</span></button>
+          <button class="user-btn" id="profileBtn"><span class="avatar">A</span><span>Admin</span>⌄</button>
+        </div>
+        <div class="date-clock"><b id="date"></b><strong id="clock"></strong></div>
+      </div>
+    </header>
+
+    <div class="hero-stripe">
+      <div class="hero-slogan">Un coup d'œil sur Haïti</div>
+      <div class="hero-pill"><span>🛡</span> Sécurité</div>
+      <div class="hero-pill"><span>💺</span> Confort</div>
+      <div class="hero-pill"><span>⏱</span> Ponctualité</div>
+      <div class="hero-pill"><span>👥</span> Confiance</div>
+      <div class="search-wrap"><input id="globalSearch" placeholder="Rechercher..."><button id="globalSearchBtn">⌕</button></div>
+    </div>
+
+    <main id="page" class="page"></main>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal" id="modal"></div>
+</div>
+<div class="toast" id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>
