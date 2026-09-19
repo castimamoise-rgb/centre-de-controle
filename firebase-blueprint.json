@@ -1,0 +1,374 @@
+{
+  "entities": {
+    "client": {
+      "title": "Client",
+      "description": "Fiche client de LAPERLE TOUR HT",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "name": { "type": "string", "maxLength": 150 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "email": { "type": "string", "maxLength": 150 },
+        "zone": { "type": "string", "maxLength": 100 },
+        "service": { "type": "string", "maxLength": 100 },
+        "route": { "type": "string", "maxLength": 200 },
+        "start": { "type": "string", "maxLength": 20 },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "maxLength": 50 },
+        "archived": { "type": "boolean" },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name"]
+    },
+    "eleve": {
+      "title": "Élève",
+      "description": "Fiche élève transport scolaire LAPERLE TOUR HT",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "name": { "type": "string", "maxLength": 150 },
+        "client": { "type": "string", "maxLength": 150 },
+        "school": { "type": "string", "maxLength": 150 },
+        "grade": { "type": "string", "maxLength": 50 },
+        "route": { "type": "string", "maxLength": 200 },
+        "zone": { "type": "string", "maxLength": 100 },
+        "timeMorning": { "type": "string", "maxLength": 20 },
+        "timeAfternoon": { "type": "string", "maxLength": 20 },
+        "status": { "type": "string", "maxLength": 50 },
+        "archived": { "type": "boolean" },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "school"]
+    },
+    "abonnement": {
+      "title": "Abonnement",
+      "description": "Abonnement de transport régulier (scolaire, travail, entreprise)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "client": { "type": "string", "maxLength": 150 },
+        "type": { "type": "string", "maxLength": 100 },
+        "route": { "type": "string", "maxLength": 200 },
+        "startDate": { "type": "string", "maxLength": 20 },
+        "endDate": { "type": "string", "maxLength": 20 },
+        "days": { "type": "string", "maxLength": 100 },
+        "schedule": { "type": "string", "maxLength": 100 },
+        "price": { "type": "number" },
+        "status": { "type": "string", "maxLength": 50 },
+        "driver": { "type": "string", "maxLength": 150 },
+        "vehicle": { "type": "string", "maxLength": 150 },
+        "archived": { "type": "boolean" },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["client", "type", "price"]
+    },
+    "chauffeur": {
+      "title": "Chauffeur",
+      "description": "Profil chauffeur et conducteur LAPERLE TOUR HT",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "name": { "type": "string", "maxLength": 150 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "address": { "type": "string", "maxLength": 200 },
+        "status": { "type": "string", "maxLength": 50 },
+        "vehicle": { "type": "string", "maxLength": 150 },
+        "commission": { "type": "number" },
+        "documents": { "type": "string", "maxLength": 200 },
+        "joinedDate": { "type": "string", "maxLength": 20 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "history": { "type": "string", "maxLength": 1000 },
+        "archived": { "type": "boolean" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "phone"]
+    },
+    "vehicule": {
+      "title": "Véhicule",
+      "description": "Fiche technique du véhicule dans la flotte LAPERLE",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "brand": { "type": "string", "maxLength": 100 },
+        "model": { "type": "string", "maxLength": 100 },
+        "year": { "type": "string", "maxLength": 20 },
+        "plate": { "type": "string", "maxLength": 50 },
+        "color": { "type": "string", "maxLength": 50 },
+        "capacity": { "type": "number" },
+        "driver": { "type": "string", "maxLength": 150 },
+        "status": { "type": "string", "maxLength": 50 },
+        "maintenance": { "type": "string", "maxLength": 200 },
+        "insurance": { "type": "string", "maxLength": 200 },
+        "inspection": { "type": "string", "maxLength": 200 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "archived": { "type": "boolean" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["brand", "plate"]
+    },
+    "planning": {
+      "title": "Planning",
+      "description": "Course ou mission planifiée pour LAPERLE TOUR HT",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "client": { "type": "string", "maxLength": 150 },
+        "date": { "type": "string", "maxLength": 20 },
+        "time": { "type": "string", "maxLength": 20 },
+        "route": { "type": "string", "maxLength": 250 },
+        "driver": { "type": "string", "maxLength": 150 },
+        "vehicle": { "type": "string", "maxLength": 150 },
+        "status": { "type": "string", "maxLength": 50 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "archived": { "type": "boolean" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["client", "date"]
+    },
+    "paiement": {
+      "title": "Paiement",
+      "description": "Transaction financière reçue ou attendue",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "client": { "type": "string", "maxLength": 150 },
+        "abonnement": { "type": "string", "maxLength": 100 },
+        "amount": { "type": "number" },
+        "method": { "type": "string", "maxLength": 50 },
+        "date": { "type": "string", "maxLength": 20 },
+        "reference": { "type": "string", "maxLength": 100 },
+        "status": { "type": "string", "maxLength": 50 },
+        "receipt": { "type": "string", "maxLength": 100 },
+        "recordedBy": { "type": "string", "maxLength": 150 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "archived": { "type": "boolean" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["client", "amount"]
+    },
+    "reservation": {
+      "title": "Réservation",
+      "description": "Réservation ponctuelle de transport LAPERLE TOUR HT",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "client": { "type": "string", "maxLength": 150 },
+        "origin": { "type": "string", "maxLength": 200 },
+        "destination": { "type": "string", "maxLength": 200 },
+        "date": { "type": "string", "maxLength": 20 },
+        "time": { "type": "string", "maxLength": 20 },
+        "driver": { "type": "string", "maxLength": 150 },
+        "vehicle": { "type": "string", "maxLength": 150 },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "maxLength": 50 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "archived": { "type": "boolean" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["client", "date"]
+    },
+    "finance": {
+      "title": "Finance & Dépense",
+      "description": "Dépense ou écriture financière opérationnelle",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "label": { "type": "string", "maxLength": 150 },
+        "amount": { "type": "number" },
+        "category": { "type": "string", "maxLength": 50 },
+        "date": { "type": "string", "maxLength": 20 },
+        "driver": { "type": "string", "maxLength": 150 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "archived": { "type": "boolean" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["label", "amount"]
+    },
+    "proforma": {
+      "title": "Proforma",
+      "description": "Devis et proforma commerciale (Format PT-YYYYMMDD-001)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "number": { "type": "string", "maxLength": 50 },
+        "client": { "type": "string", "maxLength": 150 },
+        "date": { "type": "string", "maxLength": 20 },
+        "route": { "type": "string", "maxLength": 250 },
+        "service": { "type": "string", "maxLength": 100 },
+        "amount": { "type": "number" },
+        "validity": { "type": "string", "maxLength": 50 },
+        "status": { "type": "string", "maxLength": 50 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "archived": { "type": "boolean" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["number", "client", "amount"]
+    },
+    "facture": {
+      "title": "Facture",
+      "description": "Facture officielle (Format FT-YYYYMMDD-001)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "number": { "type": "string", "maxLength": 50 },
+        "client": { "type": "string", "maxLength": 150 },
+        "date": { "type": "string", "maxLength": 20 },
+        "proforma": { "type": "string", "maxLength": 50 },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "maxLength": 50 },
+        "due": { "type": "string", "maxLength": 20 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "archived": { "type": "boolean" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["number", "client", "amount"]
+    },
+    "utilisateur": {
+      "title": "Utilisateur",
+      "description": "Utilisateur autorisé et attribution de rôle",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 150 },
+        "email": { "type": "string", "maxLength": 150 },
+        "role": { "type": "string", "enum": ["ADMIN", "DIRECTION", "COMPTABILITE", "OPERATIONS", "LECTURE_SEULE"] },
+        "status": { "type": "string", "maxLength": 50 },
+        "notes": { "type": "string", "maxLength": 500 },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "role"]
+    },
+    "notification": {
+      "title": "Notification",
+      "description": "Notification d'alerte ou d'activité",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "title": { "type": "string", "maxLength": 150 },
+        "message": { "type": "string", "maxLength": 500 },
+        "type": { "type": "string", "maxLength": 50 },
+        "date": { "type": "string", "maxLength": 30 },
+        "read": { "type": "boolean" },
+        "targetUser": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "message"]
+    },
+    "setting": {
+      "title": "Paramètre",
+      "description": "Configuration globale de l'entreprise LAPERLE TOUR HT",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "company": { "type": "string", "maxLength": 150 },
+        "admin": { "type": "string", "maxLength": 150 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "email": { "type": "string", "maxLength": 150 },
+        "address": { "type": "string", "maxLength": 250 },
+        "slogan": { "type": "string", "maxLength": 200 },
+        "moncash": { "type": "string", "maxLength": 50 },
+        "bank": { "type": "string", "maxLength": 200 },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "ownerId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["company"]
+    }
+  },
+  "firestore": {
+    "/clients/{clientId}": {
+      "schema": "client",
+      "description": "Clients enregistrés de LAPERLE TOUR HT"
+    },
+    "/eleves/{eleveId}": {
+      "schema": "eleve",
+      "description": "Élèves inscrits aux circuits scolaires"
+    },
+    "/abonnements/{abonnementId}": {
+      "schema": "abonnement",
+      "description": "Abonnements de transport"
+    },
+    "/chauffeurs/{chauffeurId}": {
+      "schema": "chauffeur",
+      "description": "Chauffeurs et conducteurs"
+    },
+    "/vehicules/{vehiculeId}": {
+      "schema": "vehicule",
+      "description": "Flotte de véhicules"
+    },
+    "/plannings/{planningId}": {
+      "schema": "planning",
+      "description": "Plannings et courses programmées"
+    },
+    "/paiements/{paiementId}": {
+      "schema": "paiement",
+      "description": "Paiements et transactions"
+    },
+    "/reservations/{reservationId}": {
+      "schema": "reservation",
+      "description": "Réservations de transport et navettes"
+    },
+    "/finances/{financeId}": {
+      "schema": "finance",
+      "description": "Dépenses et écritures financières"
+    },
+    "/proformas/{proformaId}": {
+      "schema": "proforma",
+      "description": "Devis et proformas commerciales (PT-YYYYMMDD-001)"
+    },
+    "/factures/{factureId}": {
+      "schema": "facture",
+      "description": "Factures officielles (FT-YYYYMMDD-001)"
+    },
+    "/utilisateurs/{utilisateurId}": {
+      "schema": "utilisateur",
+      "description": "Comptes utilisateurs et rôles"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "notification",
+      "description": "Notifications du système"
+    },
+    "/settings/{settingId}": {
+      "schema": "setting",
+      "description": "Paramètres et coordonnées de l'entreprise"
+    }
+  }
+}

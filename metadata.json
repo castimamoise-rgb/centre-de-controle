@@ -1,0 +1,6 @@
+{
+  "name": "Centre de Contrôle Laperle",
+  "description": "Système de gestion et centre de contrôle opérationnel pour LAPERLE TOUR HT (Transport, Tourisme, Véhicules, Proformas, Factures).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

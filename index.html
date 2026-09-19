@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CENTRE DE CONTRÔLE LAPERLE</title>
+<meta name="description" content="Système de gestion et centre de contrôle opérationnel pour LAPERLE TOUR HT (Transport, Tourisme, Véhicules, Proformas, Factures).">
+<meta property="og:title" content="CENTRE DE CONTRÔLE LAPERLE">
+<meta property="og:description" content="Système de gestion et centre de contrôle opérationnel pour LAPERLE TOUR HT (Transport, Tourisme, Véhicules, Proformas, Factures).">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -23,6 +26,7 @@
   <div class="main">
     <header class="header">
       <div class="header-brand">
+        <button class="mobile-toggle" id="mobileToggle" aria-label="Menu">☰</button>
         <div class="mini-logo"><img src="logo-laperle.jpg" alt=""></div>
         <div>
           <div class="header-title"><span>CENTRE DE CONTRÔLE</span> <em>LAPERLE</em></div>
@@ -32,8 +36,9 @@
       </div>
       <div class="header-right">
         <div class="top-icons">
+          <button class="firebase-chip" id="firebaseBtn" title="Connexion & Synchronisation Firebase Cloud"><span class="firebase-icon">🔥</span><span id="firebaseStatusText">Firebase</span></button>
           <button class="icon-btn" id="notificationBtn" title="Notifications">🔔<span id="notifDot">0</span></button>
-          <button class="user-btn" id="profileBtn"><span class="avatar">A</span><span>Admin</span>⌄</button>
+          <button class="user-btn" id="profileBtn"><span class="avatar" id="headerAvatar">C</span><span id="headerUserName">Castima</span><span id="headerUserRole" class="user-role-badge ADMIN">ADMIN</span>⌄</button>
         </div>
         <div class="date-clock"><b id="date"></b><strong id="clock"></strong></div>
       </div>
@@ -56,6 +61,15 @@
   <div class="modal" id="modal"></div>
 </div>
 <div class="toast" id="toast"></div>
-<script src="app.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "firebase/app": "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js",
+    "firebase/auth": "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js",
+    "firebase/firestore": "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js"
+  }
+}
+</script>
+<script type="module" src="app.js"></script>
 </body>
 </html>

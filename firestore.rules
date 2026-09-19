@@ -1,0 +1,335 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net: Default-deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Global Helpers
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    function incoming() {
+      return request.resource.data;
+    }
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    // Role-based Access Control helpers
+    function isSuperAdminEmail() {
+      return request.auth.token.email == "castimamoise@gmail.com";
+    }
+
+    function isAdmin() {
+      return isVerified() && (
+        isSuperAdminEmail() || 
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (exists(/databases/$(database)/documents/utilisateurs/$(request.auth.uid)) && get(/databases/$(database)/documents/utilisateurs/$(request.auth.uid)).data.role == "ADMIN")
+      );
+    }
+
+    function userHasRole(role) {
+      return isVerified() && (
+        isAdmin() ||
+        (exists(/databases/$(database)/documents/utilisateurs/$(request.auth.uid)) && get(/databases/$(database)/documents/utilisateurs/$(request.auth.uid)).data.role == role)
+      );
+    }
+
+    function canManageOperations() {
+      return isVerified() && (
+        isAdmin() ||
+        (exists(/databases/$(database)/documents/utilisateurs/$(request.auth.uid)) && 
+          (get(/databases/$(database)/documents/utilisateurs/$(request.auth.uid)).data.role == "DIRECTION" ||
+           get(/databases/$(database)/documents/utilisateurs/$(request.auth.uid)).data.role == "OPERATIONS"))
+      );
+    }
+
+    function canReadOperations() {
+      return isVerified();
+    }
+
+    function canManageFinances() {
+      return isVerified() && (
+        isAdmin() ||
+        (exists(/databases/$(database)/documents/utilisateurs/$(request.auth.uid)) && 
+          (get(/databases/$(database)/documents/utilisateurs/$(request.auth.uid)).data.role == "DIRECTION" ||
+           get(/databases/$(database)/documents/utilisateurs/$(request.auth.uid)).data.role == "COMPTABILITE"))
+      );
+    }
+
+    function canReadFinances() {
+      return isVerified();
+    }
+
+    // Validation Helpers
+    function isValidClient(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 150 &&
+        (!('phone' in data) || (data.phone is string && data.phone.size() <= 50)) &&
+        (!('email' in data) || (data.email is string && data.email.size() <= 150)) &&
+        (!('zone' in data) || (data.zone is string && data.zone.size() <= 100)) &&
+        (!('service' in data) || (data['service'] is string && data['service'].size() <= 100)) &&
+        (!('route' in data) || (data.route is string && data.route.size() <= 200)) &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000));
+    }
+
+    function isValidEleve(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 150 &&
+        data.school is string && data.school.size() > 0 && data.school.size() <= 150 &&
+        (!('grade' in data) || (data.grade is string && data.grade.size() <= 50)) &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000));
+    }
+
+    function isValidAbonnement(data) {
+      return data.client is string && data.client.size() > 0 && data.client.size() <= 150 &&
+        data.type is string && data.type.size() > 0 && data.type.size() <= 100 &&
+        data.price is number && data.price >= 0 &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000));
+    }
+
+    function isValidChauffeur(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 150 &&
+        data.phone is string && data.phone.size() > 0 && data.phone.size() <= 50 &&
+        (!('vehicle' in data) || (data.vehicle is string && data.vehicle.size() <= 150)) &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000));
+    }
+
+    function isValidVehicule(data) {
+      return data.brand is string && data.brand.size() > 0 && data.brand.size() <= 100 &&
+        data.plate is string && data.plate.size() > 0 && data.plate.size() <= 50 &&
+        (!('color' in data) || (data.color is string && data.color.size() <= 50)) &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000));
+    }
+
+    function isValidPlanning(data) {
+      return data.client is string && data.client.size() > 0 && data.client.size() <= 150 &&
+        data.date is string && data.date.size() > 0 && data.date.size() <= 20 &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000));
+    }
+
+    function isValidPaiement(data) {
+      return data.client is string && data.client.size() > 0 && data.client.size() <= 150 &&
+        data.amount is number && data.amount >= 0 &&
+        (!('reference' in data) || (data.reference is string && data.reference.size() <= 100)) &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000));
+    }
+
+    function isValidReservation(data) {
+      return data.client is string && data.client.size() > 0 && data.client.size() <= 150 &&
+        data.date is string && data.date.size() > 0 && data.date.size() <= 20 &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000));
+    }
+
+    function isValidFinance(data) {
+      return data.label is string && data.label.size() > 0 && data.label.size() <= 150 &&
+        data.amount is number && data.amount >= 0 &&
+        (!('category' in data) || (data.category is string && data.category.size() <= 50)) &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000));
+    }
+
+    function isValidProforma(data) {
+      return data.number is string && data.number.size() > 0 && data.number.size() <= 50 &&
+        data.client is string && data.client.size() > 0 && data.client.size() <= 150 &&
+        data.amount is number && data.amount >= 0 &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000));
+    }
+
+    function isValidFacture(data) {
+      return data.number is string && data.number.size() > 0 && data.number.size() <= 50 &&
+        data.client is string && data.client.size() > 0 && data.client.size() <= 150 &&
+        data.amount is number && data.amount >= 0 &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000));
+    }
+
+    function isValidUtilisateur(data) {
+      return data.email is string && data.email.size() > 0 && data.email.size() <= 150 &&
+        data.role is string && (data.role == "ADMIN" || data.role == "DIRECTION" || data.role == "COMPTABILITE" || data.role == "OPERATIONS" || data.role == "LECTURE_SEULE");
+    }
+
+    function isValidNotification(data) {
+      return data.title is string && data.title.size() > 0 && data.title.size() <= 150 &&
+        data.message is string && data.message.size() > 0 && data.message.size() <= 500;
+    }
+
+    function isValidSetting(data) {
+      return data.company is string && data.company.size() > 0 && data.company.size() <= 150 &&
+        (!('phone' in data) || (data.phone is string && data.phone.size() <= 50)) &&
+        (!('email' in data) || (data.email is string && data.email.size() <= 150)) &&
+        (!('address' in data) || (data.address is string && data.address.size() <= 250));
+    }
+
+    // 1. Clients
+    match /clients/{clientId} {
+      allow get, list: if canReadOperations();
+      allow create: if canManageOperations() && isValidId(clientId) && isValidClient(incoming());
+      allow update: if canManageOperations() && isValidId(clientId) && isValidClient(incoming());
+      allow delete: if isAdmin() && isValidId(clientId);
+    }
+
+    // 2. Élèves
+    match /eleves/{eleveId} {
+      allow get, list: if canReadOperations();
+      allow create: if canManageOperations() && isValidId(eleveId) && isValidEleve(incoming());
+      allow update: if canManageOperations() && isValidId(eleveId) && isValidEleve(incoming());
+      allow delete: if isAdmin() && isValidId(eleveId);
+    }
+
+    // 3. Abonnements
+    match /abonnements/{abonnementId} {
+      allow get, list: if canReadOperations();
+      allow create: if canManageOperations() && isValidId(abonnementId) && isValidAbonnement(incoming());
+      allow update: if canManageOperations() && isValidId(abonnementId) && isValidAbonnement(incoming());
+      allow delete: if isAdmin() && isValidId(abonnementId);
+    }
+
+    // 4. Chauffeurs (/chauffeurs and alias /drivers)
+    match /chauffeurs/{chauffeurId} {
+      allow get, list: if canReadOperations();
+      allow create: if canManageOperations() && isValidId(chauffeurId) && isValidChauffeur(incoming());
+      allow update: if canManageOperations() && isValidId(chauffeurId) && isValidChauffeur(incoming());
+      allow delete: if isAdmin() && isValidId(chauffeurId);
+    }
+    match /drivers/{driverId} {
+      allow get, list: if canReadOperations();
+      allow create: if canManageOperations() && isValidId(driverId);
+      allow update: if canManageOperations() && isValidId(driverId);
+      allow delete: if isAdmin() && isValidId(driverId);
+    }
+
+    // 5. Véhicules (/vehicules and alias /vehicles)
+    match /vehicules/{vehiculeId} {
+      allow get, list: if canReadOperations();
+      allow create: if canManageOperations() && isValidId(vehiculeId) && isValidVehicule(incoming());
+      allow update: if canManageOperations() && isValidId(vehiculeId) && isValidVehicule(incoming());
+      allow delete: if isAdmin() && isValidId(vehiculeId);
+    }
+    match /vehicles/{vehicleId} {
+      allow get, list: if canReadOperations();
+      allow create: if canManageOperations() && isValidId(vehicleId);
+      allow update: if canManageOperations() && isValidId(vehicleId);
+      allow delete: if isAdmin() && isValidId(vehicleId);
+    }
+
+    // 6. Plannings (/plannings and alias /planning)
+    match /plannings/{planningId} {
+      allow get, list: if canReadOperations();
+      allow create: if canManageOperations() && isValidId(planningId) && isValidPlanning(incoming());
+      allow update: if canManageOperations() && isValidId(planningId) && isValidPlanning(incoming());
+      allow delete: if isAdmin() && isValidId(planningId);
+    }
+    match /planning/{planningId} {
+      allow get, list: if canReadOperations();
+      allow create: if canManageOperations() && isValidId(planningId);
+      allow update: if canManageOperations() && isValidId(planningId);
+      allow delete: if isAdmin() && isValidId(planningId);
+    }
+
+    // 7. Paiements (/paiements and alias /payments)
+    match /paiements/{paiementId} {
+      allow get, list: if canReadFinances();
+      allow create: if canManageFinances() && isValidId(paiementId) && isValidPaiement(incoming());
+      allow update: if canManageFinances() && isValidId(paiementId) && isValidPaiement(incoming());
+      allow delete: if isAdmin() && isValidId(paiementId);
+    }
+    match /payments/{paymentId} {
+      allow get, list: if canReadFinances();
+      allow create: if canManageFinances() && isValidId(paymentId);
+      allow update: if canManageFinances() && isValidId(paymentId);
+      allow delete: if isAdmin() && isValidId(paymentId);
+    }
+
+    // 8. Réservations (/reservations and alias /bookings)
+    match /reservations/{reservationId} {
+      allow get, list: if canReadOperations();
+      allow create: if canManageOperations() && isValidId(reservationId) && isValidReservation(incoming());
+      allow update: if canManageOperations() && isValidId(reservationId) && isValidReservation(incoming());
+      allow delete: if isAdmin() && isValidId(reservationId);
+    }
+    match /bookings/{bookingId} {
+      allow get, list: if canReadOperations();
+      allow create: if canManageOperations() && isValidId(bookingId);
+      allow update: if canManageOperations() && isValidId(bookingId);
+      allow delete: if isAdmin() && isValidId(bookingId);
+    }
+
+    // 9. Finances & Dépenses (/finances and alias /expenses)
+    match /finances/{financeId} {
+      allow get, list: if canReadFinances();
+      allow create: if canManageFinances() && isValidId(financeId) && isValidFinance(incoming());
+      allow update: if canManageFinances() && isValidId(financeId) && isValidFinance(incoming());
+      allow delete: if isAdmin() && isValidId(financeId);
+    }
+    match /expenses/{expenseId} {
+      allow get, list: if canReadFinances();
+      allow create: if canManageFinances() && isValidId(expenseId);
+      allow update: if canManageFinances() && isValidId(expenseId);
+      allow delete: if isAdmin() && isValidId(expenseId);
+    }
+
+    // 10. Proformas (/proformas and alias /quotes)
+    match /proformas/{proformaId} {
+      allow get, list: if canReadFinances();
+      allow create: if canManageFinances() && isValidId(proformaId) && isValidProforma(incoming());
+      allow update: if canManageFinances() && isValidId(proformaId) && isValidProforma(incoming());
+      allow delete: if isAdmin() && isValidId(proformaId);
+    }
+    match /quotes/{quoteId} {
+      allow get, list: if canReadFinances();
+      allow create: if canManageFinances() && isValidId(quoteId);
+      allow update: if canManageFinances() && isValidId(quoteId);
+      allow delete: if isAdmin() && isValidId(quoteId);
+    }
+
+    // 11. Factures (/factures and alias /invoices)
+    match /factures/{factureId} {
+      allow get, list: if canReadFinances();
+      allow create: if canManageFinances() && isValidId(factureId) && isValidFacture(incoming());
+      allow update: if canManageFinances() && isValidId(factureId) && isValidFacture(incoming());
+      allow delete: if isAdmin() && isValidId(factureId);
+    }
+    match /invoices/{invoiceId} {
+      allow get, list: if canReadFinances();
+      allow create: if canManageFinances() && isValidId(invoiceId);
+      allow update: if canManageFinances() && isValidId(invoiceId);
+      allow delete: if isAdmin() && isValidId(invoiceId);
+    }
+
+    // 12. Utilisateurs & Rôles
+    match /utilisateurs/{utilisateurId} {
+      allow get, list: if isVerified();
+      allow create, update, delete: if isAdmin() && isValidId(utilisateurId) && isValidUtilisateur(incoming());
+    }
+
+    // 13. Notifications
+    match /notifications/{notificationId} {
+      allow get, list: if isVerified();
+      allow create: if isVerified() && isValidId(notificationId) && isValidNotification(incoming());
+      allow update: if isVerified() && isValidId(notificationId);
+      allow delete: if isAdmin() && isValidId(notificationId);
+    }
+
+    // 14. Settings
+    match /settings/{settingId} {
+      allow get, list: if isVerified();
+      allow create, update: if isAdmin() && isValidId(settingId) && isValidSetting(incoming());
+      allow delete: if isAdmin() && isValidId(settingId);
+    }
+
+    // 15. Admins
+    match /admins/{adminId} {
+      allow get, list: if isVerified();
+      allow write: if isAdmin();
+    }
+
+    // 16. Prospects (commercial)
+    match /prospects/{prospectId} {
+      allow get, list: if canReadOperations();
+      allow create, update: if canManageOperations() && isValidId(prospectId);
+      allow delete: if isAdmin() && isValidId(prospectId);
+    }
+  }
+}
