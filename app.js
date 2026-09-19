@@ -19,17 +19,22 @@ import {
   testConnection 
 } from './src/lib/firebase.js';
 
-import { createClient, getClients, updateClient, archiveClient } from './services/firestore/clients.js';
-import { createEleve, getEleves, updateEleve, archiveEleve } from './services/firestore/eleves.js';
-import { createAbonnement, getAbonnements, updateAbonnement, archiveAbonnement } from './services/firestore/abonnements.js';
-import { createChauffeur, getChauffeurs, updateChauffeur, archiveChauffeur } from './services/firestore/chauffeurs.js';
-import { createVehicule, getVehicules, updateVehicule, archiveVehicule } from './services/firestore/vehicules.js';
-import { createPaiement, getPaiements, updatePaiement, archivePaiement } from './services/firestore/paiements.js';
-import { createReservation, getReservations, updateReservation, archiveReservation } from './services/firestore/reservations.js';
-import { createExpense, getExpenses, updateExpense, archiveExpense, calculateFinancialSummary } from './services/firestore/finances.js';
-import { createProforma, getProformas, updateProforma, archiveProforma, generateProformaNumber } from './services/firestore/proformas.js';
-import { createFacture, getFactures, updateFacture, archiveFacture, generateFactureNumber } from './services/firestore/factures.js';
-import { createUtilisateur, getUtilisateurs, updateUtilisateur } from './services/firestore/utilisateurs.js';
+import { 
+  createClient, getClients, updateClient, archiveClient, deleteClient, subscribeClients,
+  createEleve, getEleves, updateEleve, archiveEleve, deleteEleve, subscribeEleves,
+  createAbonnement, getAbonnements, updateAbonnement, archiveAbonnement, deleteAbonnement, subscribeAbonnements,
+  createChauffeur, getChauffeurs, updateChauffeur, archiveChauffeur, deleteChauffeur, subscribeChauffeurs,
+  createVehicule, getVehicules, updateVehicule, archiveVehicule, deleteVehicule, subscribeVehicules,
+  createPlanning, getPlannings, updatePlanning, archivePlanning, deletePlanning, subscribePlannings,
+  createPaiement, getPaiements, updatePaiement, archivePaiement, deletePaiement, subscribePaiements,
+  createReservation, getReservations, updateReservation, archiveReservation, deleteReservation, subscribeReservations,
+  createProforma, getProformas, updateProforma, archiveProforma, deleteProforma, subscribeProformas, generateProformaNumber,
+  createFacture, getFactures, updateFacture, archiveFacture, deleteFacture, subscribeFactures, generateFactureNumber,
+  createFinance, getFinances, updateFinance, archiveFinance, deleteFinance, subscribeFinances, calculateFinancialSummary,
+  createOrUpdateUser, getUtilisateurs, updateUtilisateur, deleteUtilisateur, subscribeUtilisateurs, checkUserPermission, ROLES, SUPER_ADMIN_EMAIL,
+  createNotification, getNotifications, markNotificationRead, deleteNotification, subscribeNotifications,
+  getCompanySettings, saveCompanySettings, subscribeCompanySettings
+} from './services/index.js';
 
 const DBKEY = "LAPERLE_CENTRE_CONTROL_V3";
 let currentUser = null;
@@ -362,6 +367,7 @@ const SCHEMAS = {
   ],
   abonnements: [
     ["client", "Client souscripteur", "text"],
+    ["eleve", "Élève concerné (optionnel)", "text"],
     ["type", "Formule", "select:Scolaire annuel|Scolaire mensuel|Travail mensuel|VIP personnalisé|Location longue durée"],
     ["route", "Ligne / Trajet", "text"],
     ["startDate", "Date début", "date"],
@@ -438,6 +444,8 @@ const SCHEMAS = {
     ["method", "Mode de règlement", "select:MonCash|Cash|Virement|Chèque|Autre"],
     ["status", "Statut", "select:Reçu|En attente|Validé|Remboursé|Archivé"],
     ["reference", "N° Reçu / Référence", "text"],
+    ["facture", "Facture liée (optionnel)", "text"],
+    ["abonnement", "Abonnement lié (optionnel)", "text"],
     ["notes", "Notes", "textarea"]
   ],
   payments: [
@@ -563,37 +571,11 @@ function nextNumber(prefix, key) {
 }
 
 function nextProformaNumber() {
-  const items = list("proformas");
-  const d = new Date();
-  const yyyymmdd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-  const prefix = `PT-${yyyymmdd}`;
-  let max = 0;
-  items.forEach(item => {
-    const val = item.number || "";
-    if (val.startsWith(prefix)) {
-      const parts = val.split("-");
-      const seq = parseInt(parts[2], 10);
-      if (!isNaN(seq) && seq > max) max = seq;
-    }
-  });
-  return `${prefix}-${String(max + 1).padStart(3, "0")}`;
+  return generateProformaNumber(list("proformas"));
 }
 
 function nextFactureNumber() {
-  const items = list("factures");
-  const d = new Date();
-  const yyyymmdd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-  const prefix = `FT-${yyyymmdd}`;
-  let max = 0;
-  items.forEach(item => {
-    const val = item.number || "";
-    if (val.startsWith(prefix)) {
-      const parts = val.split("-");
-      const seq = parseInt(parts[2], 10);
-      if (!isNaN(seq) && seq > max) max = seq;
-    }
-  });
-  return `${prefix}-${String(max + 1).padStart(3, "0")}`;
+  return generateFactureNumber(list("factures"));
 }
 
 function getInitialData() {
@@ -636,10 +618,10 @@ function getInitialData() {
       { id: "DEP-002", label: "Part chauffeur Wilner", date: d, amount: 4500, category: "Chauffeur / Commission", driver: "Wilner Charles", notes: "Course RES-001" }
     ],
     proformas: [
-      { id: "PT-20260919-001", number: "PT-20260919-001", client: "Jean-Baptiste Valmé", date: d, route: "Pétion-Ville - Delmas", service: "Transport scolaire", amount: 25000, validity: "30 jours", status: "Acceptée", notes: "Offre annuelle transport" }
+      { id: "PT-2026-09-19-001", number: "PT-2026-09-19-001", client: "Jean-Baptiste Valmé", date: d, route: "Pétion-Ville - Delmas", service: "Transport scolaire", amount: 25000, validity: "30 jours", status: "Acceptée", notes: "Offre annuelle transport" }
     ],
     factures: [
-      { id: "FT-20260919-001", number: "FT-20260919-001", client: "Jean-Baptiste Valmé", date: d, proforma: "PT-20260919-001", amount: 25000, status: "Payée", due: d, notes: "Facture acquittée" }
+      { id: "FT-2026-09-19-001", number: "FT-2026-09-19-001", client: "Jean-Baptiste Valmé", date: d, proforma: "PT-2026-09-19-001", amount: 25000, status: "Payée", due: d, notes: "Facture acquittée" }
     ],
     utilisateurs: [
       { id: "castimamoise_gmail_com", name: "Moïse Castima", email: "castimamoise@gmail.com", role: "ADMIN", status: "Actif", notes: "Fondateur & Administrateur Principal" }
@@ -773,23 +755,28 @@ function setupFirestoreListeners() {
   ALL_MODULES.forEach(colName => {
     try {
       const unsub = onSnapshot(collection(db, colName), (snap) => {
-        if (!snap.empty) {
-          const cloudItems = [];
-          snap.forEach(d => {
-            const data = d.data();
-            cloudItems.push({ ...data, id: d.id });
-          });
+        const cloudItems = [];
+        snap.forEach(d => {
+          const data = d.data();
+          cloudItems.push({ ...data, id: d.id });
+        });
+
+        if (cloudItems.length > 0 || !snap.empty) {
           state[colName] = cloudItems;
-          // Synchronize aliases as well
-          Object.keys(ALIAS_MAP).forEach(alias => {
-            if (ALIAS_MAP[alias] === colName) {
-              state[alias] = cloudItems;
-            }
-          });
-          save();
-          if (current === colName || canonicalCol(current) === colName || current === "dashboard" || current === "reports") {
-            render();
+        } else if (snap.metadata && !snap.metadata.hasPendingWrites && snap.size === 0) {
+          state[colName] = [];
+        }
+
+        // Synchronize aliases as well
+        Object.keys(ALIAS_MAP).forEach(alias => {
+          if (ALIAS_MAP[alias] === colName) {
+            state[alias] = state[colName];
           }
+        });
+        save();
+        updateFirebaseBadge("connected");
+        if (current === colName || canonicalCol(current) === colName || current === "dashboard" || current === "reports") {
+          render();
         }
       }, (error) => {
         console.warn(`Lecture Firestore [${colName}]:`, error?.message);
@@ -821,6 +808,35 @@ function setupFirestoreListeners() {
   } catch (e) {}
 }
 
+async function seedInitialDataToFirestoreIfEmpty() {
+  try {
+    const clientSnap = await getDocs(collection(db, "clients"));
+    if (clientSnap.empty) {
+      console.log("Premier démarrage : initialisation des données réelles sur Cloud Firestore...");
+      const initial = getInitialData();
+      for (const col of ALL_MODULES) {
+        if (initial[col] && initial[col].length > 0) {
+          for (const item of initial[col]) {
+            await saveDocumentToFirestore(col, item);
+          }
+        }
+      }
+      await saveSettingsToFirestore({
+        company: "LAPERLE TOUR HT",
+        slogan: "Un coup d'œil sur Haïti",
+        phone: "+509 4440 8687",
+        email: "laperletourht@gmail.com",
+        address: "Port-au-Prince, Haïti",
+        moncash: "+509 4440 8687",
+        admin: "Castima"
+      });
+      console.log("Base Firestore LAPERLE TOUR HT initialisée avec succès.");
+    }
+  } catch (err) {
+    console.warn("Vérification seed Firestore:", err?.message);
+  }
+}
+
 // Authentication state listener
 onAuthStateChanged(auth, async (user) => {
   currentUser = user;
@@ -848,7 +864,26 @@ onAuthStateChanged(auth, async (user) => {
       currentRole = userDoc?.role || "ADMIN";
     }
     updateRoleBadge(currentRole);
+
+    // Auto-register user in utilisateurs collection if new
+    if (user.email) {
+      const userDocId = user.email.toLowerCase().replace(/[^a-zA-Z0-9]/g, "_");
+      const existing = (state.utilisateurs || []).find(u => u.email && u.email.toLowerCase() === user.email.toLowerCase());
+      if (!existing) {
+        const newUserDoc = {
+          id: userDocId,
+          name: user.displayName || user.email.split('@')[0],
+          email: user.email,
+          role: user.email === "castimamoise@gmail.com" ? "ADMIN" : "LECTURE_SEULE",
+          status: "Actif",
+          notes: "Compte authentifié Google"
+        };
+        saveDocumentToFirestore("utilisateurs", newUserDoc);
+      }
+    }
+
     setupFirestoreListeners();
+    seedInitialDataToFirestoreIfEmpty();
   } else {
     if (avatarEl) avatarEl.textContent = "C";
     if (nameEl) nameEl.textContent = "Castima";
@@ -1384,6 +1419,51 @@ function fieldHTMLLinked(id, label, type, val, key) {
         <select name="proforma">
           <option value="">-- Aucun / Direct --</option>
           ${quotes.map(q => `<option value="${esc(q.number || q.id || "")}" ${q.number === val || q.id === val ? "selected" : ""}>${esc(q.number || q.id)} — ${esc(q.client)}</option>`).join("")}
+        </select>
+      </div>
+    `;
+  }
+  if (canon === "abonnements" && id === "eleve") {
+    const eleves = list("eleves");
+    if (!eleves.length) {
+      return `<div class="field"><label>Élève concerné</label><input name="eleve" value="${esc(val)}" placeholder="Optionnel (nom de l'élève)"></div>`;
+    }
+    return `
+      <div class="field">
+        <label>Élève concerné (optionnel)</label>
+        <select name="eleve">
+          <option value="">-- Aucun / Non applicable --</option>
+          ${eleves.map(e => `<option value="${esc(e.name)}" ${e.name === val ? "selected" : ""}>${esc(e.name)} — ${esc(e.school || e.grade || "")}</option>`).join("")}
+        </select>
+      </div>
+    `;
+  }
+  if (canon === "paiements" && id === "facture") {
+    const factures = list("factures");
+    if (!factures.length) {
+      return `<div class="field"><label>Facture liée</label><input name="facture" value="${esc(val)}" placeholder="Optionnel (ex: FT-2026-09-19-001)"></div>`;
+    }
+    return `
+      <div class="field">
+        <label>Facture liée (optionnel)</label>
+        <select name="facture">
+          <option value="">-- Aucune facture liée --</option>
+          ${factures.map(f => `<option value="${esc(f.number || f.id)}" ${f.number === val || f.id === val ? "selected" : ""}>${esc(f.number || f.id)} — ${esc(f.client)} (${money(f.amount)})</option>`).join("")}
+        </select>
+      </div>
+    `;
+  }
+  if (canon === "paiements" && id === "abonnement") {
+    const abos = list("abonnements");
+    if (!abos.length) {
+      return `<div class="field"><label>Abonnement lié</label><input name="abonnement" value="${esc(val)}" placeholder="Optionnel (ex: AB-001)"></div>`;
+    }
+    return `
+      <div class="field">
+        <label>Abonnement lié (optionnel)</label>
+        <select name="abonnement">
+          <option value="">-- Aucun abonnement lié --</option>
+          ${abos.map(a => `<option value="${esc(a.id)}" ${a.id === val ? "selected" : ""}>${esc(a.id)} — ${esc(a.client)} (${esc(a.type)})</option>`).join("")}
         </select>
       </div>
     `;

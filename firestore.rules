@@ -17,7 +17,11 @@ service cloud.firestore {
       return request.auth != null;
     }
     function isVerified() {
-      return isSignedIn() && request.auth.token.email_verified == true;
+      return isSignedIn() && (
+        request.auth.token.email_verified == true ||
+        request.auth.token.email == "castimamoise@gmail.com" ||
+        (request.auth.token.firebase != null && request.auth.token.firebase.sign_in_provider == "google.com")
+      );
     }
 
     // Role-based Access Control helpers
@@ -301,7 +305,9 @@ service cloud.firestore {
     // 12. Utilisateurs & Rôles
     match /utilisateurs/{utilisateurId} {
       allow get, list: if isVerified();
-      allow create, update, delete: if isAdmin() && isValidId(utilisateurId) && isValidUtilisateur(incoming());
+      allow create: if isVerified() && isValidId(utilisateurId) && isValidUtilisateur(incoming()) &&
+        (isAdmin() || ((request.auth.uid == utilisateurId || incoming().email == request.auth.token.email) && incoming().role == "LECTURE_SEULE"));
+      allow update, delete: if isAdmin() && isValidId(utilisateurId) && isValidUtilisateur(incoming());
     }
 
     // 13. Notifications
@@ -330,6 +336,12 @@ service cloud.firestore {
       allow get, list: if canReadOperations();
       allow create, update: if canManageOperations() && isValidId(prospectId);
       allow delete: if isAdmin() && isValidId(prospectId);
+    }
+
+    // 17. Test connection healthcheck
+    match /test/{testId} {
+      allow read: if true;
+      allow write: if isVerified();
     }
   }
 }
