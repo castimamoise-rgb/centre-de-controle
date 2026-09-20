@@ -28,13 +28,17 @@ service cloud.firestore {
     function isVerified() {
       return isSignedIn() && (
         request.auth.token.email_verified == true ||
-        request.auth.token.email == "castimamoise@gmail.com" ||
+        isSuperAdminEmail() ||
         (request.auth.token.firebase != null && request.auth.token.firebase.sign_in_provider == "google.com")
       );
     }
 
     function isSuperAdminEmail() {
-      return request.auth.token.email == "castimamoise@gmail.com";
+      return request.auth.token.email == "castimamoise@gmail.com" || request.auth.token.email == "castimaklik@gmail.com";
+    }
+
+    function isTargetSuperAdminEmail(targetEmail) {
+      return targetEmail == "castimamoise@gmail.com" || targetEmail == "castimaklik@gmail.com";
     }
 
     // -------------------------------------------------------------
@@ -537,7 +541,7 @@ service cloud.firestore {
         isAdmin() || (
           isSecretaire() &&
           utilisateurId != request.auth.uid &&
-          incoming().email != "castimamoise@gmail.com" &&
+          !isTargetSuperAdminEmail(incoming().email) &&
           (!('roles' in incoming()) || (
             !("admin" in incoming().roles) &&
             incoming().roles.hasOnly(["direction", "comptabilite", "secretaire", "operations", "chauffeur", "client", "lecture_seule"])
@@ -568,12 +572,12 @@ service cloud.firestore {
       allow update: if isVerified() && isUserActive() && isValidId(utilisateurId) && isValidUtilisateur(incoming()) && (
         (
           isAdmin() &&
-          !(existing().email == "castimamoise@gmail.com" && ('roles' in incoming()) && !("admin" in incoming().roles))
+          !(isTargetSuperAdminEmail(existing().email) && ('roles' in incoming()) && !("admin" in incoming().roles))
         ) ||
         (
           isSecretaire() &&
           utilisateurId != request.auth.uid &&
-          !(existing().email == "castimamoise@gmail.com") &&
+          !isTargetSuperAdminEmail(existing().email) &&
           !(("admin" in getUserRolesFor(existing())) || (('role' in existing()) && existing().role.lower() == "admin")) &&
           (!('roles' in incoming()) || (
             !("admin" in incoming().roles) &&
@@ -600,7 +604,7 @@ service cloud.firestore {
 
       // Only Admin can delete a user, and Super Admin cannot be deleted
       allow delete: if isAdmin() && isValidId(utilisateurId) && 
-        !(existing().email == "castimamoise@gmail.com" || utilisateurId == request.auth.uid);
+        !(isTargetSuperAdminEmail(existing().email) || utilisateurId == request.auth.uid);
     }
 
     // 13. Notifications

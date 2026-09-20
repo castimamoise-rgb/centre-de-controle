@@ -35,7 +35,7 @@ import {
   createNotification, getNotifications, markNotificationRead, deleteNotification, subscribeNotifications,
   getCompanySettings, saveCompanySettings, subscribeCompanySettings,
   // RBAC & Authentication Services
-  ROLES, ROLE_LABELS, STATUS_LABELS, SUPER_ADMIN_EMAIL, normalizeRole, normalizeRoles, normalizeStatus,
+  ROLES, ROLE_LABELS, STATUS_LABELS, SUPER_ADMIN_EMAIL, isSuperAdminEmail, normalizeRole, normalizeRoles, normalizeStatus,
   BUSINESS_ROLES, hasBusinessRole,
   canAccessModule, hasActionPermission, filterDataForUser,
   loginWithGoogle as authLoginGoogle, logoutUser as authLogout, subscribeAuthState,
@@ -779,7 +779,7 @@ function setupFirestoreListeners() {
   if (statusNorm === 'inactif') return;
 
   const roles = normalizeRoles(currentUserRoles);
-  const isAdminOrSuper = roles.includes(ROLES.ADMIN) || (currentUser.email || '').toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+  const isAdminOrSuper = roles.includes(ROLES.ADMIN) || isSuperAdminEmail(currentUser.email);
 
   // 0. LECTURE SEULE SEULEMENT : Ne s'abonne à AUCUNE collection métier.
   // Écoute uniquement son propre profil utilisateur pour réactivité en cas de promotion.
@@ -1268,7 +1268,7 @@ function completeUserSignIn(user, profile, forceProfileOnly = false) {
   }
 
   // 2. Résolution stricte des rôles (préservation des rôles existants garantie)
-  if ((user.email || '').toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
+  if (isSuperAdminEmail(user.email)) {
     currentUserRoles = [ROLES.ADMIN];
     currentRole = ROLES.ADMIN;
   } else {
@@ -1809,7 +1809,7 @@ function openUserRoleModal(index) {
   if (!user) return;
 
   const roles = normalizeRoles(currentUserRoles);
-  const callerIsAdmin = roles.includes(ROLES.ADMIN) || (currentUser?.email || "").toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+  const callerIsAdmin = roles.includes(ROLES.ADMIN) || isSuperAdminEmail(currentUser?.email);
   const callerIsSecretaire = roles.includes(ROLES.SECRETAIRE);
 
   if (!callerIsAdmin && !callerIsSecretaire) {
@@ -1818,7 +1818,7 @@ function openUserRoleModal(index) {
   }
 
   const targetRoles = normalizeRoles(user.roles || user.role || [ROLES.LECTURE_SEULE]);
-  const isTargetSuperAdmin = (user.email || "").toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+  const isTargetSuperAdmin = isSuperAdminEmail(user.email);
   const isTargetAdmin = targetRoles.includes(ROLES.ADMIN) || isTargetSuperAdmin;
   const isSelf = (user.uid && user.uid === currentUser?.uid) || (user.id && user.id === currentUser?.uid) || (user.email && user.email === currentUser?.email);
 
@@ -1865,7 +1865,7 @@ function openUserRoleModal(index) {
 
     ${isTargetSuperAdmin ? `
       <div style="background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;padding:12px;border-radius:8px;margin-bottom:14px;font-size:13px">
-        👑 <b>Super Administrateur Principal (${SUPER_ADMIN_EMAIL}) :</b> Ce compte conserve obligatoirement le rôle Administrateur et le statut Actif.
+        👑 <b>Super Administrateur Principal (${esc(user.email || SUPER_ADMIN_EMAIL)}) :</b> Ce compte conserve obligatoirement le rôle Administrateur et le statut Actif.
       </div>
     ` : ""}
 

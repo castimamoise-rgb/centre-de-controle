@@ -16,6 +16,8 @@ import {
 import { 
   ROLES, 
   SUPER_ADMIN_EMAIL, 
+  SUPER_ADMIN_EMAILS,
+  isSuperAdminEmail,
   normalizeRole, 
   normalizeRoles,
   normalizeStatus 
@@ -96,7 +98,7 @@ export async function createUserProfile(user) {
 
   const uid = user.uid;
   const email = (user.email || '').toLowerCase().trim();
-  const isSuperAdmin = email === SUPER_ADMIN_EMAIL.toLowerCase();
+  const isSuperAdmin = isSuperAdminEmail(email);
   const now = new Date().toISOString();
 
   // 1. Vérifier si un profil existe déjà pour éviter tout doublon

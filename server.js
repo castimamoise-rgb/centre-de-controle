@@ -26,8 +26,8 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-const server = app.listen(PORT, () => {
-  console.log(`\n  VITE v5.4.0  ready in 120 ms\n\n  ➜  Local:   http://localhost:${PORT}/\n  ➜  Network: http://0.0.0.0:${PORT}/\n`);
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`\n  Centre de Contrôle Laperle ready on http://0.0.0.0:${PORT}/\n`);
   console.log(`Centre de Contrôle Laperle ready and listening on port ${PORT}`);
 });
 

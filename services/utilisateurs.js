@@ -14,7 +14,7 @@ import {
   handleFirestoreError, 
   OperationType 
 } from '../src/lib/firebase.js';
-import { ROLES, SUPER_ADMIN_EMAIL, normalizeRole } from './permissionService.js';
+import { ROLES, SUPER_ADMIN_EMAIL, isSuperAdminEmail, normalizeRole } from './permissionService.js';
 
 const COLLECTION_NAME = 'utilisateurs';
 
@@ -25,7 +25,7 @@ export async function createOrUpdateUser(userObj) {
   const currentUserEmail = auth.currentUser?.email || 'system';
 
   // Super admin always retains ADMIN role
-  const isSuper = email === SUPER_ADMIN_EMAIL;
+  const isSuper = isSuperAdminEmail(email);
   const role = isSuper ? ROLES.ADMIN : (userObj.role || ROLES.LECTURE_SEULE);
 
   const payload = {

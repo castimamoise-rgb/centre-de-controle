@@ -14,7 +14,7 @@ import {
   handleFirestoreError, 
   OperationType 
 } from '../src/lib/firebase.js';
-import { ROLES, SUPER_ADMIN_EMAIL, normalizeRole, normalizeRoles, normalizeStatus } from './permissionService.js';
+import { ROLES, SUPER_ADMIN_EMAIL, isSuperAdminEmail, normalizeRole, normalizeRoles, normalizeStatus } from './permissionService.js';
 
 const COLLECTION_NAME = 'utilisateurs';
 
@@ -63,7 +63,7 @@ export async function updateUserRoles(userId, newRolesInput, callerProfile = nul
 
   // Identifier les rôles de la personne qui effectue la modification
   const callerRoles = normalizeRoles(callerProfile || auth.currentUser);
-  const callerIsAdmin = callerRoles.includes(ROLES.ADMIN) || currentUserEmail.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+  const callerIsAdmin = callerRoles.includes(ROLES.ADMIN) || isSuperAdminEmail(currentUserEmail);
   const callerIsSecretaire = callerRoles.includes(ROLES.SECRETAIRE);
 
   if (!callerIsAdmin && !callerIsSecretaire) {
@@ -74,7 +74,7 @@ export async function updateUserRoles(userId, newRolesInput, callerProfile = nul
   const existing = await getUserById(userId);
 
   // Sécurité Super Admin : ne jamais retirer ADMIN
-  if (existing && existing.email && existing.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
+  if (existing && existing.email && isSuperAdminEmail(existing.email)) {
     if (!cleanRoles.includes(ROLES.ADMIN)) {
       throw new Error("Impossible de rétrograder le compte Super Administrateur principal.");
     }
@@ -131,7 +131,7 @@ export async function updateUserStatus(userId, newStatus, callerProfile = null) 
 
   // Ne pas désactiver le Super Admin
   const existing = await getUserById(userId);
-  if (existing && existing.email && existing.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
+  if (existing && existing.email && isSuperAdminEmail(existing.email)) {
     if (normStatus === 'inactif') {
       throw new Error("Impossible de désactiver le compte Super Administrateur principal.");
     }
