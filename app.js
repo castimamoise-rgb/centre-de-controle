@@ -31,15 +31,23 @@ import {
   createProforma, getProformas, updateProforma, archiveProforma, deleteProforma, subscribeProformas, generateProformaNumber,
   createFacture, getFactures, updateFacture, archiveFacture, deleteFacture, subscribeFactures, generateFactureNumber,
   createFinance, getFinances, updateFinance, archiveFinance, deleteFinance, subscribeFinances, calculateFinancialSummary,
-  createOrUpdateUser, getUtilisateurs, updateUtilisateur, deleteUtilisateur, subscribeUtilisateurs, checkUserPermission, ROLES, SUPER_ADMIN_EMAIL,
+  createOrUpdateUser, getUtilisateurs, updateUtilisateur, deleteUtilisateur, subscribeUtilisateurs, checkUserPermission,
   createNotification, getNotifications, markNotificationRead, deleteNotification, subscribeNotifications,
-  getCompanySettings, saveCompanySettings, subscribeCompanySettings
+  getCompanySettings, saveCompanySettings, subscribeCompanySettings,
+  // RBAC & Authentication Services
+  ROLES, ROLE_LABELS, STATUS_LABELS, SUPER_ADMIN_EMAIL, normalizeRole, normalizeStatus,
+  canAccessModule, hasActionPermission, filterDataForUser,
+  loginWithGoogle as authLoginGoogle, logoutUser as authLogout, subscribeAuthState,
+  ensureUserProfile,
+  getAllUsers, getUserById, updateUserRole, updateUserStatus, updateUserPermissions
 } from './services/index.js';
 
 const DBKEY = "LAPERLE_CENTRE_CONTROL_V3";
 let currentUser = null;
-let currentRole = "ADMIN";
+let currentUserProfile = null;
+let currentRole = ROLES.LECTURE_SEULE;
 let firestoreUnsubscribers = [];
+let isAuthInitialized = false;
 
 // Primary Firestore collections as specified by user
 const ALL_MODULES = [
@@ -94,34 +102,15 @@ function updateFirebaseBadge(status, text) {
 function updateRoleBadge(role) {
   const badge = document.getElementById("headerUserRole");
   if (!badge) return;
-  const safeRole = role || "ADMIN";
-  badge.textContent = safeRole;
+  const safeRole = normalizeRole(role || currentRole);
+  badge.textContent = ROLE_LABELS[safeRole] || safeRole.toUpperCase();
   badge.className = `user-role-badge ${safeRole}`;
 }
 
-// Check RBAC permissions
+// Check RBAC permissions using centralized permissionService
 function hasPermission(action, moduleKey) {
-  const role = currentRole || "ADMIN";
-  if (role === "ADMIN") return true;
-  if (role === "LECTURE_SEULE") return action === "read";
-
   const canon = canonicalCol(moduleKey);
-  const operationalCols = ["clients", "eleves", "abonnements", "chauffeurs", "vehicules", "plannings", "reservations", "prospects"];
-  const financialCols = ["paiements", "finances", "proformas", "factures"];
-
-  if (role === "DIRECTION") {
-    if (action === "delete" && (canon === "settings" || canon === "utilisateurs")) return false;
-    return true; // Operational + Financial
-  }
-  if (role === "COMPTABILITE") {
-    if (action === "read") return true;
-    return financialCols.includes(canon);
-  }
-  if (role === "OPERATIONS") {
-    if (action === "read") return true;
-    return operationalCols.includes(canon);
-  }
-  return false;
+  return hasActionPermission(currentRole, canon, action, currentUserProfile?.permissions);
 }
 
 // Direct Firestore Persistence Functions
@@ -747,18 +736,116 @@ window.addEventListener("hashchange", () => {
   render();
 });
 
-// Real-time Firestore sync via onSnapshot for all modules
+// Real-time Firestore sync via onSnapshot respecting RBAC boundaries
 function setupFirestoreListeners() {
   firestoreUnsubscribers.forEach(unsub => { try { unsub(); } catch (e) {} });
   firestoreUnsubscribers = [];
 
-  ALL_MODULES.forEach(colName => {
+  if (!currentUser) return;
+  const roleNorm = (currentRole || '').toLowerCase();
+  if (roleNorm === 'inactif') return;
+
+  // 1. CHAUFFEUR: Read ONLY assigned documents via indexed queries
+  if (roleNorm === 'chauffeur') {
+    const chauffeurCols = [
+      { col: 'plannings', q: query(collection(db, 'plannings'), where('chauffeurId', '==', currentUser.uid)) },
+      { col: 'reservations', q: query(collection(db, 'reservations'), where('chauffeurId', '==', currentUser.uid)) },
+      { col: 'vehicules', q: query(collection(db, 'vehicules'), where('chauffeurId', '==', currentUser.uid)) },
+      { col: 'eleves', q: query(collection(db, 'eleves'), where('chauffeurId', '==', currentUser.uid)) },
+      { col: 'chauffeurs', q: query(collection(db, 'chauffeurs'), where('chauffeurId', '==', currentUser.uid)) },
+      { col: 'notifications', q: query(collection(db, 'notifications'), where('targetUid', '==', currentUser.uid)) }
+    ];
+
+    chauffeurCols.forEach(({ col, q }) => {
+      try {
+        const unsub = onSnapshot(q, (snap) => {
+          const items = [];
+          snap.forEach(d => items.push({ ...d.data(), id: d.id }));
+          state[col] = items;
+          save();
+          if (current === col || canonicalCol(current) === col || current === "dashboard") render();
+        }, (err) => console.warn(`Lecture chauffeur [${col}]:`, err?.message));
+        firestoreUnsubscribers.push(unsub);
+      } catch (e) {
+        console.warn(`Erreur listener chauffeur [${col}]:`, e);
+      }
+    });
+
+    // Profile listener (own document only)
+    try {
+      const unsubUser = onSnapshot(doc(db, 'utilisateurs', currentUser.uid), (snap) => {
+        if (snap.exists()) {
+          currentUserProfile = { ...snap.data(), id: snap.id };
+        }
+      });
+      firestoreUnsubscribers.push(unsubUser);
+    } catch (e) {}
+    return;
+  }
+
+  // 2. CLIENT: Read ONLY own documents via indexed queries
+  if (roleNorm === 'client') {
+    const clientCols = [
+      { col: 'clients', q: query(collection(db, 'clients'), where('clientId', '==', currentUser.uid)) },
+      { col: 'eleves', q: query(collection(db, 'eleves'), where('clientId', '==', currentUser.uid)) },
+      { col: 'abonnements', q: query(collection(db, 'abonnements'), where('clientId', '==', currentUser.uid)) },
+      { col: 'reservations', q: query(collection(db, 'reservations'), where('clientId', '==', currentUser.uid)) },
+      { col: 'paiements', q: query(collection(db, 'paiements'), where('clientId', '==', currentUser.uid)) },
+      { col: 'proformas', q: query(collection(db, 'proformas'), where('clientId', '==', currentUser.uid)) },
+      { col: 'factures', q: query(collection(db, 'factures'), where('clientId', '==', currentUser.uid)) },
+      { col: 'notifications', q: query(collection(db, 'notifications'), where('targetUid', '==', currentUser.uid)) }
+    ];
+
+    clientCols.forEach(({ col, q }) => {
+      try {
+        const unsub = onSnapshot(q, (snap) => {
+          const items = [];
+          snap.forEach(d => items.push({ ...d.data(), id: d.id }));
+          state[col] = items;
+          save();
+          if (current === col || canonicalCol(current) === col || current === "dashboard") render();
+        }, (err) => console.warn(`Lecture client [${col}]:`, err?.message));
+        firestoreUnsubscribers.push(unsub);
+      } catch (e) {
+        console.warn(`Erreur listener client [${col}]:`, e);
+      }
+    });
+
+    // Profile listener (own document only)
+    try {
+      const unsubUser = onSnapshot(doc(db, 'utilisateurs', currentUser.uid), (snap) => {
+        if (snap.exists()) {
+          currentUserProfile = { ...snap.data(), id: snap.id };
+        }
+      });
+      firestoreUnsubscribers.push(unsubUser);
+    } catch (e) {}
+    return;
+  }
+
+  // 3. ADMIN, DIRECTION, COMPTABILITE, SECRETAIRE, OPERATIONS, LECTURE_SEULE:
+  const modulesToListen = ALL_MODULES.filter(colName => {
+    // Only ADMIN can list 'utilisateurs' collection
+    if (colName === 'utilisateurs') return roleNorm === 'admin';
+    // Only authorized roles can see 'finances'
+    if (colName === 'finances') return ['admin', 'direction', 'comptabilite', 'lecture_seule'].includes(roleNorm);
+    // Comptabilite only listens to billing/finance/client context
+    if (roleNorm === 'comptabilite') {
+      return ['finances', 'factures', 'proformas', 'paiements', 'clients', 'abonnements', 'notifications'].includes(colName);
+    }
+    // Operations & Secretaire: no global finances
+    if (['operations', 'secretaire'].includes(roleNorm)) {
+      return !['finances'].includes(colName);
+    }
+    return true;
+  });
+
+  modulesToListen.forEach(colName => {
     try {
       const unsub = onSnapshot(collection(db, colName), (snap) => {
         const cloudItems = [];
         snap.forEach(d => {
-          const data = d.data();
-          cloudItems.push({ ...data, id: d.id });
+          cloudItems.push({ ...d.data(), id: d.id });
         });
 
         if (cloudItems.length > 0 || !snap.empty) {
@@ -787,28 +874,51 @@ function setupFirestoreListeners() {
     }
   });
 
-  // Settings listener
-  try {
-    const settingsUnsub = onSnapshot(doc(db, "settings", "company"), (snap) => {
-      if (snap.exists()) {
-        const d = snap.data();
-        if (d.company) localStorage.setItem("LAPERLE_COMPANY", d.company);
-        if (d.slogan) localStorage.setItem("LAPERLE_SLOGAN", d.slogan);
-        if (d.phone) localStorage.setItem("LAPERLE_PHONE", d.phone);
-        if (d.email) localStorage.setItem("LAPERLE_EMAIL", d.email);
-        if (d.address) localStorage.setItem("LAPERLE_ADDRESS", d.address);
-        if (d.moncash) localStorage.setItem("LAPERLE_MONCASH", d.moncash);
-        if (d.admin) localStorage.setItem("LAPERLE_ADMIN", d.admin);
-        if (current === "settings" || current === "dashboard") render();
-      }
-    }, (error) => {
-      console.warn("Lecture settings Firestore:", error?.message);
-    });
-    firestoreUnsubscribers.push(settingsUnsub);
-  } catch (e) {}
+  // Non-admins listen only to their OWN utilisateur document
+  if (roleNorm !== 'admin' && currentUser?.uid) {
+    try {
+      const ownUserUnsub = onSnapshot(doc(db, 'utilisateurs', currentUser.uid), (snap) => {
+        if (snap.exists()) {
+          const userObj = { ...snap.data(), id: snap.id };
+          currentUserProfile = userObj;
+          const idx = (state.utilisateurs || []).findIndex(u => u.id === snap.id || u.uid === snap.id);
+          if (idx >= 0) {
+            state.utilisateurs[idx] = userObj;
+          } else {
+            state.utilisateurs = [userObj];
+          }
+          save();
+        }
+      });
+      firestoreUnsubscribers.push(ownUserUnsub);
+    } catch (e) {}
+  }
+
+  // Settings listener: only Admin and Direction
+  if (['admin', 'direction'].includes(roleNorm)) {
+    try {
+      const settingsUnsub = onSnapshot(doc(db, "settings", "company"), (snap) => {
+        if (snap.exists()) {
+          const d = snap.data();
+          if (d.company) localStorage.setItem("LAPERLE_COMPANY", d.company);
+          if (d.slogan) localStorage.setItem("LAPERLE_SLOGAN", d.slogan);
+          if (d.phone) localStorage.setItem("LAPERLE_PHONE", d.phone);
+          if (d.email) localStorage.setItem("LAPERLE_EMAIL", d.email);
+          if (d.address) localStorage.setItem("LAPERLE_ADDRESS", d.address);
+          if (d.moncash) localStorage.setItem("LAPERLE_MONCASH", d.moncash);
+          if (d.admin) localStorage.setItem("LAPERLE_ADMIN", d.admin);
+          if (current === "settings" || current === "dashboard") render();
+        }
+      }, (error) => {
+        console.warn("Lecture settings Firestore:", error?.message);
+      });
+      firestoreUnsubscribers.push(settingsUnsub);
+    } catch (e) {}
+  }
 }
 
 async function seedInitialDataToFirestoreIfEmpty() {
+  if (currentRole !== "ADMIN") return;
   try {
     const clientSnap = await getDocs(collection(db, "clients"));
     if (clientSnap.empty) {
@@ -837,7 +947,7 @@ async function seedInitialDataToFirestoreIfEmpty() {
   }
 }
 
-// Authentication state listener
+// Authentication state listener with RBAC initialization
 onAuthStateChanged(auth, async (user) => {
   currentUser = user;
   const avatarEl = document.getElementById("headerAvatar");
@@ -852,46 +962,52 @@ onAuthStateChanged(auth, async (user) => {
       }
     }
     if (nameEl) {
-      nameEl.textContent = user.displayName?.split(" ")[0] || user.email?.split("@")[0] || "Admin";
+      nameEl.textContent = user.displayName?.split(" ")[0] || user.email?.split("@")[0] || "Utilisateur";
     }
     updateFirebaseBadge("connected");
 
-    // Determine Role
-    if (user.email === "castimamoise@gmail.com") {
+    // Secure profile retrieval & initialization in Firestore
+    try {
+      currentUserProfile = await ensureUserProfile(user);
+    } catch (e) {
+      console.warn("Erreur profil utilisateur:", e?.message);
+    }
+
+    // Verify account status
+    if (currentUserProfile && currentUserProfile.status === "inactif") {
+      currentRole = "INACTIF";
+      updateRoleBadge("Compte Inactif");
+      showToast("Votre compte est désactivé. Veuillez contacter un administrateur.", "error");
+      firestoreUnsubscribers.forEach(unsub => { try { unsub(); } catch (e) {} });
+      firestoreUnsubscribers = [];
+      render();
+      return;
+    }
+
+    // Determine Role strictly from profile
+    if (user.email === SUPER_ADMIN_EMAIL) {
       currentRole = "ADMIN";
     } else {
-      const userDoc = (state.utilisateurs || []).find(u => u.email && u.email.toLowerCase() === user.email.toLowerCase());
-      currentRole = userDoc?.role || "ADMIN";
+      currentRole = (currentUserProfile?.role || "LECTURE_SEULE").toUpperCase();
     }
     updateRoleBadge(currentRole);
 
-    // Auto-register user in utilisateurs collection if new
-    if (user.email) {
-      const userDocId = user.email.toLowerCase().replace(/[^a-zA-Z0-9]/g, "_");
-      const existing = (state.utilisateurs || []).find(u => u.email && u.email.toLowerCase() === user.email.toLowerCase());
-      if (!existing) {
-        const newUserDoc = {
-          id: userDocId,
-          name: user.displayName || user.email.split('@')[0],
-          email: user.email,
-          role: user.email === "castimamoise@gmail.com" ? "ADMIN" : "LECTURE_SEULE",
-          status: "Actif",
-          notes: "Compte authentifié Google"
-        };
-        saveDocumentToFirestore("utilisateurs", newUserDoc);
-      }
+    setupFirestoreListeners();
+    if (currentRole === "ADMIN") {
+      seedInitialDataToFirestoreIfEmpty();
     }
-
-    setupFirestoreListeners();
-    seedInitialDataToFirestoreIfEmpty();
   } else {
-    if (avatarEl) avatarEl.textContent = "C";
-    if (nameEl) nameEl.textContent = "Castima";
-    currentRole = "ADMIN";
-    updateRoleBadge("ADMIN");
+    if (avatarEl) avatarEl.textContent = "?";
+    if (nameEl) nameEl.textContent = "Non connecté";
+    currentUser = null;
+    currentUserProfile = null;
+    currentRole = "LECTURE_SEULE";
+    updateRoleBadge("Invité");
     updateFirebaseBadge("offline");
-    setupFirestoreListeners();
+    firestoreUnsubscribers.forEach(unsub => { try { unsub(); } catch (e) {} });
+    firestoreUnsubscribers = [];
   }
+  render();
 });
 
 testConnection().then(ok => {

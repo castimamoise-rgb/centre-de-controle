@@ -14,18 +14,9 @@ import {
   handleFirestoreError, 
   OperationType 
 } from '../src/lib/firebase.js';
+import { ROLES, SUPER_ADMIN_EMAIL, normalizeRole } from './permissionService.js';
 
 const COLLECTION_NAME = 'utilisateurs';
-
-export const ROLES = {
-  ADMIN: 'ADMIN',
-  DIRECTION: 'DIRECTION',
-  COMPTABILITE: 'COMPTABILITE',
-  OPERATIONS: 'OPERATIONS',
-  LECTURE_SEULE: 'LECTURE_SEULE'
-};
-
-export const SUPER_ADMIN_EMAIL = 'castimamoise@gmail.com';
 
 export async function createOrUpdateUser(userObj) {
   const email = (userObj.email || '').toLowerCase().trim();

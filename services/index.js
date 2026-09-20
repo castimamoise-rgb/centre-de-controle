@@ -12,3 +12,6 @@ export * from './finances.js';
 export * from './utilisateurs.js';
 export * from './notifications.js';
 export * from './settings.js';
+export * from './permissionService.js';
+export * from './authService.js';
+export * from './userService.js';
