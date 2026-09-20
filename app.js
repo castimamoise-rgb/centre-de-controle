@@ -35,17 +35,18 @@ import {
   createNotification, getNotifications, markNotificationRead, deleteNotification, subscribeNotifications,
   getCompanySettings, saveCompanySettings, subscribeCompanySettings,
   // RBAC & Authentication Services
-  ROLES, ROLE_LABELS, STATUS_LABELS, SUPER_ADMIN_EMAIL, normalizeRole, normalizeStatus,
+  ROLES, ROLE_LABELS, STATUS_LABELS, SUPER_ADMIN_EMAIL, normalizeRole, normalizeRoles, normalizeStatus,
   canAccessModule, hasActionPermission, filterDataForUser,
   loginWithGoogle as authLoginGoogle, logoutUser as authLogout, subscribeAuthState,
   ensureUserProfile,
-  getAllUsers, getUserById, updateUserRole, updateUserStatus, updateUserPermissions
+  getAllUsers, getUserById, updateUserRole, updateUserRoles, updateUserStatus, updateUserPermissions
 } from './services/index.js';
 
 const DBKEY = "LAPERLE_CENTRE_CONTROL_V3";
 let currentUser = null;
 let currentUserProfile = null;
 let currentRole = ROLES.LECTURE_SEULE;
+let currentUserRoles = [ROLES.LECTURE_SEULE];
 let firestoreUnsubscribers = [];
 let isAuthInitialized = false;
 
@@ -99,18 +100,19 @@ function updateFirebaseBadge(status, text) {
   }
 }
 
-function updateRoleBadge(role) {
+function updateRoleBadge(rolesInput) {
   const badge = document.getElementById("headerUserRole");
   if (!badge) return;
-  const safeRole = normalizeRole(role || currentRole);
-  badge.textContent = ROLE_LABELS[safeRole] || safeRole.toUpperCase();
-  badge.className = `user-role-badge ${safeRole}`;
+  const rolesList = normalizeRoles(rolesInput || currentUserRoles);
+  badge.textContent = rolesList.map(r => ROLE_LABELS[r] || r.toUpperCase()).join(" + ");
+  badge.className = `user-role-badge ${rolesList[0] || 'lecture_seule'}`;
+  badge.title = `Rôles attribués : ${rolesList.map(r => ROLE_LABELS[r] || r).join(', ')}`;
 }
 
-// Check RBAC permissions using centralized permissionService
+// Check RBAC permissions using cumulative multi-role check
 function hasPermission(action, moduleKey) {
   const canon = canonicalCol(moduleKey);
-  return hasActionPermission(currentRole, canon, action, currentUserProfile?.permissions);
+  return hasActionPermission(currentUserRoles, canon, action, currentUserProfile?.permissions);
 }
 
 // Direct Firestore Persistence Functions
@@ -279,7 +281,7 @@ function openFirebaseModal() {
       </div>
       <div style="margin-top:12px;padding:10px;background:#fff;border-radius:8px;border:1px solid #e2e8f0;font-size:12px">
         <div><b>Statut Authentification :</b> ${isAuth ? `<span style="color:#15803d;font-weight:700">Connecté (${esc(currentUser.email)})</span>` : '<span style="color:#b42318;font-weight:700">Non connecté</span>'}</div>
-        <div style="margin-top:4px"><b>Rôle actif :</b> <span class="user-role-badge ${currentRole}">${currentRole}</span></div>
+        <div style="margin-top:4px"><b>Rôles actifs :</b> ${currentUserRoles.map(r => `<span class="user-role-badge ${r}">${ROLE_LABELS[r] || r}</span>`).join(" ")}</div>
         <div style="margin-top:4px"><b>Persistance Cloud :</b> <span style="color:#15803d">Active multi-appareils</span></div>
       </div>
     </div>
@@ -535,8 +537,8 @@ const SCHEMAS = {
   utilisateurs: [
     ["name", "Nom complet", "text"],
     ["email", "Email Google / Firebase", "email"],
-    ["role", "Rôle", "select:ADMIN|DIRECTION|COMPTABILITE|OPERATIONS|LECTURE_SEULE"],
-    ["status", "Statut du compte", "select:Actif|Suspendu|Inactif"],
+    ["roles", "Rôles", "roles"],
+    ["status", "Statut du compte", "select:Actif|Inactif"],
     ["notes", "Notes d'habilitation", "textarea"]
   ]
 };
@@ -665,12 +667,21 @@ function buildNavigation() {
   const nav = document.getElementById("mainNav");
   if (!nav) return;
   nav.innerHTML = "";
+
   NAV_SECTIONS.forEach(sec => {
+    const visibleItems = sec.items.filter(key => {
+      const canon = canonicalCol(key);
+      return canAccessModule(currentUserRoles, canon, currentUserProfile?.permissions);
+    });
+
+    if (visibleItems.length === 0) return;
+
     const header = document.createElement("div");
     header.className = "nav-section-title";
     header.textContent = sec.title;
     nav.appendChild(header);
-    sec.items.forEach(key => {
+
+    visibleItems.forEach(key => {
       const m = MODULES[key];
       if (!m) return;
       const b = document.createElement("button");
@@ -742,11 +753,17 @@ function setupFirestoreListeners() {
   firestoreUnsubscribers = [];
 
   if (!currentUser) return;
-  const roleNorm = (currentRole || '').toLowerCase();
-  if (roleNorm === 'inactif') return;
+  const statusNorm = normalizeStatus(currentUserProfile?.status || 'actif');
+  if (statusNorm === 'inactif') return;
 
-  // 1. CHAUFFEUR: Read ONLY assigned documents via indexed queries
-  if (roleNorm === 'chauffeur') {
+  const roles = normalizeRoles(currentUserRoles);
+  const isAdminOrSuper = roles.includes(ROLES.ADMIN) || (currentUser.email || '').toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+  const hasStaffRole = roles.some(r => ['admin', 'direction', 'comptabilite', 'secretaire', 'operations', 'lecture_seule'].includes(r));
+  const isChauffeurOnly = !hasStaffRole && roles.includes('chauffeur');
+  const isClientOnly = !hasStaffRole && !roles.includes('chauffeur') && roles.includes('client');
+
+  // 1. CHAUFFEUR ONLY: Read ONLY assigned documents via indexed queries
+  if (isChauffeurOnly) {
     const chauffeurCols = [
       { col: 'plannings', q: query(collection(db, 'plannings'), where('chauffeurId', '==', currentUser.uid)) },
       { col: 'reservations', q: query(collection(db, 'reservations'), where('chauffeurId', '==', currentUser.uid)) },
@@ -783,8 +800,8 @@ function setupFirestoreListeners() {
     return;
   }
 
-  // 2. CLIENT: Read ONLY own documents via indexed queries
-  if (roleNorm === 'client') {
+  // 2. CLIENT ONLY: Read ONLY own documents via indexed queries
+  if (isClientOnly) {
     const clientCols = [
       { col: 'clients', q: query(collection(db, 'clients'), where('clientId', '==', currentUser.uid)) },
       { col: 'eleves', q: query(collection(db, 'eleves'), where('clientId', '==', currentUser.uid)) },
@@ -823,19 +840,16 @@ function setupFirestoreListeners() {
     return;
   }
 
-  // 3. ADMIN, DIRECTION, COMPTABILITE, SECRETAIRE, OPERATIONS, LECTURE_SEULE:
+  // 3. STAFF (ADMIN, DIRECTION, COMPTABILITE, SECRETAIRE, OPERATIONS, LECTURE_SEULE):
+  const canListUsers = roles.includes('admin') || roles.includes('secretaire');
+  const canSeeFinances = roles.some(r => ['admin', 'direction', 'comptabilite', 'lecture_seule'].includes(r));
+  const isComptabiliteOnly = roles.length === 1 && roles[0] === 'comptabilite';
+
   const modulesToListen = ALL_MODULES.filter(colName => {
-    // Only ADMIN can list 'utilisateurs' collection
-    if (colName === 'utilisateurs') return roleNorm === 'admin';
-    // Only authorized roles can see 'finances'
-    if (colName === 'finances') return ['admin', 'direction', 'comptabilite', 'lecture_seule'].includes(roleNorm);
-    // Comptabilite only listens to billing/finance/client context
-    if (roleNorm === 'comptabilite') {
+    if (colName === 'utilisateurs') return canListUsers;
+    if (colName === 'finances') return canSeeFinances;
+    if (isComptabiliteOnly) {
       return ['finances', 'factures', 'proformas', 'paiements', 'clients', 'abonnements', 'notifications'].includes(colName);
-    }
-    // Operations & Secretaire: no global finances
-    if (['operations', 'secretaire'].includes(roleNorm)) {
-      return !['finances'].includes(colName);
     }
     return true;
   });
@@ -874,8 +888,8 @@ function setupFirestoreListeners() {
     }
   });
 
-  // Non-admins listen only to their OWN utilisateur document
-  if (roleNorm !== 'admin' && currentUser?.uid) {
+  // Non-admins listen to their OWN utilisateur document if not already listening to all
+  if (!canListUsers && currentUser?.uid) {
     try {
       const ownUserUnsub = onSnapshot(doc(db, 'utilisateurs', currentUser.uid), (snap) => {
         if (snap.exists()) {
@@ -894,8 +908,8 @@ function setupFirestoreListeners() {
     } catch (e) {}
   }
 
-  // Settings listener: only Admin and Direction
-  if (['admin', 'direction'].includes(roleNorm)) {
+  // Settings listener: Admin and Direction
+  if (roles.includes('admin') || roles.includes('direction')) {
     try {
       const settingsUnsub = onSnapshot(doc(db, "settings", "company"), (snap) => {
         if (snap.exists()) {
@@ -918,7 +932,7 @@ function setupFirestoreListeners() {
 }
 
 async function seedInitialDataToFirestoreIfEmpty() {
-  if (currentRole !== "ADMIN") return;
+  if (!currentUserRoles.includes(ROLES.ADMIN)) return;
   try {
     const clientSnap = await getDocs(collection(db, "clients"));
     if (clientSnap.empty) {
@@ -947,6 +961,68 @@ async function seedInitialDataToFirestoreIfEmpty() {
   }
 }
 
+function renderAuthPage(state = "unauthenticated") {
+  const authContainer = document.getElementById("authContainer");
+  const appContainer = document.getElementById("app");
+  if (!authContainer || !appContainer) return;
+
+  if (state === "authenticated") {
+    authContainer.style.display = "none";
+    appContainer.style.display = "block";
+    return;
+  }
+
+  // Not authenticated or account deactivated:
+  appContainer.style.display = "none";
+  authContainer.style.display = "flex";
+
+  if (state === "deactivated") {
+    authContainer.innerHTML = `
+      <div class="deactivated-card">
+        <span class="deactivated-icon">🔒</span>
+        <h2>Compte Inactif ou Suspendu</h2>
+        <p>Votre compte a été désactivé par l'administration LAPERLE TOUR HT.<br>Pour des raisons de sécurité, vous ne pouvez pas accéder au centre de contrôle ni aux données privées.</p>
+        <button class="logout-btn" id="deactivatedLogoutBtn">
+          <span>🚪</span> Se déconnecter
+        </button>
+      </div>
+    `;
+    document.getElementById("deactivatedLogoutBtn")?.addEventListener("click", logoutUser);
+    return;
+  }
+
+  authContainer.innerHTML = `
+    <div class="auth-card">
+      <img src="logo-laperle.jpg" alt="LAPERLE TOUR HT" class="auth-logo">
+      <h1 class="auth-title">CENTRE DE CONTRÔLE <em>LAPERLE</em></h1>
+      <div class="auth-subtitle">LAPERLE TOUR HT</div>
+      <div class="auth-tagline">« Un coup d'œil sur Haïti »</div>
+      <div class="auth-divider"></div>
+      <p class="auth-desc">Accès sécurisé réservé au personnel habilité et aux clients autorisés. Connectez-vous avec votre compte Google / adresse e-mail pour accéder à votre espace.</p>
+      <button class="google-signin-btn" id="googleLoginBtn">
+        <svg class="google-icon" viewBox="0 0 24 24">
+          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+        </svg>
+        <span>Se connecter avec Google</span>
+      </button>
+      <div style="display:flex;justify-content:center;gap:12px;margin:20px 0 10px;font-size:11px;color:#092e70;font-weight:600">
+        <span>🛡️ Sécurité</span>
+        <span>💺 Confort</span>
+        <span>⏱️ Ponctualité</span>
+        <span>👥 Confiance</span>
+      </div>
+      <div class="auth-footer">
+        Transport • Tourisme • Location • Abonnement • Taxi<br>
+        Version 3.0 • Sécurisé par Google Firebase Authentication & Cloud Firestore
+      </div>
+    </div>
+  `;
+  document.getElementById("googleLoginBtn")?.addEventListener("click", loginWithGoogle);
+}
+
 // Authentication state listener with RBAC initialization
 onAuthStateChanged(auth, async (user) => {
   currentUser = user;
@@ -954,6 +1030,26 @@ onAuthStateChanged(auth, async (user) => {
   const nameEl = document.getElementById("headerUserName");
 
   if (user) {
+    // 1. Fetch or initialize profile in Firestore
+    try {
+      currentUserProfile = await ensureUserProfile(user);
+    } catch (e) {
+      console.warn("Erreur profil utilisateur:", e?.message);
+    }
+
+    // 2. Check if account is deactivated
+    if (currentUserProfile && normalizeStatus(currentUserProfile.status) === "inactif") {
+      currentUserRoles = ["inactif"];
+      currentRole = "inactif";
+      firestoreUnsubscribers.forEach(unsub => { try { unsub(); } catch (e) {} });
+      firestoreUnsubscribers = [];
+      renderAuthPage("deactivated");
+      return;
+    }
+
+    // 3. Authenticated & active!
+    renderAuthPage("authenticated");
+
     if (avatarEl) {
       if (user.photoURL) {
         avatarEl.innerHTML = `<img src="${user.photoURL}" class="user-avatar-img" alt="">`;
@@ -966,34 +1062,23 @@ onAuthStateChanged(auth, async (user) => {
     }
     updateFirebaseBadge("connected");
 
-    // Secure profile retrieval & initialization in Firestore
-    try {
-      currentUserProfile = await ensureUserProfile(user);
-    } catch (e) {
-      console.warn("Erreur profil utilisateur:", e?.message);
-    }
-
-    // Verify account status
-    if (currentUserProfile && currentUserProfile.status === "inactif") {
-      currentRole = "INACTIF";
-      updateRoleBadge("Compte Inactif");
-      showToast("Votre compte est désactivé. Veuillez contacter un administrateur.", "error");
-      firestoreUnsubscribers.forEach(unsub => { try { unsub(); } catch (e) {} });
-      firestoreUnsubscribers = [];
-      render();
-      return;
-    }
-
-    // Determine Role strictly from profile
-    if (user.email === SUPER_ADMIN_EMAIL) {
-      currentRole = "ADMIN";
+    // 4. Resolve multi-roles
+    if ((user.email || '').toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
+      currentUserRoles = [ROLES.ADMIN];
+      currentRole = ROLES.ADMIN;
     } else {
-      currentRole = (currentUserProfile?.role || "LECTURE_SEULE").toUpperCase();
+      currentUserRoles = normalizeRoles(currentUserProfile);
+      currentRole = currentUserRoles[0] || ROLES.LECTURE_SEULE;
     }
-    updateRoleBadge(currentRole);
+    updateRoleBadge(currentUserRoles);
 
+    // 5. Update navigation based on permissions
+    buildNavigation();
+
+    // 6. Connect real-time listeners
     setupFirestoreListeners();
-    if (currentRole === "ADMIN") {
+
+    if (currentUserRoles.includes(ROLES.ADMIN)) {
       seedInitialDataToFirestoreIfEmpty();
     }
   } else {
@@ -1001,11 +1086,13 @@ onAuthStateChanged(auth, async (user) => {
     if (nameEl) nameEl.textContent = "Non connecté";
     currentUser = null;
     currentUserProfile = null;
-    currentRole = "LECTURE_SEULE";
-    updateRoleBadge("Invité");
+    currentUserRoles = [ROLES.LECTURE_SEULE];
+    currentRole = ROLES.LECTURE_SEULE;
+    updateRoleBadge(["Invité"]);
     updateFirebaseBadge("offline");
     firestoreUnsubscribers.forEach(unsub => { try { unsub(); } catch (e) {} });
     firestoreUnsubscribers = [];
+    renderAuthPage("unauthenticated");
   }
   render();
 });
@@ -1024,6 +1111,16 @@ function go(k) {
 }
 
 function render() {
+  if (!currentUser) {
+    renderAuthPage("unauthenticated");
+    return;
+  }
+  if (currentUserProfile && normalizeStatus(currentUserProfile.status) === "inactif") {
+    renderAuthPage("deactivated");
+    return;
+  }
+  renderAuthPage("authenticated");
+
   updateNavBadges();
   document.querySelectorAll(".nav-item").forEach(x => {
     const key = x.dataset.key;
@@ -1031,6 +1128,22 @@ function render() {
   });
 
   const canon = canonicalCol(current);
+
+  // Security guard against unauthorized URL navigation
+  if (canon !== "dashboard" && !canAccessModule(currentUserRoles, canon, currentUserProfile?.permissions)) {
+    document.getElementById("page").innerHTML = `
+      <div class="unauthorized-box" style="padding:40px 20px;text-align:center;background:#fff;border-radius:12px;border:1px solid #e2e8f0;margin:20px auto;max-width:540px">
+        <div style="font-size:40px;margin-bottom:12px">🔒</div>
+        <h3 style="color:#092e70;margin-bottom:8px">Accès Restreint</h3>
+        <p style="color:#64748b;font-size:14px;line-height:1.5;margin-bottom:20px">
+          Votre profil ne dispose pas des autorisations requises pour accéder au module <b>${MODULES[canon]?.label || canon}</b>.
+        </p>
+        <button class="primary" onclick="go('dashboard')">Retour au Tableau de Bord</button>
+      </div>
+    `;
+    return;
+  }
+
   if (canon === "dashboard") dashboard();
   else if (SCHEMAS[canon] || SCHEMAS[current]) modulePage(canon);
   else if (canon === "reports") reportsPage();
@@ -1053,19 +1166,114 @@ function kpi(icon, label, value, key) {
 }
 
 function dashboard() {
+  const roles = normalizeRoles(currentUserRoles);
+  const hasStaffRole = roles.some(r => ['admin', 'direction', 'comptabilite', 'secretaire', 'operations', 'lecture_seule'].includes(r));
+  const isChauffeurOnly = !hasStaffRole && roles.includes('chauffeur');
+  const isClientOnly = !hasStaffRole && !roles.includes('chauffeur') && roles.includes('client');
+  const canSeeFinances = roles.some(r => ['admin', 'direction', 'comptabilite', 'lecture_seule'].includes(r));
+  const displayName = currentUser ? (currentUser.displayName || currentUser.email.split('@')[0]) : "Utilisateur";
+
+  // Role-tailored: CHAUFFEUR
+  if (isChauffeurOnly) {
+    const myPlannings = list("plannings").filter(x => !x.archived);
+    const myReservations = list("reservations").filter(x => !x.archived);
+    const myVehicles = list("vehicules").filter(x => !x.archived);
+
+    document.getElementById("page").innerHTML = `
+      <div class="welcome">
+        <div>
+          <h2>🚗 Espace Chauffeur • ${esc(displayName)}</h2>
+          <p>Centre de Contrôle LAPERLE TOUR HT • Rôle : <span class="user-role-badge chauffeur">CHAUFFEUR</span></p>
+        </div>
+        <div class="quote">
+          ❝ Plus qu'un transport, une destination de confiance. ❞<br>
+          — LAPERLE TOUR HT
+        </div>
+      </div>
+      <div class="kpis">
+        ${kpi("📅", "Mes Plannings & Courses", myPlannings.length, "plannings")}
+        ${kpi("🎫", "Mes Réservations", myReservations.length, "reservations")}
+        ${kpi("🚙", "Véhicules assignés", myVehicles.length, "vehicules")}
+        ${kpi("🔔", "Mes Notifications", list("notifications").filter(x => !x.read).length, "dashboard")}
+      </div>
+      <div class="bottom-grid" style="grid-template-columns: 2fr 1fr;">
+        <div class="panel">
+          <div class="panel-title">
+            <h3>📅 Mes Prochains Plannings & Départs</h3>
+            <button onclick="go('plannings')">Voir tout</button>
+          </div>
+          ${recentTable("plannings", ["route", "date", "time", "status"], "Consulter plannings", "plannings")}
+        </div>
+        <div class="panel quick-card">
+          <div class="panel-title"><h3>⚡ Accès rapide chauffeur</h3></div>
+          <div class="quick-list">
+            <button onclick="go('plannings')">📅 Consulter mon planning <b>›</b></button>
+            <button onclick="go('reservations')">🎫 Voir mes courses assignées <b>›</b></button>
+            <button onclick="go('vehicules')">🚙 Fiche de mon véhicule <b>›</b></button>
+          </div>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  // Role-tailored: CLIENT
+  if (isClientOnly) {
+    const myReservations = list("reservations").filter(x => !x.archived);
+    const myProformas = list("proformas").filter(x => !x.archived);
+    const myFactures = list("factures").filter(x => !x.archived);
+    const myPayments = list("paiements").filter(x => !x.archived);
+
+    document.getElementById("page").innerHTML = `
+      <div class="welcome">
+        <div>
+          <h2>👤 Espace Client • ${esc(displayName)}</h2>
+          <p>LAPERLE TOUR HT • Transport & Tourisme en Haïti • Rôle : <span class="user-role-badge client">CLIENT</span></p>
+        </div>
+        <div class="quote">
+          ❝ Plus qu'un transport, une destination de confiance. ❞<br>
+          — LAPERLE TOUR HT
+        </div>
+      </div>
+      <div class="kpis">
+        ${kpi("📅", "Mes Réservations", myReservations.length, "reservations")}
+        ${kpi("📄", "Mes Devis / Proformas", myProformas.length, "proformas")}
+        ${kpi("🧾", "Mes Factures", myFactures.length, "factures")}
+        ${kpi("💰", "Mes Paiements", myPayments.length, "paiements")}
+      </div>
+      <div class="bottom-grid" style="grid-template-columns: 2fr 1fr;">
+        <div class="panel">
+          <div class="panel-title">
+            <h3>📅 Mes Réservations récentes</h3>
+            <button onclick="go('reservations')">Voir tout</button>
+          </div>
+          ${recentTable("reservations", ["origin", "date", "service", "status"], "Réserver un trajet", "reservations")}
+        </div>
+        <div class="panel quick-card">
+          <div class="panel-title"><h3>⚡ Mes Services</h3></div>
+          <div class="quick-list">
+            <button onclick="openForm('reservations')">📅 Demander une réservation <b>›</b></button>
+            <button onclick="go('proformas')">📄 Consulter mes devis <b>›</b></button>
+            <button onclick="go('factures')">🧾 Télécharger mes factures <b>›</b></button>
+            <button onclick="go('paiements')">💳 Historique des paiements <b>›</b></button>
+          </div>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  // Standard: ADMIN, DIRECTION, COMPTABILITE, SECRETAIRE, OPERATIONS, LECTURE_SEULE
   const received = list("paiements").filter(x => ["Reçu", "Validé", "Payé"].includes(x.status)).reduce((s, x) => s + Number(x.amount || 0), 0);
   const spent = list("finances").reduce((s, x) => s + Number(x.amount || 0), 0);
   const toReceive = list("paiements").filter(x => ["En attente", "À recevoir"].includes(x.status)).reduce((s, x) => s + Number(x.amount || 0), 0);
-  const commissions = list("finances").filter(x => String(x.category || '').toLowerCase().includes('chauffeur') || String(x.category || '').toLowerCase().includes('commission')).reduce((s, x) => s + Number(x.amount || 0), 0);
   const netProfit = received - spent;
-
-  const adminName = currentUser ? (currentUser.displayName || currentUser.email.split('@')[0]) : "Castima";
 
   document.getElementById("page").innerHTML = `
     <div class="welcome">
       <div>
-        <h2>👤 Bonjour, ${esc(adminName)} !</h2>
-        <p>Centre de contrôle opérationnel et financier LAPERLE TOUR HT • Rôle : <span class="user-role-badge ${currentRole}">${currentRole}</span></p>
+        <h2>👤 Bonjour, ${esc(displayName)} !</h2>
+        <p>Centre de contrôle opérationnel et financier LAPERLE TOUR HT • Rôles : ${roles.map(r => `<span class="user-role-badge ${r}">${ROLE_LABELS[r] || r}</span>`).join(" ")}</p>
       </div>
       <div class="quote">
         ❝ Plus qu'un transport, une destination de confiance. ❞<br>
@@ -1078,14 +1286,14 @@ function dashboard() {
       ${kpi("🎒", "Élèves inscrits", list("eleves").filter(x => !x.archived).length, "eleves")}
       ${kpi("🎫", "Abonnements", list("abonnements").filter(x => !x.archived).length, "abonnements")}
       ${kpi("📅", "Réservations", list("reservations").filter(x => !x.archived).length, "reservations")}
-      ${kpi("💰", "CA Encaissé", money(received), "paiements")}
-      ${kpi("⏳", "Paiements en attente", money(toReceive), "paiements")}
+      ${canSeeFinances ? kpi("💰", "CA Encaissé", money(received), "paiements") : ""}
+      ${canSeeFinances ? kpi("⏳", "Paiements en attente", money(toReceive), "paiements") : ""}
       ${kpi("📄", "Proformas", list("proformas").filter(x => !x.archived).length, "proformas")}
       ${kpi("🧾", "Factures", list("factures").filter(x => !x.archived).length, "factures")}
       ${kpi("🚗", "Chauffeurs", list("chauffeurs").filter(x => !x.archived).length, "chauffeurs")}
       ${kpi("🚙", "Véhicules", list("vehicules").filter(x => !x.archived).length, "vehicules")}
-      ${kpi("🧾", "Dépenses globales", money(spent), "finances")}
-      ${kpi("📊", "Bénéfice Net", money(netProfit), "reports")}
+      ${canSeeFinances ? kpi("🧾", "Dépenses globales", money(spent), "finances") : ""}
+      ${canSeeFinances ? kpi("📊", "Bénéfice Net", money(netProfit), "reports") : ""}
     </div>
 
     <div class="dashboard-grid">
@@ -1115,7 +1323,8 @@ function dashboard() {
         <button onclick="go('factures')">🧾 Module Factures (${list('factures').filter(x => !x.archived).length} émises) <b>›</b></button>
         <button onclick="go('eleves')">🎒 Module Élèves & Transports scolaires (${list('eleves').filter(x => !x.archived).length} inscrits) <b>›</b></button>
         <button onclick="go('abonnements')">🎫 Module Abonnements (${list('abonnements').filter(x => !x.archived).length} actifs) <b>›</b></button>
-        <button onclick="go('settings')">⚙️ Module Paramètres & Sauvegarde Cloud <b>›</b></button>
+        ${roles.includes('admin') || roles.includes('secretaire') ? `<button onclick="go('utilisateurs')">🛡️ Module Utilisateurs & Habilitations (${list('utilisateurs').length} comptes) <b>›</b></button>` : ''}
+        ${roles.includes('admin') || roles.includes('direction') ? `<button onclick="go('settings')">⚙️ Module Paramètres & Sauvegarde Cloud <b>›</b></button>` : ''}
       </div>
     </div>
 
@@ -1147,6 +1356,173 @@ function dashboard() {
       </div>
     </div>
   `;
+}
+
+function openUserRoleModal(index) {
+  const user = list("utilisateurs")[index];
+  if (!user) return;
+
+  const roles = normalizeRoles(currentUserRoles);
+  const callerIsAdmin = roles.includes(ROLES.ADMIN) || (currentUser?.email || "").toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+  const callerIsSecretaire = roles.includes(ROLES.SECRETAIRE);
+
+  if (!callerIsAdmin && !callerIsSecretaire) {
+    showToast("⚠️ Seuls les Administrateurs et les Secrétaires peuvent gérer les rôles.", "error");
+    return;
+  }
+
+  const targetRoles = normalizeRoles(user.roles || user.role || [ROLES.LECTURE_SEULE]);
+  const isTargetSuperAdmin = (user.email || "").toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+  const isTargetAdmin = targetRoles.includes(ROLES.ADMIN) || isTargetSuperAdmin;
+  const isSelf = (user.uid && user.uid === currentUser?.uid) || (user.id && user.id === currentUser?.uid) || (user.email && user.email === currentUser?.email);
+
+  // Security constraints:
+  // 1. A secretaire cannot modify an admin account
+  const secretaryBlockedOnAdmin = callerIsSecretaire && !callerIsAdmin && isTargetAdmin;
+  // 2. A secretaire cannot modify her own account
+  const secretaryBlockedOnSelf = callerIsSecretaire && !callerIsAdmin && isSelf;
+  const isBlocked = secretaryBlockedOnAdmin || secretaryBlockedOnSelf;
+
+  const availableRoles = [
+    { key: ROLES.ADMIN, label: "Administrateur", desc: "Supervision complète et attribution des habilitations", restricted: true },
+    { key: ROLES.DIRECTION, label: "Direction", desc: "Supervision globale, finances, analytique, paramètres", restricted: false },
+    { key: ROLES.COMPTABILITE, label: "Comptabilité", desc: "Facturation, devis proforma, encaissements, caisse", restricted: false },
+    { key: ROLES.SECRETAIRE, label: "Secrétaire", desc: "Opérations, réservations, gestion des utilisateurs (sauf admin)", restricted: false },
+    { key: ROLES.OPERATIONS, label: "Opérations", desc: "Flotte de transport, plannings, chauffeurs, véhicules", restricted: false },
+    { key: ROLES.CHAUFFEUR, label: "Chauffeur", desc: "Espace mobile isolé : courses et plannings assignés", restricted: false },
+    { key: ROLES.CLIENT, label: "Client", desc: "Espace client isolé : ses réservations, devis et factures", restricted: false },
+    { key: ROLES.LECTURE_SEULE, label: "Lecture Seule", desc: "Consultation basique sans droit de modification", restricted: false }
+  ];
+
+  const currentStatus = normalizeStatus(user.status || "actif");
+
+  document.getElementById("modal").innerHTML = `
+    <div class="modal-head">
+      <div>
+        <h2>🛡️ Gestion des Rôles & Accès • ${esc(user.name || user.email)}</h2>
+        <small>Identifiant : ${esc(user.id || user.uid || '—')} • Firebase Cloud Firestore</small>
+      </div>
+      <button class="close" onclick="closeModal()">×</button>
+    </div>
+
+    ${secretaryBlockedOnAdmin ? `
+      <div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:12px;border-radius:8px;margin-bottom:14px;font-size:13px">
+        ⚠️ <b>Accès Restreint :</b> Une Secrétaire ne peut pas modifier le profil ou les rôles d'un Administrateur.
+      </div>
+    ` : ""}
+
+    ${secretaryBlockedOnSelf ? `
+      <div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:12px;border-radius:8px;margin-bottom:14px;font-size:13px">
+        ⚠️ <b>Accès Restreint :</b> Une Secrétaire ne peut pas modifier ses propres rôles.
+      </div>
+    ` : ""}
+
+    ${isTargetSuperAdmin ? `
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;padding:12px;border-radius:8px;margin-bottom:14px;font-size:13px">
+        👑 <b>Super Administrateur Principal (${SUPER_ADMIN_EMAIL}) :</b> Ce compte conserve obligatoirement le rôle Administrateur et le statut Actif.
+      </div>
+    ` : ""}
+
+    <form id="userRoleForm" style="display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:center;gap:14px;background:#f8fafc;padding:12px;border-radius:8px;border:1px solid #e2e8f0">
+        <div style="width:48px;height:48px;border-radius:50%;background:#092e70;color:#fff;display:grid;place-items:center;font-size:18px;font-weight:700">
+          ${user.photoURL ? `<img src="${esc(user.photoURL)}" style="width:100%;height:100%;border-radius:50%;object-fit:cover" alt="">` : esc((user.name || user.email || "U").charAt(0).toUpperCase())}
+        </div>
+        <div>
+          <b style="font-size:14px;color:#092e70">${esc(user.name || "Utilisateur sans nom")}</b><br>
+          <span style="font-size:12px;color:#64748b">${esc(user.email || "")}</span>
+        </div>
+      </div>
+
+      <div>
+        <label style="font-weight:700;color:#092e70;font-size:13px;display:block;margin-bottom:8px">
+          Rôles attribués (Sélection multiple possible) :
+        </label>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:8px">
+          ${availableRoles.map(r => {
+            const isChecked = targetRoles.includes(r.key);
+            const cannotAssignAdmin = !callerIsAdmin && r.key === ROLES.ADMIN;
+            const isLockedSuperAdmin = isTargetSuperAdmin && r.key === ROLES.ADMIN;
+            const disabled = isBlocked || cannotAssignAdmin || isLockedSuperAdmin;
+
+            return `
+              <label style="display:flex;align-items:flex-start;gap:8px;padding:10px;background:#fff;border:1px solid #cbd5e1;border-radius:8px;cursor:${disabled ? 'not-allowed' : 'pointer'};opacity:${disabled ? '0.6' : '1'}">
+                <input type="checkbox" name="roles" value="${r.key}" ${isChecked ? 'checked' : ''} ${disabled ? 'disabled' : ''} style="margin-top:3px">
+                <div>
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <span class="user-role-badge ${r.key}" style="font-size:10px">${r.label}</span>
+                    ${cannotAssignAdmin ? '<small style="color:#b91c1c;font-size:10px">(Réservé Admin)</small>' : ''}
+                    ${isLockedSuperAdmin ? '<small style="color:#15803d;font-size:10px">(Super Admin)</small>' : ''}
+                  </div>
+                  <div style="font-size:11px;color:#64748b;margin-top:3px">${r.desc}</div>
+                </div>
+              </label>
+            `;
+          }).join("")}
+        </div>
+      </div>
+
+      <div style="display:flex;gap:14px;align-items:center">
+        <div style="flex:1">
+          <label style="font-weight:700;color:#092e70;font-size:13px;display:block;margin-bottom:6px">Statut du compte :</label>
+          <select name="status" id="userStatusSelect" ${isBlocked || isTargetSuperAdmin ? 'disabled' : ''} style="width:100%;padding:8px;border-radius:6px;border:1px solid #cbd5e1">
+            <option value="actif" ${currentStatus === "actif" ? "selected" : ""}>✅ Actif (Accès autorisé)</option>
+            <option value="inactif" ${currentStatus === "inactif" ? "selected" : ""}>🔒 Inactif / Suspendu (Accès bloqué)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="full form-actions" style="margin-top:10px">
+        <button type="button" class="secondary" onclick="closeModal()">Annuler</button>
+        <button class="primary" type="submit" ${isBlocked ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}>
+          💾 Enregistrer les modifications
+        </button>
+      </div>
+    </form>
+  `;
+  document.getElementById("modalBackdrop").classList.add("open");
+
+  document.getElementById("userRoleForm").onsubmit = async (e) => {
+    e.preventDefault();
+    if (isBlocked) {
+      showToast("Action non autorisée.", "error");
+      return;
+    }
+
+    const checkboxes = Array.from(document.querySelectorAll('input[name="roles"]:checked'));
+    let selectedRoles = checkboxes.map(cb => cb.value);
+
+    // If super admin, ensure admin is retained
+    if (isTargetSuperAdmin && !selectedRoles.includes(ROLES.ADMIN)) {
+      selectedRoles.push(ROLES.ADMIN);
+    }
+
+    if (selectedRoles.length === 0) {
+      selectedRoles = [ROLES.LECTURE_SEULE];
+    }
+
+    const newStatus = isTargetSuperAdmin ? "actif" : (document.getElementById("userStatusSelect")?.value || "actif");
+    const userId = user.id || user.uid;
+
+    try {
+      showToast("Mise à jour des rôles et statut en cours...", "info");
+      await updateUserRoles(userId, selectedRoles, currentUserProfile);
+      await updateUserStatus(userId, newStatus, currentUserProfile);
+
+      // Update local state
+      user.roles = selectedRoles;
+      user.role = selectedRoles[0];
+      user.status = newStatus;
+      save();
+
+      closeModal();
+      drawTable("utilisateurs");
+      showToast("✅ Rôles et statut mis à jour avec succès sur Cloud Firestore !");
+    } catch (err) {
+      console.error("Erreur mise à jour utilisateur:", err);
+      showToast("Erreur : " + (err.message || "Impossible de mettre à jour"), "error");
+    }
+  };
 }
 
 function chartHTML() {
@@ -1397,7 +1773,7 @@ function drawTable(key) {
               <tr style="${isArchived ? 'opacity:0.6;background:#f9fafb;' : ''}">
                 ${cols.map(x => `<td>${formatCell(o[x[0]], x[2])}</td>`).join("")}
                 <td class="action-cell">
-                  ${canEdit ? `<button class="tiny edit" onclick="openForm('${canon}',${i})">Modifier</button>` : ""}
+                  ${canEdit ? (canon === "utilisateurs" ? `<button class="tiny edit" onclick="openUserRoleModal(${i})">🛡️ Rôles & Accès</button>` : `<button class="tiny edit" onclick="openForm('${canon}',${i})">Modifier</button>`) : ""}
                   <button class="tiny" onclick="viewRow('${canon}',${i})">Voir</button>
                   ${canon === "proformas" ? `
                     <button class="tiny" onclick="createInvoiceFromQuote(${i})">Facture</button>
@@ -1419,6 +1795,17 @@ function drawTable(key) {
 
 function formatCell(v, t) {
   if (v === undefined || v === null || v === "") return "—";
+  if (t === "roles" || Array.isArray(v)) {
+    const list = Array.isArray(v) ? v : [v];
+    return list.map(r => {
+      const safe = String(r).toLowerCase();
+      return `<span class="user-role-badge ${safe}" style="font-size:10px;padding:2px 7px;margin:1px 2px;display:inline-block">${esc(ROLE_LABELS[safe] || safe.toUpperCase())}</span>`;
+    }).join(" ");
+  }
+  if (typeof v === "string" && ["actif", "inactif", "suspendu"].includes(v.toLowerCase())) {
+    const safe = v.toLowerCase();
+    return `<span class="user-status-badge ${safe === 'actif' ? 'actif' : 'inactif'}">${safe === 'actif' ? '✅ Actif' : '🔒 Inactif'}</span>`;
+  }
   if (t?.startsWith("select:")) {
     let cls = "";
     if (["Payé", "Payée", "Reçu", "Actif", "Inscrit", "Confirmée", "Confirmé", "Effectuée", "Gagné", "Disponible", "Acceptée"].includes(v)) cls = "green";
@@ -1744,7 +2131,7 @@ function removeRow(key, index) {
     <div class="form-actions" style="margin-top:16px;flex-wrap:wrap">
       <button class="secondary" onclick="closeModal()">Annuler</button>
       <button class="primary orange" onclick="executeArchive('${canon}',${index})">📦 Archiver (Recommandé)</button>
-      ${currentRole === "ADMIN" ? `<button class="primary" style="background:#d93025;border-color:#d93025" onclick="executePermanentDelete('${canon}',${index})">🗑️ Supprimer définitivement</button>` : ""}
+      ${currentUserRoles.includes(ROLES.ADMIN) ? `<button class="primary" style="background:#d93025;border-color:#d93025" onclick="executePermanentDelete('${canon}',${index})">🗑️ Supprimer définitivement</button>` : ""}
     </div>
   `;
   document.getElementById("modalBackdrop").classList.add("open");
@@ -1850,7 +2237,7 @@ function openProfile() {
     </div>
     <div class="info"><b>Utilisateur connecté</b><br>${esc(currentUser?.displayName || admin)}</div>
     <div class="info" style="margin-top:8px"><b>Email</b><br>${esc(email)}</div>
-    <div class="info" style="margin-top:8px"><b>Rôle actuel</b><br><span class="user-role-badge ${currentRole}">${currentRole}</span></div>
+    <div class="info" style="margin-top:8px"><b>Rôles attribués</b><br>${currentUserRoles.map(r => `<span class="user-role-badge ${r}" style="margin-right:4px">${ROLE_LABELS[r] || r}</span>`).join("")}</div>
     <div class="info" style="margin-top:8px;border-left:4px solid #f7941d">
       <b>🔥 Base de données Google Cloud Firestore</b><br>
       ${isAuth ? `<span style="color:#187a43;font-weight:700">Connecté en direct :</span> ${esc(currentUser.email)}<br><small style="color:#64748b">Toutes les opérations sont enregistrées et synchronisées en direct.</small>` : `<span style="color:#64748b">Mode local. Connectez-vous avec Google pour activer la synchronisation permanente.</span>`}
@@ -1858,8 +2245,8 @@ function openProfile() {
     <div class="form-actions" style="margin-top:14px;flex-wrap:wrap">
       <button class="secondary" onclick="closeModal();openFirebaseModal()">🔥 Statut Firestore</button>
       ${isAuth ? `<button class="secondary" style="color:#b42318;border-color:#fca5a5" onclick="logoutUser()">Se déconnecter</button>` : `<button class="primary green" onclick="loginWithGoogle()">🔑 Connexion Google</button>`}
-      ${currentRole === "ADMIN" ? `<button class="secondary" onclick="closeModal();go('utilisateurs')">🛡️ Gérer les Rôles</button>` : ""}
-      <button class="secondary" onclick="closeModal();go('settings')">⚙️ Paramètres</button>
+      ${(currentUserRoles.includes("admin") || currentUserRoles.includes("secretaire")) ? `<button class="secondary" onclick="closeModal();go('utilisateurs')">🛡️ Gérer les Rôles & Accès</button>` : ""}
+      ${(currentUserRoles.includes("admin") || currentUserRoles.includes("direction")) ? `<button class="secondary" onclick="closeModal();go('settings')">⚙️ Paramètres</button>` : ""}
       <button class="primary" onclick="closeModal()">Fermer</button>
     </div>
   `;
@@ -1977,7 +2364,7 @@ function settingsPage() {
         <div class="info" style="margin-bottom:10px">
           Projet Firebase : <b>pragmatic-port-83bk6</b> • Région : <b>us-west1</b><br>
           <span style="font-weight:600;color:${currentUser ? '#15803d' : '#475569'}">
-            ${currentUser ? `✅ Connecté : ${esc(currentUser.email)} (Rôle : ${currentRole})` : '⚪ Mode local actif. Connectez-vous avec Google pour activer le Cloud.'}
+            ${currentUser ? `✅ Connecté : ${esc(currentUser.email)} (${currentUserRoles.map(r => `<span class="user-role-badge ${r}">${ROLE_LABELS[r] || r}</span>`).join(" ")})` : '⚪ Mode local actif. Connectez-vous avec Google pour activer le Cloud.'}
           </span>
         </div>
         <div class="quick-list">
@@ -2194,3 +2581,4 @@ window.globalSearch = globalSearch;
 window.createInvoiceFromQuote = createInvoiceFromQuote;
 window.printDocument = printDocument;
 window.drawTable = drawTable;
+window.openUserRoleModal = openUserRoleModal;

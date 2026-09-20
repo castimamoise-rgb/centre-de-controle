@@ -1,5 +1,6 @@
 /**
  * Service de gestion des Rôles et Permissions pour le Centre de Contrôle LAPERLE TOUR HT
+ * Système Multi-Rôles avec permissions cumulatives
  */
 
 export const ROLES = {
@@ -32,19 +33,62 @@ export const STATUS_LABELS = {
 export const SUPER_ADMIN_EMAIL = 'castimamoise@gmail.com';
 
 /**
- * Normalise un rôle en minuscule
+ * Normalise un rôle unique en minuscule
  */
 export function normalizeRole(role) {
   if (!role) return ROLES.LECTURE_SEULE;
   const r = String(role).toLowerCase().trim();
-  if (r === 'admin') return ROLES.ADMIN;
+  if (r === 'admin' || r === 'administrateur') return ROLES.ADMIN;
   if (r === 'direction') return ROLES.DIRECTION;
-  if (r === 'comptabilite') return ROLES.COMPTABILITE;
-  if (r === 'secretaire') return ROLES.SECRETAIRE;
-  if (r === 'operations') return ROLES.OPERATIONS;
+  if (r === 'comptabilite' || r === 'comptabilité') return ROLES.COMPTABILITE;
+  if (r === 'secretaire' || r === 'secrétaire' || r === 'secrétariat') return ROLES.SECRETAIRE;
+  if (r === 'operations' || r === 'opérations') return ROLES.OPERATIONS;
   if (r === 'chauffeur') return ROLES.CHAUFFEUR;
   if (r === 'client') return ROLES.CLIENT;
   return ROLES.LECTURE_SEULE;
+}
+
+/**
+ * Normalise un ensemble de rôles (tableau ou objet profil)
+ * Règle impérative : Si un rôle métier est attribué, lecture_seule est automatiquement retiré.
+ */
+export function normalizeRoles(rolesInput, singleRoleFallback = null) {
+  let list = [];
+
+  if (Array.isArray(rolesInput)) {
+    list = rolesInput;
+  } else if (rolesInput && typeof rolesInput === 'object') {
+    if (Array.isArray(rolesInput.roles) && rolesInput.roles.length > 0) {
+      list = rolesInput.roles;
+    } else if (rolesInput.role) {
+      list = [rolesInput.role];
+    }
+  } else if (typeof rolesInput === 'string' && rolesInput.trim().length > 0) {
+    list = [rolesInput];
+  }
+
+  // Fallback si la liste est vide
+  if (list.length === 0 && singleRoleFallback) {
+    list = Array.isArray(singleRoleFallback) ? singleRoleFallback : [singleRoleFallback];
+  }
+
+  // Normalisation individuelle et déduplication
+  const validRoles = Object.values(ROLES);
+  const normalized = Array.from(new Set(
+    list
+      .map(r => normalizeRole(r))
+      .filter(r => validRoles.includes(r))
+  ));
+
+  // Si l'utilisateur possède au moins un rôle métier (autre que lecture_seule),
+  // on retire impérativement 'lecture_seule'.
+  const businessRoles = normalized.filter(r => r !== ROLES.LECTURE_SEULE);
+  if (businessRoles.length > 0) {
+    return businessRoles;
+  }
+
+  // Si aucun rôle métier n'est défini, le rôle par défaut est lecture_seule
+  return [ROLES.LECTURE_SEULE];
 }
 
 /**
@@ -53,33 +97,19 @@ export function normalizeRole(role) {
 export function normalizeStatus(status) {
   if (!status) return 'actif';
   const s = String(status).toLowerCase().trim();
-  return s === 'inactif' || s === 'disabled' || s === 'bloqué' ? 'inactif' : 'actif';
+  return s === 'inactif' || s === 'disabled' || s === 'bloqué' || s === 'suspendu' ? 'inactif' : 'actif';
 }
 
 /**
- * Vérifie si l'utilisateur a accès au module
+ * Vérifie l'accès d'un rôle individuel à un module
  */
-export function canAccessModule(role, moduleKey, permissions = {}) {
-  const normRole = normalizeRole(role);
-  const m = String(moduleKey).toLowerCase().trim();
-
-  // Vérification de permission individuelle explicite
-  if (permissions && permissions[m]) {
-    const perm = permissions[m];
-    if (perm === 'none') return false;
-    if (perm === 'read' || perm === 'read_write') return true;
-  }
-
-  // ADMIN: Accès absolu
+function roleCanAccessModule(normRole, m) {
   if (normRole === ROLES.ADMIN) return true;
 
-  // DIRECTION: Tous les modules métier sauf la gestion avancée des utilisateurs
   if (normRole === ROLES.DIRECTION) {
-    if (m === 'utilisateurs') return false;
-    return true;
+    return m !== 'utilisateurs';
   }
 
-  // COMPTABILITE: Modules financiers et consultation des tiers
   if (normRole === ROLES.COMPTABILITE) {
     const allowed = [
       'dashboard', 'reports', 'paiements', 'proformas', 
@@ -88,17 +118,15 @@ export function canAccessModule(role, moduleKey, permissions = {}) {
     return allowed.includes(m);
   }
 
-  // SECRETAIRE: Gestion administrative quotidienne
   if (normRole === ROLES.SECRETAIRE) {
     const allowed = [
       'dashboard', 'clients', 'eleves', 'abonnements', 
       'reservations', 'plannings', 'chauffeurs', 'vehicules', 
-      'prospects', 'notifications', 'proformas', 'factures', 'paiements'
+      'prospects', 'notifications', 'proformas', 'factures', 'paiements', 'utilisateurs'
     ];
     return allowed.includes(m);
   }
 
-  // OPERATIONS: Gestion du transport et des véhicules
   if (normRole === ROLES.OPERATIONS) {
     const allowed = [
       'dashboard', 'clients', 'eleves', 'chauffeurs', 
@@ -108,7 +136,6 @@ export function canAccessModule(role, moduleKey, permissions = {}) {
     return allowed.includes(m);
   }
 
-  // CHAUFFEUR: Espace personnel restreint
   if (normRole === ROLES.CHAUFFEUR) {
     const allowed = [
       'dashboard', 'plannings', 'vehicules', 'reservations', 
@@ -117,7 +144,6 @@ export function canAccessModule(role, moduleKey, permissions = {}) {
     return allowed.includes(m);
   }
 
-  // CLIENT: Espace personnel client
   if (normRole === ROLES.CLIENT) {
     const allowed = [
       'dashboard', 'reservations', 'abonnements', 'eleves', 
@@ -126,64 +152,64 @@ export function canAccessModule(role, moduleKey, permissions = {}) {
     return allowed.includes(m);
   }
 
-  // LECTURE_SEULE: Consultation des modules généraux de l'entreprise
   if (normRole === ROLES.LECTURE_SEULE) {
-    if (m === 'utilisateurs') return false;
-    return true;
+    return m !== 'utilisateurs';
   }
 
   return false;
 }
 
 /**
- * Vérifie si une action spécifique est autorisée (read, create, update, delete, archive)
+ * Vérifie si l'utilisateur (avec ses multi-rôles) a accès au module
+ * Les permissions sont cumulatives sur l'ensemble de ses rôles.
  */
-export function hasActionPermission(role, moduleKey, action, permissions = {}) {
-  const normRole = normalizeRole(role);
+export function canAccessModule(rolesOrUser, moduleKey, permissions = {}) {
+  const roles = normalizeRoles(rolesOrUser);
   const m = String(moduleKey).toLowerCase().trim();
-  const act = String(action).toLowerCase().trim();
 
-  // ADMIN: Tout est permis
+  // Permission individuelle restrictive explicite
+  if (permissions && permissions[m]) {
+    const perm = permissions[m];
+    if (perm === 'none') return false;
+    if (perm === 'read' || perm === 'read_write') return true;
+  }
+
+  // Si l'un des rôles autorise le module, accès accordé
+  return roles.some(role => roleCanAccessModule(role, m));
+}
+
+/**
+ * Vérifie l'action autorisée pour un rôle unique
+ */
+function roleHasAction(normRole, m, act) {
   if (normRole === ROLES.ADMIN) return true;
 
-  // LECTURE_SEULE: Uniquement la lecture autorisée
   if (normRole === ROLES.LECTURE_SEULE) {
     return act === 'read';
   }
 
-  // Vérification de permission individuelle
-  if (permissions && permissions[m]) {
-    const p = permissions[m];
-    if (p === 'none') return false;
-    if (p === 'read') return act === 'read';
-    if (p === 'read_write') {
-      if (act === 'delete') return normRole === ROLES.ADMIN;
-      return true;
-    }
-  }
-
-  // DIRECTION: Pas de suppression définitive
   if (normRole === ROLES.DIRECTION) {
     if (m === 'utilisateurs' || m === 'settings') return act === 'read';
     if (act === 'delete') return false;
     return true;
   }
 
-  // COMPTABILITE: Écritures autorisées sur finances, proformas, factures, paiements
   if (normRole === ROLES.COMPTABILITE) {
     if (['paiements', 'proformas', 'factures', 'finances'].includes(m)) {
       if (act === 'delete') return false;
       return true;
     }
-    if (['clients', 'abonnements'].includes(m)) {
+    if (['clients', 'abonnements', 'dashboard', 'reports'].includes(m)) {
       return act === 'read';
     }
     return act === 'read';
   }
 
-  // SECRETAIRE: Écritures autorisées sur dossiers administratifs
   if (normRole === ROLES.SECRETAIRE) {
-    const writeAllowed = ['clients', 'eleves', 'abonnements', 'reservations', 'plannings', 'prospects', 'notifications', 'proformas'];
+    const writeAllowed = [
+      'clients', 'eleves', 'abonnements', 'reservations', 
+      'plannings', 'prospects', 'notifications', 'proformas', 'utilisateurs'
+    ];
     if (writeAllowed.includes(m)) {
       if (act === 'delete') return false;
       return true;
@@ -194,9 +220,11 @@ export function hasActionPermission(role, moduleKey, action, permissions = {}) {
     return act === 'read';
   }
 
-  // OPERATIONS: Écritures transport
   if (normRole === ROLES.OPERATIONS) {
-    const writeAllowed = ['clients', 'eleves', 'chauffeurs', 'vehicules', 'plannings', 'reservations', 'abonnements', 'prospects', 'notifications'];
+    const writeAllowed = [
+      'clients', 'eleves', 'chauffeurs', 'vehicules', 
+      'plannings', 'reservations', 'abonnements', 'prospects', 'notifications'
+    ];
     if (writeAllowed.includes(m)) {
       if (act === 'delete') return false;
       return true;
@@ -204,13 +232,11 @@ export function hasActionPermission(role, moduleKey, action, permissions = {}) {
     return act === 'read';
   }
 
-  // CHAUFFEUR: Mise à jour uniquement du statut de son planning (ex: 'Terminé')
   if (normRole === ROLES.CHAUFFEUR) {
     if (m === 'plannings' && act === 'update') return true;
     return act === 'read';
   }
 
-  // CLIENT: Peut créer des réservations et consulter ses pièces
   if (normRole === ROLES.CLIENT) {
     if (m === 'reservations' && act === 'create') return true;
     return act === 'read';
@@ -220,85 +246,132 @@ export function hasActionPermission(role, moduleKey, action, permissions = {}) {
 }
 
 /**
+ * Vérifie si une action spécifique est autorisée pour l'ensemble des multi-rôles
+ * Les permissions sont cumulatives.
+ */
+export function hasActionPermission(rolesOrUser, moduleKey, action, permissions = {}) {
+  const roles = normalizeRoles(rolesOrUser);
+  const m = String(moduleKey).toLowerCase().trim();
+  const act = String(action).toLowerCase().trim();
+
+  // ADMIN: Niveau absolu
+  if (roles.includes(ROLES.ADMIN)) return true;
+
+  // Seul ADMIN peut supprimer définitivement
+  if (act === 'delete') return false;
+
+  // LECTURE_SEULE strict si c'est le seul rôle
+  if (roles.length === 1 && roles[0] === ROLES.LECTURE_SEULE) {
+    return act === 'read';
+  }
+
+  // Vérification de permission individuelle
+  if (permissions && permissions[m]) {
+    const p = permissions[m];
+    if (p === 'none') return false;
+    if (p === 'read') return act === 'read';
+    if (p === 'read_write') {
+      return act !== 'delete';
+    }
+  }
+
+  // Cumulative : si N'IMPORTE QUEL rôle autorise l'action, l'action est autorisée
+  return roles.some(role => roleHasAction(role, m, act));
+}
+
+/**
  * Filtre les données pour les rôles à visibilité restreinte (CHAUFFEUR et CLIENT)
+ * Si l'utilisateur possède un rôle administratif ou opérationnel (ex: operations, secretaire),
+ * il accède aux données globales sans restriction.
  */
 export function filterDataForUser(moduleKey, items, userProfile) {
   if (!Array.isArray(items)) return [];
   if (!userProfile) return items;
 
-  const normRole = normalizeRole(userProfile.role);
+  const roles = normalizeRoles(userProfile);
   const m = String(moduleKey).toLowerCase().trim();
 
-  // Pour ADMIN, DIRECTION, COMPTABILITE, OPERATIONS, SECRETAIRE, LECTURE_SEULE:
-  // Pas de restriction d'isolation au niveau utilisateur individuel
-  if (![ROLES.CHAUFFEUR, ROLES.CLIENT].includes(normRole)) {
+  // Si l'utilisateur possède ADMIN, DIRECTION, COMPTABILITE, OPERATIONS, SECRETAIRE ou LECTURE_SEULE
+  // alors aucune restriction d'isolation individuelle n'est appliquée
+  const hasManagementRole = roles.some(r => [
+    ROLES.ADMIN, 
+    ROLES.DIRECTION, 
+    ROLES.COMPTABILITE, 
+    ROLES.OPERATIONS, 
+    ROLES.SECRETAIRE, 
+    ROLES.LECTURE_SEULE
+  ].includes(r));
+
+  if (hasManagementRole) {
     return items;
   }
+
+  const isChauffeur = roles.includes(ROLES.CHAUFFEUR);
+  const isClient = roles.includes(ROLES.CLIENT);
 
   const userEmail = (userProfile.email || '').toLowerCase();
   const userName = (userProfile.nom || userProfile.name || '').toLowerCase();
   const userPhone = (userProfile.telephone || '').replace(/[^0-9]/g, '');
   const userUid = userProfile.uid || userProfile.id || '';
 
-  // Filtrage strict pour CHAUFFEUR
-  if (normRole === ROLES.CHAUFFEUR) {
+  // Filtrage strict pour CHAUFFEUR uniquement
+  if (isChauffeur && !isClient) {
     if (m === 'chauffeurs') {
       return items.filter(c => {
         const cEmail = (c.email || '').toLowerCase();
         const cName = (c.name || c.nom || '').toLowerCase();
         const cPhone = (c.phone || '').replace(/[^0-9]/g, '');
-        return cEmail === userEmail || (userName && cName.includes(userName)) || (userPhone && cPhone && cPhone === userPhone);
+        return c.chauffeurId === userUid || cEmail === userEmail || (userName && cName.includes(userName)) || (userPhone && cPhone && cPhone === userPhone);
       });
     }
 
     if (m === 'vehicules') {
       return items.filter(v => {
         const dName = (v.driver || '').toLowerCase();
-        return userName && dName.includes(userName);
+        return v.chauffeurId === userUid || (userName && dName.includes(userName));
       });
     }
 
     if (m === 'plannings' || m === 'reservations') {
       return items.filter(p => {
         const pDriver = (p.driver || p.chauffeur || '').toLowerCase();
-        return userName && pDriver.includes(userName);
+        return p.chauffeurId === userUid || (userName && pDriver.includes(userName));
       });
     }
 
     if (m === 'eleves') {
-      // Les passagers sur les circuits assignés
       return items.filter(el => {
         const route = (el.route || '').toLowerCase();
-        return route.length > 0;
+        return el.chauffeurId === userUid || route.length > 0;
       });
     }
 
     return [];
   }
 
-  // Filtrage strict pour CLIENT
-  if (normRole === ROLES.CLIENT) {
+  // Filtrage strict pour CLIENT uniquement
+  if (isClient && !isChauffeur) {
     if (m === 'clients') {
       return items.filter(c => {
         const cEmail = (c.email || '').toLowerCase();
         const cName = (c.name || c.nom || '').toLowerCase();
         const cPhone = (c.phone || '').replace(/[^0-9]/g, '');
-        return cEmail === userEmail || (userName && cName.includes(userName)) || (userPhone && cPhone && cPhone === userPhone);
+        return c.clientId === userUid || cEmail === userEmail || (userName && cName.includes(userName)) || (userPhone && cPhone && cPhone === userPhone);
       });
     }
 
     if (m === 'eleves') {
       return items.filter(el => {
         const pName = (el.client || el.parent || '').toLowerCase();
-        return userName && pName.includes(userName);
+        return el.clientId === userUid || (userName && pName.includes(userName));
       });
     }
 
-    if (m === 'abonnements' || m === 'reservations' || m === 'paiements' || m === 'factures' || m === 'proformas') {
+    if (['abonnements', 'reservations', 'paiements', 'factures', 'proformas'].includes(m)) {
       return items.filter(doc => {
         const cName = (doc.client || '').toLowerCase();
         const cEmail = (doc.email || '').toLowerCase();
-        return (userName && cName.includes(userName)) || (userEmail && cEmail === userEmail);
+        return doc.clientId === userUid || (userName && cName.includes(userName)) || (userEmail && cEmail === userEmail);
       });
     }
 
@@ -307,3 +380,4 @@ export function filterDataForUser(moduleKey, items, userProfile) {
 
   return items;
 }
+

@@ -14,7 +14,7 @@ import {
   handleFirestoreError, 
   OperationType 
 } from '../src/lib/firebase.js';
-import { ROLES, SUPER_ADMIN_EMAIL, normalizeRole, normalizeStatus } from './permissionService.js';
+import { ROLES, SUPER_ADMIN_EMAIL, normalizeRole, normalizeRoles, normalizeStatus } from './permissionService.js';
 
 const COLLECTION_NAME = 'utilisateurs';
 
@@ -49,23 +49,59 @@ export async function getUserById(id) {
 }
 
 /**
- * Met à jour le rôle d'un utilisateur (réservé à ADMIN)
+ * Met à jour les rôles multiples d'un utilisateur (ADMIN ou SECRÉTAIRE)
+ * Respecte les contraintes :
+ * - SECRÉTAIRE ne peut jamais s'attribuer ADMIN ni attribuer ADMIN à quiconque.
+ * - SECRÉTAIRE ne peut pas modifier un profil ADMIN.
+ * - Le Super Admin (castimamoise@gmail.com) reste obligatoirement ADMIN.
  */
-export async function updateUserRole(userId, newRole) {
-  const normRole = normalizeRole(newRole);
+export async function updateUserRoles(userId, newRolesInput, callerProfile = null) {
+  const cleanRoles = normalizeRoles(newRolesInput);
   const currentUserEmail = auth.currentUser?.email || 'admin';
+  const currentUid = auth.currentUser?.uid || '';
   const now = new Date().toISOString();
 
-  // Ne pas rétrograder le Super Admin
+  // Identifier les rôles de la personne qui effectue la modification
+  const callerRoles = normalizeRoles(callerProfile || auth.currentUser);
+  const callerIsAdmin = callerRoles.includes(ROLES.ADMIN) || currentUserEmail.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+  const callerIsSecretaire = callerRoles.includes(ROLES.SECRETAIRE);
+
+  if (!callerIsAdmin && !callerIsSecretaire) {
+    throw new Error("Seul un Administrateur ou une Secrétaire peut gérer les rôles des utilisateurs.");
+  }
+
+  // Récupérer le document utilisateur existant
   const existing = await getUserById(userId);
+
+  // Sécurité Super Admin : ne jamais retirer ADMIN
   if (existing && existing.email && existing.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
-    if (normRole !== ROLES.ADMIN) {
+    if (!cleanRoles.includes(ROLES.ADMIN)) {
       throw new Error("Impossible de rétrograder le compte Super Administrateur principal.");
     }
   }
 
+  // Contraintes pour la Secrétaire
+  if (!callerIsAdmin && callerIsSecretaire) {
+    // 1. Ne peut pas modifier son propre profil pour s'attribuer des privilèges
+    if (userId === currentUid) {
+      throw new Error("Une Secrétaire ne peut pas modifier ses propres rôles.");
+    }
+
+    // 2. Ne peut pas modifier un utilisateur qui est déjà Admin
+    const targetRoles = normalizeRoles(existing);
+    if (targetRoles.includes(ROLES.ADMIN)) {
+      throw new Error("Une Secrétaire ne peut pas modifier le compte d'un Administrateur.");
+    }
+
+    // 3. Ne peut jamais attribuer le rôle ADMIN
+    if (cleanRoles.includes(ROLES.ADMIN)) {
+      throw new Error("Seul un Administrateur peut attribuer le rôle Administrateur.");
+    }
+  }
+
   const updates = {
-    role: normRole,
+    roles: cleanRoles,
+    role: cleanRoles[0] || ROLES.LECTURE_SEULE, // Rétro-compatibilité
     updatedAt: now,
     updatedBy: currentUserEmail
   };
@@ -79,9 +115,16 @@ export async function updateUserRole(userId, newRole) {
 }
 
 /**
- * Active ou désactive un utilisateur (réservé à ADMIN)
+ * Met à jour le rôle unique d'un utilisateur (rétrocompatibilité)
  */
-export async function updateUserStatus(userId, newStatus) {
+export async function updateUserRole(userId, newRole, callerProfile = null) {
+  return updateUserRoles(userId, [newRole], callerProfile);
+}
+
+/**
+ * Active ou désactive un utilisateur (réservé à ADMIN ou SECRÉTAIRE)
+ */
+export async function updateUserStatus(userId, newStatus, callerProfile = null) {
   const normStatus = normalizeStatus(newStatus);
   const currentUserEmail = auth.currentUser?.email || 'admin';
   const now = new Date().toISOString();
@@ -144,3 +187,4 @@ export function subscribeAllUsers(callback) {
     console.warn("[Utilisateurs Snapshot Warning]:", error.message);
   });
 }
+

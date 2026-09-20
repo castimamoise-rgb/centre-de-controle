@@ -17,6 +17,7 @@ import {
   ROLES, 
   SUPER_ADMIN_EMAIL, 
   normalizeRole, 
+  normalizeRoles,
   normalizeStatus 
 } from './permissionService.js';
 
@@ -51,7 +52,7 @@ export async function logoutUser() {
 }
 
 /**
- * Récupère ou initialise le profil utilisateur dans Firestore
+ * Récupère ou initialise le profil utilisateur dans Firestore avec le support multi-rôles
  */
 export async function ensureUserProfile(user) {
   if (!user || !user.uid) return null;
@@ -82,9 +83,22 @@ export async function ensureUserProfile(user) {
   }
 
   if (existingData) {
-    // Profil existant: CONSERVER impérativement son rôle attribué !
+    // Profil existant: CONSERVER impérativement ses rôles attribués !
     // Si c'est le super admin principal, il conserve toujours 'admin'
-    const role = isSuperAdmin ? ROLES.ADMIN : normalizeRole(existingData.role || ROLES.LECTURE_SEULE);
+    let currentRoles = [];
+    if (Array.isArray(existingData.roles) && existingData.roles.length > 0) {
+      currentRoles = normalizeRoles(existingData.roles);
+    } else if (existingData.role) {
+      currentRoles = normalizeRoles([existingData.role]);
+    } else {
+      currentRoles = [ROLES.LECTURE_SEULE];
+    }
+
+    if (isSuperAdmin && !currentRoles.includes(ROLES.ADMIN)) {
+      currentRoles = [ROLES.ADMIN, ...currentRoles.filter(r => r !== ROLES.ADMIN && r !== ROLES.LECTURE_SEULE)];
+    }
+
+    const primaryRole = currentRoles[0] || ROLES.LECTURE_SEULE;
     const status = isSuperAdmin ? 'actif' : normalizeStatus(existingData.status || 'actif');
 
     const updatedProfile = {
@@ -95,7 +109,8 @@ export async function ensureUserProfile(user) {
       name: user.displayName || existingData.nom || existingData.name || email.split('@')[0],
       email: email,
       photoURL: user.photoURL || existingData.photoURL || '',
-      role: role,
+      roles: currentRoles,
+      role: primaryRole, // Rétro-compatibilité
       status: status,
       telephone: user.phoneNumber || existingData.telephone || existingData.phone || '',
       lastLoginAt: now,
@@ -110,7 +125,8 @@ export async function ensureUserProfile(user) {
 
   // 3. Première connexion d'un NOUVEL utilisateur
   // Règle impérative: Un nouveau compte Google ne doit JAMAIS devenir ADMIN automatiquement.
-  // role = 'lecture_seule', status = 'actif' (sauf Super Admin configuré)
+  // roles = ['lecture_seule'], status = 'actif' (sauf Super Admin configuré)
+  const initialRoles = isSuperAdmin ? [ROLES.ADMIN] : [ROLES.LECTURE_SEULE];
   const initialRole = isSuperAdmin ? ROLES.ADMIN : ROLES.LECTURE_SEULE;
   const initialStatus = 'actif';
 
@@ -121,7 +137,8 @@ export async function ensureUserProfile(user) {
     name: user.displayName || email.split('@')[0],
     email: email,
     photoURL: user.photoURL || '',
-    role: initialRole,
+    roles: initialRoles,
+    role: initialRole, // Rétro-compatibilité
     status: initialStatus,
     telephone: user.phoneNumber || '',
     notes: isSuperAdmin ? 'Administrateur Principal LAPERLE TOUR HT' : 'Compte Google créé automatiquement',
@@ -173,6 +190,7 @@ export function subscribeAuthState(onStateChange) {
       console.error("Erreur synchronisation profil après changement auth:", err);
       // Fallback gracieux si Firestore a un retard de propagation
       const isSuper = (user.email || '').toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+      const fallbackRoles = isSuper ? [ROLES.ADMIN] : [ROLES.LECTURE_SEULE];
       onStateChange({
         state: 'authenticated',
         user,
@@ -181,10 +199,12 @@ export function subscribeAuthState(onStateChange) {
           id: user.uid,
           nom: user.displayName || user.email?.split('@')[0] || 'Utilisateur',
           email: user.email,
-          role: isSuper ? ROLES.ADMIN : ROLES.LECTURE_SEULE,
+          roles: fallbackRoles,
+          role: fallbackRoles[0],
           status: 'actif'
         }
       });
     }
   });
 }
+
