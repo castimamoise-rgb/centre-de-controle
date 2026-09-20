@@ -100,6 +100,24 @@ export function normalizeStatus(status) {
   return s === 'inactif' || s === 'disabled' || s === 'bloqué' || s === 'suspendu' ? 'inactif' : 'actif';
 }
 
+export const BUSINESS_ROLES = [
+  ROLES.ADMIN,
+  ROLES.DIRECTION,
+  ROLES.COMPTABILITE,
+  ROLES.SECRETAIRE,
+  ROLES.OPERATIONS,
+  ROLES.CHAUFFEUR,
+  ROLES.CLIENT
+];
+
+/**
+ * Vérifie si l'utilisateur possède au moins un rôle métier actif
+ */
+export function hasBusinessRole(rolesOrUser) {
+  const roles = normalizeRoles(rolesOrUser);
+  return roles.some(r => BUSINESS_ROLES.includes(r));
+}
+
 /**
  * Vérifie l'accès d'un rôle individuel à un module
  */
@@ -153,7 +171,9 @@ function roleCanAccessModule(normRole, m) {
   }
 
   if (normRole === ROLES.LECTURE_SEULE) {
-    return m !== 'utilisateurs';
+    // Un utilisateur avec uniquement lecture_seule ne voit PAS le Dashboard et ne voit AUCUN module métier.
+    // Il voit uniquement son profil.
+    return m === 'profile' || m === 'profil';
   }
 
   return false;

@@ -36,6 +36,7 @@ import {
   getCompanySettings, saveCompanySettings, subscribeCompanySettings,
   // RBAC & Authentication Services
   ROLES, ROLE_LABELS, STATUS_LABELS, SUPER_ADMIN_EMAIL, normalizeRole, normalizeRoles, normalizeStatus,
+  BUSINESS_ROLES, hasBusinessRole,
   canAccessModule, hasActionPermission, filterDataForUser,
   loginWithGoogle as authLoginGoogle, logoutUser as authLogout, subscribeAuthState,
   ensureUserProfile,
@@ -668,6 +669,29 @@ function buildNavigation() {
   if (!nav) return;
   nav.innerHTML = "";
 
+  // Utilisateur avec uniquement lecture_seule : aucun module métier
+  if (!hasBusinessRole(currentUserRoles)) {
+    const header = document.createElement("div");
+    header.className = "nav-section-title";
+    header.textContent = "Mon Espace";
+    nav.appendChild(header);
+
+    const b = document.createElement("button");
+    b.className = "nav-item active";
+    b.dataset.key = "profile";
+    b.innerHTML = `<span class="nav-icon">👤</span><span>Mon Profil & Statut</span><span class="chev">›</span>`;
+    b.onclick = () => go("profile");
+    nav.appendChild(b);
+
+    const bLogout = document.createElement("button");
+    bLogout.className = "nav-item";
+    bLogout.style.color = "#b91c1c";
+    bLogout.innerHTML = `<span class="nav-icon">🚪</span><span>Se déconnecter</span><span class="chev">›</span>`;
+    bLogout.onclick = () => logoutUser();
+    nav.appendChild(bLogout);
+    return;
+  }
+
   NAV_SECTIONS.forEach(sec => {
     const visibleItems = sec.items.filter(key => {
       const canon = canonicalCol(key);
@@ -758,7 +782,31 @@ function setupFirestoreListeners() {
 
   const roles = normalizeRoles(currentUserRoles);
   const isAdminOrSuper = roles.includes(ROLES.ADMIN) || (currentUser.email || '').toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
-  const hasStaffRole = roles.some(r => ['admin', 'direction', 'comptabilite', 'secretaire', 'operations', 'lecture_seule'].includes(r));
+
+  // 0. LECTURE SEULE SEULEMENT : Ne s'abonne à AUCUNE collection métier.
+  // Écoute uniquement son propre profil utilisateur pour réactivité en cas de promotion.
+  if (!hasBusinessRole(roles)) {
+    try {
+      const unsubUser = onSnapshot(doc(db, 'utilisateurs', currentUser.uid), (snap) => {
+        if (snap.exists()) {
+          currentUserProfile = { ...snap.data(), id: snap.id };
+          currentUserRoles = normalizeRoles(currentUserProfile.roles || currentUserProfile.role || [ROLES.LECTURE_SEULE]);
+          updateRoleBadge(currentUserRoles);
+          buildNavigation();
+          render();
+          if (hasBusinessRole(currentUserRoles)) {
+            setupFirestoreListeners();
+          }
+        }
+      });
+      firestoreUnsubscribers.push(unsubUser);
+    } catch (e) {
+      console.warn("Écouteur profil lecture_seule:", e?.message);
+    }
+    return;
+  }
+
+  const hasStaffRole = roles.some(r => ['admin', 'direction', 'comptabilite', 'secretaire', 'operations'].includes(r));
   const isChauffeurOnly = !hasStaffRole && roles.includes('chauffeur');
   const isClientOnly = !hasStaffRole && !roles.includes('chauffeur') && roles.includes('client');
 
@@ -972,17 +1020,23 @@ function renderAuthPage(state = "unauthenticated") {
     return;
   }
 
-  // Not authenticated or account deactivated:
+  // Non connecté ou compte désactivé :
   appContainer.style.display = "none";
   authContainer.style.display = "flex";
 
   if (state === "deactivated") {
     authContainer.innerHTML = `
-      <div class="deactivated-card">
-        <span class="deactivated-icon">🔒</span>
-        <h2>Compte Inactif ou Suspendu</h2>
-        <p>Votre compte a été désactivé par l'administration LAPERLE TOUR HT.<br>Pour des raisons de sécurité, vous ne pouvez pas accéder au centre de contrôle ni aux données privées.</p>
-        <button class="logout-btn" id="deactivatedLogoutBtn">
+      <div class="auth-card" style="border-top:4px solid #ef4444;">
+        <span style="font-size:44px;display:block;margin-bottom:12px;">🔒</span>
+        <h2 style="color:#991b1b;margin:0 0 10px;font-size:20px;">Compte Inactif ou Suspendu</h2>
+        <p style="color:#475569;font-size:13px;line-height:1.6;margin-bottom:20px;">
+          Votre compte a été temporairement désactivé par l'administration LAPERLE TOUR HT.<br>
+          Pour des raisons de sécurité, vous ne pouvez pas accéder aux modules métier ni aux données privées.
+        </p>
+        <a href="https://wa.me/50944408687?text=Bonjour%20LAPERLE%20TOUR%20HT%2C%20mon%20compte%20semble%20inactif%20et%20je%20souhaite%20contacter%20l%27administration." target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;background:#25d366;color:#ffffff;border-radius:10px;text-decoration:none;font-size:13px;font-weight:700;margin-bottom:14px;box-shadow:0 2px 8px rgba(37,211,102,.25);">
+          <span style="font-size:18px">💬</span> Contacter l'administration via WhatsApp : +509 4440 8687
+        </a>
+        <button class="logout-btn" id="deactivatedLogoutBtn" style="width:100%;padding:11px;background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:8px;font-weight:700;cursor:pointer;">
           <span>🚪</span> Se déconnecter
         </button>
       </div>
@@ -1008,6 +1062,18 @@ function renderAuthPage(state = "unauthenticated") {
         </svg>
         <span>Se connecter avec Google</span>
       </button>
+      <button class="google-signin-btn" id="googleRegisterBtn" style="margin-top:10px;background:#f0fdf4;border-color:#bbf7d0;color:#166534">
+        <svg class="google-icon" viewBox="0 0 24 24">
+          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+        </svg>
+        <span>Créer mon compte avec Google</span>
+      </button>
+      <a href="https://wa.me/50944408687?text=Bonjour%20LAPERLE%20TOUR%20HT%2C%20je%20souhaite%20contacter%20un%20administrateur." target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;padding:12px;background:#25d366;color:#ffffff;border-radius:10px;text-decoration:none;font-size:13px;font-weight:700;box-shadow:0 2px 8px rgba(37,211,102,.25);">
+        <span style="font-size:18px">💬</span> Contacter un administrateur via WhatsApp : +509 4440 8687
+      </a>
       <div style="display:flex;justify-content:center;gap:12px;margin:20px 0 10px;font-size:11px;color:#092e70;font-weight:600">
         <span>🛡️ Sécurité</span>
         <span>💺 Confort</span>
@@ -1021,6 +1087,7 @@ function renderAuthPage(state = "unauthenticated") {
     </div>
   `;
   document.getElementById("googleLoginBtn")?.addEventListener("click", loginWithGoogle);
+  document.getElementById("googleRegisterBtn")?.addEventListener("click", loginWithGoogle);
 }
 
 // Authentication state listener with RBAC initialization
@@ -1030,14 +1097,26 @@ onAuthStateChanged(auth, async (user) => {
   const nameEl = document.getElementById("headerUserName");
 
   if (user) {
-    // 1. Fetch or initialize profile in Firestore
+    // 1. Récupération ou initialisation sécurisée du profil dans Firestore
     try {
       currentUserProfile = await ensureUserProfile(user);
     } catch (e) {
-      console.warn("Erreur profil utilisateur:", e?.message);
+      console.warn("Erreur profil utilisateur Firestore:", e?.message);
+      // Règle de sécurité : en cas d'erreur Firestore, ne JAMAIS donner d'accès privilégié !
+      currentUserProfile = {
+        id: user.uid,
+        uid: user.uid,
+        nom: user.displayName || user.email?.split("@")[0] || "Utilisateur",
+        name: user.displayName || user.email?.split("@")[0] || "Utilisateur",
+        email: user.email,
+        photoURL: user.photoURL || '',
+        roles: [ROLES.LECTURE_SEULE],
+        role: ROLES.LECTURE_SEULE,
+        status: 'actif'
+      };
     }
 
-    // 2. Check if account is deactivated
+    // 2. Vérification du statut du compte (inactif / suspendu)
     if (currentUserProfile && normalizeStatus(currentUserProfile.status) === "inactif") {
       currentUserRoles = ["inactif"];
       currentRole = "inactif";
@@ -1047,7 +1126,7 @@ onAuthStateChanged(auth, async (user) => {
       return;
     }
 
-    // 3. Authenticated & active!
+    // 3. Utilisateur authentifié & actif
     renderAuthPage("authenticated");
 
     if (avatarEl) {
@@ -1062,20 +1141,31 @@ onAuthStateChanged(auth, async (user) => {
     }
     updateFirebaseBadge("connected");
 
-    // 4. Resolve multi-roles
+    // 4. Résolution stricte des rôles (préservation des rôles existants garantie)
     if ((user.email || '').toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
       currentUserRoles = [ROLES.ADMIN];
       currentRole = ROLES.ADMIN;
     } else {
-      currentUserRoles = normalizeRoles(currentUserProfile);
+      currentUserRoles = normalizeRoles(currentUserProfile?.roles || currentUserProfile?.role || [ROLES.LECTURE_SEULE]);
       currentRole = currentUserRoles[0] || ROLES.LECTURE_SEULE;
     }
     updateRoleBadge(currentUserRoles);
 
-    // 5. Update navigation based on permissions
+    // 5. Mise à jour de la navigation
     buildNavigation();
 
-    // 6. Connect real-time listeners
+    // 6. Routage initial selon habilitations :
+    // - lecture_seule uniquement -> Page Profil uniquement
+    // - rôle métier -> Dashboard
+    if (!hasBusinessRole(currentUserRoles)) {
+      current = "profile";
+      location.hash = "profile";
+    } else if (current === "profile") {
+      current = "dashboard";
+      location.hash = "dashboard";
+    }
+
+    // 7. Connexion des écouteurs Firestore temps réel selon permissions
     setupFirestoreListeners();
 
     if (currentUserRoles.includes(ROLES.ADMIN)) {
@@ -1105,6 +1195,13 @@ render();
 
 function go(k) {
   document.getElementById("sidebar")?.classList.remove("open");
+  // Un utilisateur avec uniquement lecture_seule ne peut accéder à aucun module métier
+  if (!hasBusinessRole(currentUserRoles)) {
+    current = "profile";
+    location.hash = "profile";
+    render();
+    return;
+  }
   current = k;
   location.hash = k;
   render();
@@ -1119,6 +1216,16 @@ function render() {
     renderAuthPage("deactivated");
     return;
   }
+
+  // 4. IMPORTANT : Un utilisateur avec uniquement ["lecture_seule"] ne voit PAS le Dashboard et ne voit AUCUN module métier.
+  // Il voit uniquement son profil.
+  if (!hasBusinessRole(currentUserRoles)) {
+    renderAuthPage("authenticated");
+    updateNavBadges();
+    renderLectureSeuleProfilePage();
+    return;
+  }
+
   renderAuthPage("authenticated");
 
   updateNavBadges();
@@ -2173,6 +2280,10 @@ async function executePermanentDelete(key, index) {
 }
 
 function globalSearch() {
+  if (!hasBusinessRole(currentUserRoles)) {
+    showToast("Recherche non disponible en lecture seule.");
+    return;
+  }
   const q = document.getElementById("globalSearch").value.trim().toLowerCase();
   if (!q) {
     go("dashboard");
@@ -2195,6 +2306,10 @@ function globalSearch() {
 }
 
 function exportData() {
+  if (!currentUserRoles.includes(ROLES.ADMIN) && !currentUserRoles.includes('direction')) {
+    showToast("Export réservé à l'administration.");
+    return;
+  }
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -2221,11 +2336,144 @@ function importData(e) {
   r.readAsText(f);
 }
 
+function renderLectureSeuleProfilePage() {
+  const user = currentUser;
+  const profile = currentUserProfile || {};
+  const displayName = profile.nom || profile.name || user?.displayName || user?.email?.split('@')[0] || "Utilisateur";
+  const email = profile.email || user?.email || "—";
+  const photo = profile.photoURL || user?.photoURL || "";
+  const status = normalizeStatus(profile.status || "actif");
+
+  const page = document.getElementById("page");
+  if (!page) return;
+
+  page.innerHTML = `
+    <div style="max-width: 680px; margin: 20px auto; padding: 0 16px;">
+      <!-- Carte d'identité du Profil -->
+      <div style="background: linear-gradient(135deg, #092e70 0%, #174291 100%); border-radius: 16px; padding: 28px 24px; color: #ffffff; box-shadow: 0 8px 24px rgba(9,46,112,0.18); margin-bottom: 20px;">
+        <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+          <div style="width: 76px; height: 76px; border-radius: 50%; background: #ffffff; color: #092e70; display: grid; place-items: center; font-size: 30px; font-weight: 800; border: 3px solid #f7941d; overflow: hidden; flex-shrink: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.18);">
+            ${photo ? `<img src="${esc(photo)}" style="width:100%;height:100%;object-fit:cover;" alt="${esc(displayName)}">` : esc(displayName.charAt(0).toUpperCase())}
+          </div>
+          <div style="flex: 1; min-width: 220px;">
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px;">
+              <h2 style="margin: 0; font-size: 22px; font-weight: 800; color: #ffffff;">${esc(displayName)}</h2>
+              <span class="user-role-badge lecture_seule" style="font-size: 11px; padding: 3px 8px; border-radius: 20px; font-weight: 700; background: #e0e7ff; color: #3730a3;">Lecture Seule</span>
+            </div>
+            <div style="font-size: 13px; opacity: 0.9; margin-bottom: 8px;">${esc(email)}</div>
+            <div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.18); padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;">
+              <span>✅</span> Statut du compte : <b>${status === 'actif' ? 'Actif' : esc(status)}</b>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Détails du Profil -->
+      <div class="panel" style="margin-bottom: 20px; border-radius: 12px; padding: 22px; background: #ffffff; border: 1px solid #e2e8f0;">
+        <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 16px;">
+          <h3 style="margin: 0; color: #092e70; font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+            <span>👤</span> Mon Profil & Habilitations
+          </h3>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 16px;">
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
+            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Nom complet</div>
+            <div style="color: #0f172a; font-weight: 700; font-size: 14px;">${esc(displayName)}</div>
+          </div>
+
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
+            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Adresse e-mail</div>
+            <div style="color: #0f172a; font-weight: 700; font-size: 14px; word-break: break-all;">${esc(email)}</div>
+          </div>
+
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
+            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Statut actuel</div>
+            <div style="color: #166534; font-weight: 700; font-size: 14px;">✅ Compte Actif</div>
+          </div>
+
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
+            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Rôle système</div>
+            <div style="color: #3730a3; font-weight: 700; font-size: 14px;">Lecture Seule</div>
+            <small style="color: #64748b; font-size: 11px; display: block; margin-top: 2px;">(En attente d'attribution métier)</small>
+          </div>
+        </div>
+
+        <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 14px; color: #1e40af; font-size: 13px; line-height: 1.6;">
+          <strong style="display: block; margin-bottom: 4px; font-size: 13px;">ℹ️ Information d'accès :</strong>
+          Votre compte est sécurisé et enregistré sur Firebase Cloud. Pour accéder au Tableau de Bord et aux modules opérationnels (Réservations, Factures, Courses, Véhicules, Clients), veuillez contacter la direction LAPERLE TOUR HT pour activer vos rôles métiers.
+        </div>
+      </div>
+
+      <!-- Contacter LAPERLE TOUR HT -->
+      <div class="panel" style="margin-bottom: 20px; border-radius: 12px; padding: 22px; background: #ffffff; border: 1px solid #e2e8f0;">
+        <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 14px;">
+          <h3 style="margin: 0; color: #092e70; font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+            <span>📞</span> Contacter LAPERLE TOUR HT
+          </h3>
+        </div>
+        <p style="color: #475569; font-size: 13px; margin: 0 0 14px; line-height: 1.5;">
+          Pour toute demande d'habilitation, attribution de rôle (Chauffeur, Client, Secrétaire, Comptable, Direction) ou assistance technique :
+        </p>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <a href="https://wa.me/50944408687?text=Bonjour%20LAPERLE%20TOUR%20HT%2C%20je%20viens%20de%20cr%C3%A9er%20mon%20compte%20Google%20(${encodeURIComponent(email)})%20et%20je%20souhaite%20demander%20l%27activation%20de%20mes%20habilitations%20m%C3%A9tiers." target="_blank" rel="noopener noreferrer" style="display: flex; align-items: center; justify-content: center; gap: 8px; padding: 13px; background: #25d366; color: #ffffff; border-radius: 8px; text-decoration: none; font-size: 13px; font-weight: 700; box-shadow: 0 2px 8px rgba(37,211,102,0.25);">
+            <span style="font-size: 18px;">💬</span> Contacter via WhatsApp : +509 4440 8687
+          </a>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+            <a href="tel:+50944408687" style="display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; color: #092e70; text-decoration: none; font-size: 13px; font-weight: 600;">
+              <span>📞</span> Tél : +509 4440 8687
+            </a>
+            <a href="mailto:laperletourht@gmail.com" style="display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; color: #092e70; text-decoration: none; font-size: 13px; font-weight: 600;">
+              <span>✉️</span> laperletourht@gmail.com
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Se déconnecter -->
+      <div style="text-align: center; margin-top: 24px; padding-bottom: 24px;">
+        <button onclick="logoutUser()" style="display: inline-flex; align-items: center; gap: 8px; padding: 11px 24px; background: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; transition: background 0.15s ease;">
+          <span>🚪</span> Se déconnecter
+        </button>
+      </div>
+    </div>
+  `;
+}
+
 function openProfile() {
   const admin = localStorage.getItem("LAPERLE_ADMIN") || "Castima";
   const company = localStorage.getItem("LAPERLE_COMPANY") || "LAPERLE TOUR HT";
   const email = currentUser?.email || localStorage.getItem("LAPERLE_EMAIL") || "laperletourht@gmail.com";
   const isAuth = !!currentUser;
+  const isReadOnlyOnly = !hasBusinessRole(currentUserRoles);
+
+  if (isReadOnlyOnly) {
+    document.getElementById("modal").innerHTML = `
+      <div class="modal-head">
+        <div>
+          <h2>Mon Profil Utilisateur</h2>
+          <small>LAPERLE TOUR HT</small>
+        </div>
+        <button class="close" onclick="closeModal()">×</button>
+      </div>
+      <div class="info"><b>Nom</b><br>${esc(currentUserProfile?.nom || currentUserProfile?.name || currentUser?.displayName || admin)}</div>
+      <div class="info" style="margin-top:8px"><b>Email</b><br>${esc(email)}</div>
+      <div class="info" style="margin-top:8px"><b>Statut</b><br><span style="color:#166534;font-weight:700">✅ Compte Actif</span></div>
+      <div class="info" style="margin-top:8px"><b>Rôle attribué</b><br><span class="user-role-badge lecture_seule">Lecture Seule</span> <small style="color:#64748b;display:block;margin-top:2px;">(En attente d'habilitation)</small></div>
+      <div class="info" style="margin-top:8px;border-left:4px solid #25d366">
+        <b>💬 Contacter l'Administration LAPERLE</b><br>
+        <a href="https://wa.me/50944408687?text=Bonjour%20LAPERLE%20TOUR%20HT%2C%20je%20souhaite%20demander%20l%27activation%20de%20mes%20habilitations." target="_blank" rel="noopener noreferrer" style="color:#15803d;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:4px;margin-top:4px;">
+          WhatsApp : +509 4440 8687
+        </a>
+      </div>
+      <div class="form-actions" style="margin-top:14px;flex-wrap:wrap">
+        <button class="secondary" style="color:#b42318;border-color:#fca5a5" onclick="closeModal();logoutUser()">🚪 Se déconnecter</button>
+        <button class="primary" onclick="closeModal()">Fermer</button>
+      </div>
+    `;
+    document.getElementById("modalBackdrop").classList.add("open");
+    return;
+  }
 
   document.getElementById("modal").innerHTML = `
     <div class="modal-head">

@@ -136,7 +136,7 @@ service cloud.firestore {
     }
 
     function canReadOperations() {
-      return isAdmin() || isDirection() || isOperations() || isSecretaire() || isComptabilite() || isLectureSeule();
+      return isAdmin() || isDirection() || isOperations() || isSecretaire() || isComptabilite();
     }
 
     function canManageFinances() {
@@ -144,11 +144,11 @@ service cloud.firestore {
     }
 
     function canReadFinances() {
-      return isAdmin() || isDirection() || isComptabilite() || isSecretaire() || isLectureSeule();
+      return isAdmin() || isDirection() || isComptabilite() || isSecretaire();
     }
 
     function canReadGlobalFinances() {
-      return isAdmin() || isDirection() || isComptabilite() || isLectureSeule();
+      return isAdmin() || isDirection() || isComptabilite();
     }
 
     function canManageNotifications() {
@@ -532,8 +532,18 @@ service cloud.firestore {
       allow get: if isVerified() && (isAdmin() || isSecretaire() || request.auth.uid == utilisateurId);
 
       // Initial self-registration (MUST be role 'lecture_seule' and status 'actif', unless super admin)
+      // Or creation by ADMIN (any role) or SECRETAIRE (strictly non-admin roles)
       allow create: if isVerified() && isValidId(utilisateurId) && isValidUtilisateur(incoming()) && (
         isAdmin() || (
+          isSecretaire() &&
+          utilisateurId != request.auth.uid &&
+          incoming().email != "castimamoise@gmail.com" &&
+          (!('roles' in incoming()) || (
+            !("admin" in incoming().roles) &&
+            incoming().roles.hasOnly(["direction", "comptabilite", "secretaire", "operations", "chauffeur", "client", "lecture_seule"])
+          )) &&
+          (!('role' in incoming()) || incoming().role.lower() != "admin")
+        ) || (
           request.auth.uid == utilisateurId &&
           incoming().email == request.auth.token.email &&
           (
@@ -596,7 +606,7 @@ service cloud.firestore {
     // 13. Notifications
     match /notifications/{notificationId} {
       allow get, list: if isVerified() && isUserActive() && (
-        canManageNotifications() || isLectureSeule() || (
+        canManageNotifications() || (
           (isClient() || isChauffeur()) && isNotificationTarget(existing())
         )
       );
@@ -632,8 +642,7 @@ service cloud.firestore {
 
     // 17. Healthcheck test collection
     match /test/{testId} {
-      allow read: if isVerified();
-      allow write: if isAdmin();
+      allow read, write: if isAdmin();
     }
   }
 }
