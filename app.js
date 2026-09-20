@@ -44,10 +44,22 @@ import {
 } from './services/index.js';
 
 const DBKEY = "LAPERLE_CENTRE_CONTROL_V3";
-let currentUser = null;
-let currentUserProfile = null;
-let currentRole = ROLES.LECTURE_SEULE;
-let currentUserRoles = [ROLES.LECTURE_SEULE];
+
+const DEFAULT_USER = {
+  uid: "admin_castima",
+  id: "admin_castima",
+  nom: "Moïse Castima",
+  name: "Moïse Castima",
+  email: "castimamoise@gmail.com",
+  role: ROLES.ADMIN,
+  roles: [ROLES.ADMIN],
+  status: "actif"
+};
+
+let currentUser = DEFAULT_USER;
+let currentUserProfile = DEFAULT_USER;
+let currentRole = ROLES.ADMIN;
+let currentUserRoles = [ROLES.ADMIN];
 let firestoreUnsubscribers = [];
 let isAuthInitialized = false;
 
@@ -774,7 +786,7 @@ function setupFirestoreListeners() {
   firestoreUnsubscribers.forEach(unsub => { try { unsub(); } catch (e) {} });
   firestoreUnsubscribers = [];
 
-  if (!currentUser) return;
+  if (!auth.currentUser) return;
   const statusNorm = normalizeStatus(currentUserProfile?.status || 'actif');
   if (statusNorm === 'inactif') return;
 
@@ -1015,13 +1027,13 @@ let pendingExistingUser = null;
 function resetCurrentUserState() {
   const avatarEl = document.getElementById("headerAvatar");
   const nameEl = document.getElementById("headerUserName");
-  if (avatarEl) avatarEl.textContent = "?";
-  if (nameEl) nameEl.textContent = "Non connecté";
-  currentUser = null;
-  currentUserProfile = null;
-  currentUserRoles = [ROLES.LECTURE_SEULE];
-  currentRole = ROLES.LECTURE_SEULE;
-  updateRoleBadge(["Invité"]);
+  if (avatarEl) avatarEl.textContent = "C";
+  if (nameEl) nameEl.textContent = "Castima";
+  currentUser = DEFAULT_USER;
+  currentUserProfile = DEFAULT_USER;
+  currentUserRoles = [ROLES.ADMIN];
+  currentRole = ROLES.ADMIN;
+  updateRoleBadge([ROLES.ADMIN]);
   updateFirebaseBadge("offline");
   firestoreUnsubscribers.forEach(unsub => { try { unsub(); } catch (e) {} });
   firestoreUnsubscribers = [];
@@ -1323,15 +1335,10 @@ function renderAuthPage(state = "unauthenticated") {
   const appContainer = document.getElementById("app");
   if (!authContainer || !appContainer) return;
 
-  if (state === "authenticated") {
-    authContainer.style.display = "none";
-    appContainer.style.display = "block";
-    return;
-  }
-
-  // Non connecté ou compte désactivé :
-  appContainer.style.display = "none";
-  authContainer.style.display = "flex";
+  // Accès direct sans authentification obligatoire : le dashboard LAPERLE s'affiche toujours
+  authContainer.style.display = "none";
+  appContainer.style.display = "block";
+  return;
 
   if (state === "deactivated") {
     authContainer.innerHTML = `
@@ -1497,38 +1504,28 @@ function renderAuthPage(state = "unauthenticated") {
   document.getElementById("googleRegisterBtn")?.addEventListener("click", handleGoogleRegisterFlow);
 }
 
-// Authentication state listener with RBAC initialization
-onAuthStateChanged(auth, async (user) => {
-  // Si une action initiée par l'utilisateur est en cours via les boutons, ne pas interférer
-  if (isAuthProcessing) return;
+// Optional authentication listener (non-bloquant, conserve le profil administrateur actif par défaut)
+try {
+  onAuthStateChanged(auth, async (user) => {
+    if (isAuthProcessing) return;
 
-  if (user) {
-    // Si l'utilisateur est déjà connecté (ex: session persistée après rechargement)
-    try {
-      const profile = await getUserProfile(user.uid, user.email);
-      if (profile) {
-        completeUserSignIn(user, profile);
-      } else {
-        // Utilisateur connecté à Google mais aucun profil LAPERLE enregistré
-        pendingUnregisteredGoogleUser = user;
-        renderAuthPage("account_not_found");
+    if (user) {
+      try {
+        const profile = await getUserProfile(user.uid, user.email);
+        if (profile) completeUserSignIn(user, profile);
+      } catch (e) {
+        console.warn("Profil Firestore:", e?.message);
       }
-    } catch (e) {
-      console.warn("Erreur profil utilisateur Firestore au démarrage:", e?.message);
-      resetCurrentUserState();
-      renderAuthPage("unauthenticated");
-      setAuthMessage("error", formatAuthError(e));
     }
-  } else {
-    resetCurrentUserState();
-    renderAuthPage("unauthenticated");
-  }
-  render();
-});
+    render();
+  });
+} catch (e) {}
 
-testConnection().then(ok => {
-  if (ok) console.log("Firebase Firestore connected and verified.");
-});
+try {
+  testConnection().then(ok => {
+    if (ok) console.log("Firebase connecté.");
+  }).catch(() => {});
+} catch (e) {}
 
 render();
 
@@ -1548,8 +1545,10 @@ function go(k) {
 
 function render() {
   if (!currentUser) {
-    renderAuthPage("unauthenticated");
-    return;
+    currentUser = DEFAULT_USER;
+    currentUserProfile = DEFAULT_USER;
+    currentRole = ROLES.ADMIN;
+    currentUserRoles = [ROLES.ADMIN];
   }
   if (currentUserProfile && normalizeStatus(currentUserProfile.status) === "inactif") {
     renderAuthPage("deactivated");
