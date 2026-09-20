@@ -53,9 +53,18 @@
 .auth-divider{height:1px;background:#e2e8f0;margin:20px 0}
 .auth-desc{font-size:13px;color:#334e68;margin-bottom:20px;font-weight:500}
 .google-signin-btn{width:100%;height:48px;border:1px solid #cbd5e1;background:#ffffff;border-radius:10px;color:#0f2942;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:12px;cursor:pointer;transition:all .18s ease;box-shadow:0 2px 5px rgba(0,0,0,.04)}
-.google-signin-btn:hover{background:#f8fafc;border-color:#94a3b8;box-shadow:0 4px 12px rgba(15,41,66,.08);transform:translateY(-1px)}
-.google-signin-btn:active{transform:translateY(0)}
+.google-signin-btn:hover:not(:disabled){background:#f8fafc;border-color:#94a3b8;box-shadow:0 4px 12px rgba(15,41,66,.08);transform:translateY(-1px)}
+.google-signin-btn:active:not(:disabled){transform:translateY(0)}
+.google-signin-btn:disabled{opacity:0.65;cursor:not-allowed;pointer-events:none;transform:none}
 .google-icon{width:20px;height:20px;display:inline-block;flex-shrink:0}
+.auth-message{margin:14px 0;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.5;text-align:center;animation:fadeIn .2s ease-in-out}
+.auth-message.loading{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:600}
+.auth-message.success{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;font-weight:600}
+.auth-message.warning{background:#fffbeb;border:1px solid #fef3c7;color:#92400e}
+.auth-message.error{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;font-weight:500}
+.auth-message.info{background:#f8fafc;border:1px solid #e2e8f0;color:#1e293b}
+@keyframes authSpin{to{transform:rotate(360deg)}}
+.auth-spinner{display:inline-block;width:16px;height:16px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:authSpin .75s linear infinite;vertical-align:middle;flex-shrink:0}
 .auth-footer{margin-top:24px;font-size:11px;color:#8094ae;line-height:1.5}
 
 /* Account Deactivated Screen */

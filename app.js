@@ -39,7 +39,7 @@ import {
   BUSINESS_ROLES, hasBusinessRole,
   canAccessModule, hasActionPermission, filterDataForUser,
   loginWithGoogle as authLoginGoogle, logoutUser as authLogout, subscribeAuthState,
-  ensureUserProfile,
+  ensureUserProfile, getUserProfile, createUserProfile, updateUserLastLogin, formatAuthError, signInWithGoogleOnly,
   getAllUsers, getUserById, updateUserRole, updateUserRoles, updateUserStatus, updateUserPermissions
 } from './services/index.js';
 
@@ -229,21 +229,19 @@ async function syncAllToFirestore() {
 }
 
 async function loginWithGoogle() {
-  try {
-    showToast("Connexion avec votre compte Google...");
-    await signInWithPopup(auth, googleProvider);
-    closeModal();
-    showToast("🎉 Connecté à Google Firebase !");
-  } catch (err) {
-    console.error("Erreur Google Auth:", err);
-    showToast("Erreur de connexion : " + (err.message || "Annulé"));
-  }
+  closeModal();
+  await handleGoogleLoginFlow();
 }
 
 async function logoutUser() {
   try {
-    await signOut(auth);
+    isAuthProcessing = false;
+    pendingUnregisteredGoogleUser = null;
+    pendingExistingUser = null;
+    await authLogout();
     closeModal();
+    resetCurrentUserState();
+    renderAuthPage("unauthenticated");
     showToast("Déconnecté de Firebase.");
   } catch (err) {
     console.error("Erreur déconnexion:", err);
@@ -1009,6 +1007,317 @@ async function seedInitialDataToFirestoreIfEmpty() {
   }
 }
 
+// Auth Flow State Management
+let isAuthProcessing = false;
+let pendingUnregisteredGoogleUser = null;
+let pendingExistingUser = null;
+
+function resetCurrentUserState() {
+  const avatarEl = document.getElementById("headerAvatar");
+  const nameEl = document.getElementById("headerUserName");
+  if (avatarEl) avatarEl.textContent = "?";
+  if (nameEl) nameEl.textContent = "Non connecté";
+  currentUser = null;
+  currentUserProfile = null;
+  currentUserRoles = [ROLES.LECTURE_SEULE];
+  currentRole = ROLES.LECTURE_SEULE;
+  updateRoleBadge(["Invité"]);
+  updateFirebaseBadge("offline");
+  firestoreUnsubscribers.forEach(unsub => { try { unsub(); } catch (e) {} });
+  firestoreUnsubscribers = [];
+}
+
+function setAuthMessage(type, message) {
+  const container = document.getElementById("authMessageContainer");
+  if (!container) return;
+  if (!type || type === 'idle' || !message) {
+    container.innerHTML = '';
+    container.style.display = 'none';
+    return;
+  }
+  container.style.display = 'block';
+  let icon = '';
+  if (type === 'loading') icon = '<span class="auth-spinner"></span>';
+  else if (type === 'success') icon = '<span style="font-size:16px;">✅</span>';
+  else if (type === 'error') icon = '<span style="font-size:16px;">⚠️</span>';
+  else if (type === 'warning' || type === 'info') icon = '<span style="font-size:16px;">ℹ️</span>';
+
+  container.innerHTML = `
+    <div class="auth-message ${type}">
+      ${icon} <span>${esc(message)}</span>
+    </div>
+  `;
+}
+
+function renderAuthButtonState(which, state, labelText) {
+  const loginBtn = document.getElementById("googleLoginBtn");
+  const registerBtn = document.getElementById("googleRegisterBtn");
+  if (!loginBtn || !registerBtn) return;
+
+  const googleIconSvg = `
+    <svg class="google-icon" viewBox="0 0 24 24">
+      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+    </svg>
+  `;
+
+  if (state === 'loading') {
+    loginBtn.disabled = true;
+    registerBtn.disabled = true;
+    if (which === 'login') {
+      loginBtn.innerHTML = `<span class="auth-spinner"></span> <span>${esc(labelText || 'Connexion en cours...')}</span>`;
+    } else {
+      registerBtn.innerHTML = `<span class="auth-spinner"></span> <span>${esc(labelText || 'Création de votre compte...')}</span>`;
+    }
+  } else if (state === 'success') {
+    loginBtn.disabled = true;
+    registerBtn.disabled = true;
+    if (which === 'login') {
+      loginBtn.innerHTML = `<span>✅ ${esc(labelText || 'Connexion réussie.')}</span>`;
+    } else {
+      registerBtn.innerHTML = `<span>✅ ${esc(labelText || 'Compte créé avec succès.')}</span>`;
+    }
+  } else {
+    loginBtn.disabled = false;
+    registerBtn.disabled = false;
+    loginBtn.innerHTML = `${googleIconSvg} <span>Se connecter avec Google</span>`;
+    registerBtn.innerHTML = `${googleIconSvg} <span>Créer mon compte avec Google</span>`;
+  }
+}
+
+async function handleGoogleLoginFlow() {
+  if (isAuthProcessing) return;
+  isAuthProcessing = true;
+  pendingUnregisteredGoogleUser = null;
+  pendingExistingUser = null;
+
+  renderAuthButtonState('login', 'loading', 'Connexion en cours...');
+  setAuthMessage('loading', 'Connexion en cours...');
+
+  try {
+    const user = await signInWithGoogleOnly();
+    setAuthMessage('loading', 'Vérification du compte chez LAPERLE TOUR HT...');
+
+    // Rechercher l'utilisateur dans Firestore : utilisateurs/{uid}
+    const profile = await getUserProfile(user.uid, user.email);
+
+    if (profile) {
+      // Profil existe : afficher "Connexion réussie", charger profil et vérifier rôles
+      setAuthMessage('success', 'Connexion réussie.');
+      renderAuthButtonState('login', 'success', 'Connexion réussie.');
+      await updateUserLastLogin(user.uid);
+
+      setTimeout(() => {
+        isAuthProcessing = false;
+        completeUserSignIn(user, profile);
+      }, 400);
+    } else {
+      // Aucun profil LAPERLE n'existe pour ce compte Google
+      // NE PAS rester bloqué.
+      isAuthProcessing = false;
+      pendingUnregisteredGoogleUser = user;
+      renderAuthPage('account_not_found');
+    }
+  } catch (err) {
+    isAuthProcessing = false;
+    console.error("Erreur connexion Google:", err);
+    const msg = formatAuthError(err);
+    setAuthMessage('error', msg);
+    renderAuthButtonState('login', 'idle');
+    showToast(msg);
+  }
+}
+
+async function handleGoogleRegisterFlow() {
+  if (isAuthProcessing) return;
+  isAuthProcessing = true;
+  pendingUnregisteredGoogleUser = null;
+  pendingExistingUser = null;
+
+  renderAuthButtonState('register', 'loading', 'Création de votre compte...');
+  setAuthMessage('loading', 'Création de votre compte...');
+
+  try {
+    const user = await signInWithGoogleOnly();
+    setAuthMessage('loading', 'Vérification du profil existant...');
+
+    // Rechercher utilisateurs/{uid}
+    const existing = await getUserProfile(user.uid, user.email);
+
+    if (existing) {
+      // Le profil existe déjà !
+      // Ne pas créer un deuxième profil.
+      isAuthProcessing = false;
+      pendingExistingUser = { user, profile: existing };
+      renderAuthPage('account_already_exists');
+    } else {
+      // Le profil n'existe pas : créer automatiquement
+      setAuthMessage('loading', 'Création de votre compte en cours...');
+      const newProfile = await createUserProfile(user);
+
+      setAuthMessage('success', 'Votre compte LAPERLE TOUR HT a été créé avec succès.');
+      renderAuthButtonState('register', 'success', 'Compte créé avec succès.');
+
+      setTimeout(() => {
+        isAuthProcessing = false;
+        completeUserSignIn(user, newProfile, true); // true = force profil uniquement, pas de Dashboard
+      }, 500);
+    }
+  } catch (err) {
+    isAuthProcessing = false;
+    console.error("Erreur création compte Google:", err);
+    const msg = formatAuthError(err);
+    setAuthMessage('error', msg);
+    renderAuthButtonState('register', 'idle');
+    showToast(msg);
+  }
+}
+
+async function confirmCreateAccount() {
+  if (!pendingUnregisteredGoogleUser) {
+    renderAuthPage('unauthenticated');
+    return;
+  }
+  const btn = document.getElementById('confirmCreateBtn');
+  const cancelBtn = document.getElementById('cancelPromptBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<span class="auth-spinner"></span> Création du compte en cours...`;
+  }
+  if (cancelBtn) cancelBtn.disabled = true;
+
+  try {
+    const user = pendingUnregisteredGoogleUser;
+    const newProfile = await createUserProfile(user);
+    setAuthMessage('success', 'Votre compte LAPERLE TOUR HT a été créé avec succès.');
+
+    setTimeout(() => {
+      pendingUnregisteredGoogleUser = null;
+      completeUserSignIn(user, newProfile, true); // force profil uniquement, pas de Dashboard
+    }, 400);
+  } catch (err) {
+    console.error("Erreur création de profil:", err);
+    const msg = formatAuthError(err);
+    setAuthMessage('error', msg);
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Créer mon compte";
+    }
+    if (cancelBtn) cancelBtn.disabled = false;
+  }
+}
+
+async function cancelAccountPrompt() {
+  pendingUnregisteredGoogleUser = null;
+  pendingExistingUser = null;
+  isAuthProcessing = false;
+  try {
+    await authLogout();
+  } catch (e) {}
+  renderAuthPage('unauthenticated');
+}
+
+async function proceedExistingLogin() {
+  if (!pendingExistingUser) {
+    renderAuthPage('unauthenticated');
+    return;
+  }
+  const btn = document.getElementById('proceedLoginBtn');
+  const cancelBtn = document.getElementById('cancelExistingBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<span class="auth-spinner"></span> Connexion en cours...`;
+  }
+  if (cancelBtn) cancelBtn.disabled = true;
+
+  try {
+    const { user, profile } = pendingExistingUser;
+    await updateUserLastLogin(user.uid);
+    setAuthMessage('success', 'Connexion réussie.');
+
+    setTimeout(() => {
+      pendingExistingUser = null;
+      completeUserSignIn(user, profile);
+    }, 400);
+  } catch (err) {
+    console.error("Erreur connexion compte existant:", err);
+    const msg = formatAuthError(err);
+    setAuthMessage('error', msg);
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Se connecter";
+    }
+    if (cancelBtn) cancelBtn.disabled = false;
+  }
+}
+
+function completeUserSignIn(user, profile, forceProfileOnly = false) {
+  currentUser = user;
+  currentUserProfile = profile;
+
+  // 1. Vérification du statut du compte (inactif / suspendu)
+  if (currentUserProfile && normalizeStatus(currentUserProfile.status) === "inactif") {
+    currentUserRoles = ["inactif"];
+    currentRole = "inactif";
+    firestoreUnsubscribers.forEach(unsub => { try { unsub(); } catch (e) {} });
+    firestoreUnsubscribers = [];
+    renderAuthPage("deactivated");
+    return;
+  }
+
+  // 2. Résolution stricte des rôles (préservation des rôles existants garantie)
+  if ((user.email || '').toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
+    currentUserRoles = [ROLES.ADMIN];
+    currentRole = ROLES.ADMIN;
+  } else {
+    currentUserRoles = normalizeRoles(currentUserProfile?.roles || currentUserProfile?.role || [ROLES.LECTURE_SEULE]);
+    currentRole = currentUserRoles[0] || ROLES.LECTURE_SEULE;
+  }
+
+  const avatarEl = document.getElementById("headerAvatar");
+  const nameEl = document.getElementById("headerUserName");
+  if (avatarEl) {
+    if (user.photoURL) {
+      avatarEl.innerHTML = `<img src="${user.photoURL}" class="user-avatar-img" alt="">`;
+    } else {
+      avatarEl.textContent = (user.displayName || user.email || "A").charAt(0).toUpperCase();
+    }
+  }
+  if (nameEl) {
+    nameEl.textContent = user.displayName?.split(" ")[0] || user.email?.split("@")[0] || "Utilisateur";
+  }
+  updateFirebaseBadge("connected");
+  updateRoleBadge(currentUserRoles);
+
+  // 3. Mise à jour de la navigation
+  buildNavigation();
+
+  // 4. Routage selon habilitations :
+  // - lecture_seule uniquement -> Page Profil uniquement (Pas de Dashboard)
+  // - rôle métier -> Dashboard
+  if (forceProfileOnly || !hasBusinessRole(currentUserRoles)) {
+    current = "profile";
+    location.hash = "profile";
+  } else {
+    current = "dashboard";
+    location.hash = "dashboard";
+  }
+
+  // 5. Basculer l'affichage vers l'application
+  renderAuthPage("authenticated");
+
+  // 6. Connecter Firestore en temps réel selon permissions
+  setupFirestoreListeners();
+
+  if (currentUserRoles.includes(ROLES.ADMIN)) {
+    seedInitialDataToFirestoreIfEmpty();
+  }
+
+  render();
+}
+
 function renderAuthPage(state = "unauthenticated") {
   const authContainer = document.getElementById("authContainer");
   const appContainer = document.getElementById("app");
@@ -1033,8 +1342,8 @@ function renderAuthPage(state = "unauthenticated") {
           Votre compte a été temporairement désactivé par l'administration LAPERLE TOUR HT.<br>
           Pour des raisons de sécurité, vous ne pouvez pas accéder aux modules métier ni aux données privées.
         </p>
-        <a href="https://wa.me/50944408687?text=Bonjour%20LAPERLE%20TOUR%20HT%2C%20mon%20compte%20semble%20inactif%20et%20je%20souhaite%20contacter%20l%27administration." target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;background:#25d366;color:#ffffff;border-radius:10px;text-decoration:none;font-size:13px;font-weight:700;margin-bottom:14px;box-shadow:0 2px 8px rgba(37,211,102,.25);">
-          <span style="font-size:18px">💬</span> Contacter l'administration via WhatsApp : +509 4440 8687
+        <a href="https://wa.me/50944408687?text=Bonjour%20LAPERLE%20TOUR%20HT%2C%20je%20souhaite%20obtenir%20un%20acc%C3%A8s%20%C3%A0%20l%27application." target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;background:#25d366;color:#ffffff;border-radius:10px;text-decoration:none;font-size:13px;font-weight:700;margin-bottom:14px;box-shadow:0 2px 8px rgba(37,211,102,.25);">
+          <span style="font-size:18px">💬</span> Contacter un administrateur via WhatsApp : +509 4440 8687
         </a>
         <button class="logout-btn" id="deactivatedLogoutBtn" style="width:100%;padding:11px;background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:8px;font-weight:700;cursor:pointer;">
           <span>🚪</span> Se déconnecter
@@ -1045,6 +1354,99 @@ function renderAuthPage(state = "unauthenticated") {
     return;
   }
 
+  if (state === "account_not_found") {
+    authContainer.innerHTML = `
+      <div class="auth-card">
+        <img src="logo-laperle.jpg" alt="LAPERLE TOUR HT" class="auth-logo">
+        <h1 class="auth-title">CENTRE DE CONTRÔLE <em>LAPERLE</em></h1>
+        <div class="auth-subtitle">LAPERLE TOUR HT</div>
+        <div class="auth-tagline">« Un coup d'œil sur Haïti »</div>
+        <div class="auth-divider"></div>
+        
+        <div class="auth-message warning" style="text-align:left;padding:16px;margin-bottom:16px;">
+          <div style="font-weight:700;font-size:14px;color:#92400e;margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+            <span style="font-size:16px;">ℹ️</span> Ce compte Google n'est pas encore enregistré chez LAPERLE TOUR HT.
+          </div>
+          <div style="font-size:13px;color:#475569;margin-bottom:14px;line-height:1.5;">
+            Souhaitez-vous créer votre compte ?
+          </div>
+          <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+            <button id="confirmCreateBtn" class="primary" style="background:#15803d;padding:10px 18px;font-weight:700;border:none;border-radius:8px;color:#fff;cursor:pointer;">
+              Créer mon compte
+            </button>
+            <button id="cancelPromptBtn" class="secondary" style="padding:10px 18px;border:1px solid #cbd5e1;background:#fff;border-radius:8px;color:#334e68;cursor:pointer;">
+              Annuler
+            </button>
+          </div>
+        </div>
+
+        <a href="https://wa.me/50944408687?text=Bonjour%20LAPERLE%20TOUR%20HT%2C%20je%20souhaite%20obtenir%20un%20acc%C3%A8s%20%C3%A0%20l%27application." target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;padding:12px;background:#25d366;color:#ffffff;border-radius:10px;text-decoration:none;font-size:13px;font-weight:700;box-shadow:0 2px 8px rgba(37,211,102,.25);">
+          <span style="font-size:18px">💬</span> Contacter un administrateur via WhatsApp : +509 4440 8687
+        </a>
+        <div style="display:flex;justify-content:center;gap:12px;margin:20px 0 10px;font-size:11px;color:#092e70;font-weight:600">
+          <span>🛡️ Sécurité</span>
+          <span>💺 Confort</span>
+          <span>⏱️ Ponctualité</span>
+          <span>👥 Confiance</span>
+        </div>
+        <div class="auth-footer">
+          Transport • Tourisme • Location • Abonnement • Taxi<br>
+          Version 3.0 • Sécurisé par Google Firebase Authentication & Cloud Firestore
+        </div>
+      </div>
+    `;
+    document.getElementById("confirmCreateBtn")?.addEventListener("click", confirmCreateAccount);
+    document.getElementById("cancelPromptBtn")?.addEventListener("click", cancelAccountPrompt);
+    return;
+  }
+
+  if (state === "account_already_exists") {
+    authContainer.innerHTML = `
+      <div class="auth-card">
+        <img src="logo-laperle.jpg" alt="LAPERLE TOUR HT" class="auth-logo">
+        <h1 class="auth-title">CENTRE DE CONTRÔLE <em>LAPERLE</em></h1>
+        <div class="auth-subtitle">LAPERLE TOUR HT</div>
+        <div class="auth-tagline">« Un coup d'œil sur Haïti »</div>
+        <div class="auth-divider"></div>
+
+        <div class="auth-message info" style="text-align:left;padding:16px;margin-bottom:16px;">
+          <div style="font-weight:700;font-size:14px;color:#0f2942;margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+            <span style="font-size:16px;">ℹ️</span> Ce compte possède déjà un compte LAPERLE TOUR HT.
+          </div>
+          <div style="font-size:13px;color:#475569;margin-bottom:14px;line-height:1.5;">
+            Vos habilitations actuelles sont conservées. Souhaitez-vous vous connecter ?
+          </div>
+          <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+            <button id="proceedLoginBtn" class="primary" style="background:#092e70;padding:10px 18px;font-weight:700;border:none;border-radius:8px;color:#fff;cursor:pointer;">
+              Se connecter
+            </button>
+            <button id="cancelExistingBtn" class="secondary" style="padding:10px 18px;border:1px solid #cbd5e1;background:#fff;border-radius:8px;color:#334e68;cursor:pointer;">
+              Annuler
+            </button>
+          </div>
+        </div>
+
+        <a href="https://wa.me/50944408687?text=Bonjour%20LAPERLE%20TOUR%20HT%2C%20je%20souhaite%20obtenir%20un%20acc%C3%A8s%20%C3%A0%20l%27application." target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;padding:12px;background:#25d366;color:#ffffff;border-radius:10px;text-decoration:none;font-size:13px;font-weight:700;box-shadow:0 2px 8px rgba(37,211,102,.25);">
+          <span style="font-size:18px">💬</span> Contacter un administrateur via WhatsApp : +509 4440 8687
+        </a>
+        <div style="display:flex;justify-content:center;gap:12px;margin:20px 0 10px;font-size:11px;color:#092e70;font-weight:600">
+          <span>🛡️ Sécurité</span>
+          <span>💺 Confort</span>
+          <span>⏱️ Ponctualité</span>
+          <span>👥 Confiance</span>
+        </div>
+        <div class="auth-footer">
+          Transport • Tourisme • Location • Abonnement • Taxi<br>
+          Version 3.0 • Sécurisé par Google Firebase Authentication & Cloud Firestore
+        </div>
+      </div>
+    `;
+    document.getElementById("proceedLoginBtn")?.addEventListener("click", proceedExistingLogin);
+    document.getElementById("cancelExistingBtn")?.addEventListener("click", cancelAccountPrompt);
+    return;
+  }
+
+  // État standard : "unauthenticated"
   authContainer.innerHTML = `
     <div class="auth-card">
       <img src="logo-laperle.jpg" alt="LAPERLE TOUR HT" class="auth-logo">
@@ -1053,6 +1455,9 @@ function renderAuthPage(state = "unauthenticated") {
       <div class="auth-tagline">« Un coup d'œil sur Haïti »</div>
       <div class="auth-divider"></div>
       <p class="auth-desc">Accès sécurisé réservé au personnel habilité et aux clients autorisés. Connectez-vous avec votre compte Google / adresse e-mail pour accéder à votre espace.</p>
+
+      <div id="authMessageContainer" style="display:none;"></div>
+
       <button class="google-signin-btn" id="googleLoginBtn">
         <svg class="google-icon" viewBox="0 0 24 24">
           <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -1062,6 +1467,7 @@ function renderAuthPage(state = "unauthenticated") {
         </svg>
         <span>Se connecter avec Google</span>
       </button>
+
       <button class="google-signin-btn" id="googleRegisterBtn" style="margin-top:10px;background:#f0fdf4;border-color:#bbf7d0;color:#166534">
         <svg class="google-icon" viewBox="0 0 24 24">
           <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -1071,7 +1477,8 @@ function renderAuthPage(state = "unauthenticated") {
         </svg>
         <span>Créer mon compte avec Google</span>
       </button>
-      <a href="https://wa.me/50944408687?text=Bonjour%20LAPERLE%20TOUR%20HT%2C%20je%20souhaite%20contacter%20un%20administrateur." target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;padding:12px;background:#25d366;color:#ffffff;border-radius:10px;text-decoration:none;font-size:13px;font-weight:700;box-shadow:0 2px 8px rgba(37,211,102,.25);">
+
+      <a href="https://wa.me/50944408687?text=Bonjour%20LAPERLE%20TOUR%20HT%2C%20je%20souhaite%20obtenir%20un%20acc%C3%A8s%20%C3%A0%20l%27application." target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;padding:12px;background:#25d366;color:#ffffff;border-radius:10px;text-decoration:none;font-size:13px;font-weight:700;box-shadow:0 2px 8px rgba(37,211,102,.25);">
         <span style="font-size:18px">💬</span> Contacter un administrateur via WhatsApp : +509 4440 8687
       </a>
       <div style="display:flex;justify-content:center;gap:12px;margin:20px 0 10px;font-size:11px;color:#092e70;font-weight:600">
@@ -1086,102 +1493,34 @@ function renderAuthPage(state = "unauthenticated") {
       </div>
     </div>
   `;
-  document.getElementById("googleLoginBtn")?.addEventListener("click", loginWithGoogle);
-  document.getElementById("googleRegisterBtn")?.addEventListener("click", loginWithGoogle);
+  document.getElementById("googleLoginBtn")?.addEventListener("click", handleGoogleLoginFlow);
+  document.getElementById("googleRegisterBtn")?.addEventListener("click", handleGoogleRegisterFlow);
 }
 
 // Authentication state listener with RBAC initialization
 onAuthStateChanged(auth, async (user) => {
-  currentUser = user;
-  const avatarEl = document.getElementById("headerAvatar");
-  const nameEl = document.getElementById("headerUserName");
+  // Si une action initiée par l'utilisateur est en cours via les boutons, ne pas interférer
+  if (isAuthProcessing) return;
 
   if (user) {
-    // 1. Récupération ou initialisation sécurisée du profil dans Firestore
+    // Si l'utilisateur est déjà connecté (ex: session persistée après rechargement)
     try {
-      currentUserProfile = await ensureUserProfile(user);
-    } catch (e) {
-      console.warn("Erreur profil utilisateur Firestore:", e?.message);
-      // Règle de sécurité : en cas d'erreur Firestore, ne JAMAIS donner d'accès privilégié !
-      currentUserProfile = {
-        id: user.uid,
-        uid: user.uid,
-        nom: user.displayName || user.email?.split("@")[0] || "Utilisateur",
-        name: user.displayName || user.email?.split("@")[0] || "Utilisateur",
-        email: user.email,
-        photoURL: user.photoURL || '',
-        roles: [ROLES.LECTURE_SEULE],
-        role: ROLES.LECTURE_SEULE,
-        status: 'actif'
-      };
-    }
-
-    // 2. Vérification du statut du compte (inactif / suspendu)
-    if (currentUserProfile && normalizeStatus(currentUserProfile.status) === "inactif") {
-      currentUserRoles = ["inactif"];
-      currentRole = "inactif";
-      firestoreUnsubscribers.forEach(unsub => { try { unsub(); } catch (e) {} });
-      firestoreUnsubscribers = [];
-      renderAuthPage("deactivated");
-      return;
-    }
-
-    // 3. Utilisateur authentifié & actif
-    renderAuthPage("authenticated");
-
-    if (avatarEl) {
-      if (user.photoURL) {
-        avatarEl.innerHTML = `<img src="${user.photoURL}" class="user-avatar-img" alt="">`;
+      const profile = await getUserProfile(user.uid, user.email);
+      if (profile) {
+        completeUserSignIn(user, profile);
       } else {
-        avatarEl.textContent = (user.displayName || user.email || "A").charAt(0).toUpperCase();
+        // Utilisateur connecté à Google mais aucun profil LAPERLE enregistré
+        pendingUnregisteredGoogleUser = user;
+        renderAuthPage("account_not_found");
       }
-    }
-    if (nameEl) {
-      nameEl.textContent = user.displayName?.split(" ")[0] || user.email?.split("@")[0] || "Utilisateur";
-    }
-    updateFirebaseBadge("connected");
-
-    // 4. Résolution stricte des rôles (préservation des rôles existants garantie)
-    if ((user.email || '').toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
-      currentUserRoles = [ROLES.ADMIN];
-      currentRole = ROLES.ADMIN;
-    } else {
-      currentUserRoles = normalizeRoles(currentUserProfile?.roles || currentUserProfile?.role || [ROLES.LECTURE_SEULE]);
-      currentRole = currentUserRoles[0] || ROLES.LECTURE_SEULE;
-    }
-    updateRoleBadge(currentUserRoles);
-
-    // 5. Mise à jour de la navigation
-    buildNavigation();
-
-    // 6. Routage initial selon habilitations :
-    // - lecture_seule uniquement -> Page Profil uniquement
-    // - rôle métier -> Dashboard
-    if (!hasBusinessRole(currentUserRoles)) {
-      current = "profile";
-      location.hash = "profile";
-    } else if (current === "profile") {
-      current = "dashboard";
-      location.hash = "dashboard";
-    }
-
-    // 7. Connexion des écouteurs Firestore temps réel selon permissions
-    setupFirestoreListeners();
-
-    if (currentUserRoles.includes(ROLES.ADMIN)) {
-      seedInitialDataToFirestoreIfEmpty();
+    } catch (e) {
+      console.warn("Erreur profil utilisateur Firestore au démarrage:", e?.message);
+      resetCurrentUserState();
+      renderAuthPage("unauthenticated");
+      setAuthMessage("error", formatAuthError(e));
     }
   } else {
-    if (avatarEl) avatarEl.textContent = "?";
-    if (nameEl) nameEl.textContent = "Non connecté";
-    currentUser = null;
-    currentUserProfile = null;
-    currentUserRoles = [ROLES.LECTURE_SEULE];
-    currentRole = ROLES.LECTURE_SEULE;
-    updateRoleBadge(["Invité"]);
-    updateFirebaseBadge("offline");
-    firestoreUnsubscribers.forEach(unsub => { try { unsub(); } catch (e) {} });
-    firestoreUnsubscribers = [];
+    resetCurrentUserState();
     renderAuthPage("unauthenticated");
   }
   render();

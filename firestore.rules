@@ -545,7 +545,7 @@ service cloud.firestore {
           (!('role' in incoming()) || incoming().role.lower() != "admin")
         ) || (
           request.auth.uid == utilisateurId &&
-          incoming().email == request.auth.token.email &&
+          incoming().email.lower() == request.auth.token.email.lower() &&
           (
             (isSuperAdminEmail() && (
               (!('roles' in incoming()) || incoming().roles == ["admin"]) &&
