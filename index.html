@@ -10,49 +10,101 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<div id="authContainer" class="auth-page" style="display:none;">
+<div id="authContainer" class="auth-page" style="display:flex;">
   <div class="auth-card">
     <img src="logo-laperle.jpg" alt="LAPERLE TOUR HT" class="auth-logo">
     <h1 class="auth-title">CENTRE DE CONTRÔLE <em>LAPERLE</em></h1>
     <div class="auth-subtitle">LAPERLE TOUR HT</div>
     <div class="auth-tagline">« Un coup d'œil sur Haïti »</div>
     <div class="auth-divider"></div>
-    <p class="auth-desc">Accès sécurisé réservé au personnel habilité et aux clients autorisés. Connectez-vous avec votre compte Google / adresse e-mail pour accéder à votre espace.</p>
+
+    <!-- Onglets Connexion / Inscription -->
+    <div class="auth-tabs" id="authTabs">
+      <button class="auth-tab active" id="authTabLogin" type="button">Connexion</button>
+      <button class="auth-tab" id="authTabRegister" type="button">Inscription</button>
+    </div>
+
     <div id="authMessageContainer" style="display:none;"></div>
-    <button class="google-signin-btn" id="googleLoginBtn">
-      <svg class="google-icon" viewBox="0 0 24 24">
-        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-      </svg>
-      <span>Se connecter avec Google</span>
-    </button>
-    <button class="google-signin-btn" id="googleRegisterBtn" style="margin-top:10px;background:#f0fdf4;border-color:#bbf7d0;color:#166534">
-      <svg class="google-icon" viewBox="0 0 24 24">
-        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-      </svg>
-      <span>Créer mon compte avec Google</span>
-    </button>
-    <a href="https://wa.me/50944408687?text=Bonjour%20LAPERLE%20TOUR%20HT%2C%20je%20souhaite%20obtenir%20un%20acc%C3%A8s%20%C3%A0%20l%27application." target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;padding:12px;background:#25d366;color:#ffffff;border-radius:10px;text-decoration:none;font-size:13px;font-weight:700;box-shadow:0 2px 8px rgba(37,211,102,.25);">
-      <span style="font-size:18px">💬</span> Contacter un administrateur via WhatsApp : +509 4440 8687
+
+    <!-- Étape 1 : Saisie de l'identifiant (E-mail ou Téléphone) -->
+    <div id="authStepIdentifier">
+      <div class="auth-field" id="authNameField" style="display:none;">
+        <label for="authInputName">Nom et Prénom</label>
+        <input type="text" id="authInputName" placeholder="Ex: Jean-Baptiste Moïse" autocomplete="name">
+      </div>
+
+      <div class="auth-field">
+        <label for="authInputIdentifier" id="authIdentifierLabel">E-mail ou Numéro de téléphone</label>
+        <input type="text" id="authInputIdentifier" placeholder="Ex: client@gmail.com ou +509 4440 8687" autocomplete="username">
+        <div class="auth-field-hint" id="authIdentifierHint">
+          Un code de vérification à 6 chiffres vous sera envoyé par e-mail ou SMS.
+        </div>
+      </div>
+
+      <button class="auth-btn-primary" id="authBtnSendCode" type="button">
+        <span>📲</span> <span>Envoyer le code de vérification</span>
+      </button>
+
+      <!-- Raccourcis de test rapide -->
+      <div class="auth-test-helpers">
+        <div class="auth-test-title">💡 Remplissage rapide pour test :</div>
+        <div class="auth-chips-row">
+          <button type="button" class="auth-chip admin-chip" id="chipAdminPhone">👑 Admin (+509 4440 8687)</button>
+          <button type="button" class="auth-chip admin-chip" id="chipAdminEmail">👑 Admin (castimamoise@gmail.com)</button>
+          <button type="button" class="auth-chip" id="chipProspectPhone">👤 Nouveau (+509 3700 8899)</button>
+          <button type="button" class="auth-chip" id="chipProspectEmail">📧 Nouveau (voyageur@gmail.com)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Étape 2 : Vérification du Code -->
+    <div id="authStepCode" style="display:none;">
+      <div class="auth-code-card" id="authCodeCard">
+        <div class="auth-code-badge" id="authCodeBadge">
+          <span>📨</span> <span id="authCodeTarget">Code envoyé</span>
+        </div>
+        <div class="auth-code-display" id="authCodeDisplay">------</div>
+        <div class="auth-code-hint">Code de vérification simulé reçu sur votre appareil</div>
+        <button type="button" class="auth-quick-fill-btn" id="authBtnQuickFill">⚡ Remplir automatiquement</button>
+      </div>
+
+      <div class="auth-field">
+        <label for="authInputCode">Code de confirmation (6 chiffres)</label>
+        <input type="text" id="authInputCode" maxlength="6" placeholder="Ex: 123456" style="letter-spacing:4px;font-size:20px;text-align:center;font-weight:700;">
+      </div>
+
+      <button class="auth-btn-primary" id="authBtnVerifyCode" type="button">
+        <span>✅</span> <span>Vérifier le code et accéder</span>
+      </button>
+
+      <div style="display:flex;gap:10px;margin-top:10px;">
+        <button class="auth-btn-secondary" id="authBtnBack" type="button" style="flex:1;">
+          ← Modifier l'identifiant
+        </button>
+        <button class="auth-btn-secondary" id="authBtnResend" type="button" style="flex:1;">
+          🔄 Renvoyer le code
+        </button>
+      </div>
+    </div>
+
+    <a href="https://wa.me/50944408687?text=Bonjour%20LAPERLE%20TOUR%20HT%2C%20je%20souhaite%20obtenir%20une%20assistance." target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:18px;padding:11px;background:#25d366;color:#ffffff;border-radius:10px;text-decoration:none;font-size:12px;font-weight:700;box-shadow:0 2px 8px rgba(37,211,102,.25);">
+      <span style="font-size:16px">💬</span> Assistance WhatsApp LAPERLE : +509 4440 8687
     </a>
-    <div style="display:flex;justify-content:center;gap:12px;margin:20px 0 10px;font-size:11px;color:#092e70;font-weight:600">
+
+    <div style="display:flex;justify-content:center;gap:12px;margin:18px 0 10px;font-size:11px;color:#092e70;font-weight:600">
       <span>🛡️ Sécurité</span>
       <span>💺 Confort</span>
       <span>⏱️ Ponctualité</span>
       <span>👥 Confiance</span>
     </div>
+
     <div class="auth-footer">
       Transport • Tourisme • Location • Abonnement • Taxi<br>
-      Version 3.0 • Sécurisé par Google Firebase Authentication & Cloud Firestore
+      Version 3.0 • Sécurisé par LAPERLE TOUR HT
     </div>
   </div>
 </div>
-<div id="app" style="display:block;">
+<div id="app" style="display:none;">
   <aside class="sidebar" id="sidebar">
     <div class="side-brand">
       <img src="logo-laperle.jpg" alt="LAPERLE TOUR HT">

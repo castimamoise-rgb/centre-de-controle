@@ -34,11 +34,12 @@ service cloud.firestore {
     }
 
     function isSuperAdminEmail() {
-      return request.auth.token.email == "castimamoise@gmail.com" || request.auth.token.email == "castimaklik@gmail.com";
+      return (request.auth.token.email in ["castimamoise@gmail.com", "castimaklik@gmail.com", "laperletourht@gmail.com"]) ||
+             (request.auth.token.phone_number in ["+50944408687", "+50944408688", "+5094440-8687"]);
     }
 
     function isTargetSuperAdminEmail(targetEmail) {
-      return targetEmail == "castimamoise@gmail.com" || targetEmail == "castimaklik@gmail.com";
+      return targetEmail in ["castimamoise@gmail.com", "castimaklik@gmail.com", "laperletourht@gmail.com"];
     }
 
     // -------------------------------------------------------------
@@ -93,7 +94,8 @@ service cloud.firestore {
       return isSignedIn() && (
         isSuperAdminEmail() ||
         (userDocExists() && (
-          getUserData().status in ["actif", "Actif", "ACTIF"]
+          ('status' in getUserData() && getUserData().status in ["actif", "Actif", "ACTIF"]) ||
+          ('statutCompte' in getUserData() && getUserData().statutCompte in ["actif", "Actif", "ACTIF"])
         ))
       );
     }
@@ -337,7 +339,10 @@ service cloud.firestore {
     }
 
     function isValidUtilisateur(data) {
-      return data.email is string && data.email.size() > 0 && data.email.size() <= 150 &&
+      return (!('email' in data) || (data.email is string && data.email.size() <= 150)) &&
+        (!('telephone' in data) || (data.telephone is string && data.telephone.size() <= 50)) &&
+        (!('statutCompte' in data) || (data.statutCompte in ["actif", "inactif", "Actif", "Inactif"])) &&
+        (!('statutClient' in data) || (data.statutClient in ["prospect", "client", "Prospect", "Client"])) &&
         (!('role' in data) || (data.role is string && (
           data.role.lower() in [
             "admin", "direction", "comptabilite", 
@@ -535,9 +540,9 @@ service cloud.firestore {
       allow list: if isAdmin() || isSecretaire();
       allow get: if isVerified() && (isAdmin() || isSecretaire() || request.auth.uid == utilisateurId);
 
-      // Initial self-registration (MUST be role 'lecture_seule' and status 'actif', unless super admin)
+      // Initial self-registration (MUST be role 'lecture_seule', statutCompte 'actif', statutClient 'prospect', unless super admin)
       // Or creation by ADMIN (any role) or SECRETAIRE (strictly non-admin roles)
-      allow create: if isVerified() && isValidId(utilisateurId) && isValidUtilisateur(incoming()) && (
+      allow create: if isValidId(utilisateurId) && isValidUtilisateur(incoming()) && (
         isAdmin() || (
           isSecretaire() &&
           utilisateurId != request.auth.uid &&
@@ -548,8 +553,7 @@ service cloud.firestore {
           )) &&
           (!('role' in incoming()) || incoming().role.lower() != "admin")
         ) || (
-          request.auth.uid == utilisateurId &&
-          incoming().email.lower() == request.auth.token.email.lower() &&
+          isSignedIn() && request.auth.uid == utilisateurId &&
           (
             (isSuperAdminEmail() && (
               (!('roles' in incoming()) || incoming().roles == ["admin"]) &&
@@ -557,10 +561,12 @@ service cloud.firestore {
             )) ||
             (!isSuperAdminEmail() && (
               (!('roles' in incoming()) || incoming().roles == ["lecture_seule"]) &&
-              (!('role' in incoming()) || incoming().role.lower() == "lecture_seule")
+              (!('role' in incoming()) || incoming().role.lower() == "lecture_seule") &&
+              (!('statutClient' in incoming()) || incoming().statutClient in ["prospect", "Prospect"])
             ))
           ) &&
-          incoming().status in ["actif", "Actif"] &&
+          (!('status' in incoming()) || incoming().status in ["actif", "Actif"]) &&
+          (!('statutCompte' in incoming()) || incoming().statutCompte in ["actif", "Actif"]) &&
           (!('permissions' in incoming()) || incoming().permissions == {})
         )
       );
@@ -568,8 +574,9 @@ service cloud.firestore {
       // Updates:
       // 1. ADMIN can update users, but cannot strip admin from super admin email
       // 2. SECRETAIRE can assign/remove allowed roles for other users, but can never assign ADMIN nor touch existing Admins
-      // 3. Self-update on personal info only (cannot touch roles, status, permissions)
-      allow update: if isVerified() && isUserActive() && isValidId(utilisateurId) && isValidUtilisateur(incoming()) && (
+      // 3. User can update personal fields; or upgrade from lecture_seule to client upon confirmed reservation
+      //    User CAN NEVER self-assign admin, direction, comptabilite, secretaire, operations, or chauffeur.
+      allow update: if isUserActive() && isValidId(utilisateurId) && isValidUtilisateur(incoming()) && (
         (
           isAdmin() &&
           !(isTargetSuperAdminEmail(existing().email) && ('roles' in incoming()) && !("admin" in incoming().roles))
@@ -591,14 +598,24 @@ service cloud.firestore {
         ) ||
         (
           request.auth.uid == utilisateurId &&
-          (!('roles' in incoming()) && !('roles' in existing()) || incoming().roles == existing().roles) &&
-          (!('role' in incoming()) && !('role' in existing()) || incoming().role == existing().role) &&
-          incoming().status == existing().status &&
-          (!('permissions' in incoming()) && !('permissions' in existing()) || incoming().permissions == existing().permissions) &&
           (!('uid' in incoming()) || incoming().uid == existing().uid) &&
           (!('createdAt' in incoming()) || incoming().createdAt == existing().createdAt) &&
           (!('createdBy' in incoming()) || incoming().createdBy == existing().createdBy) &&
-          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'nom', 'phone', 'telephone', 'photoURL', 'notes', 'updatedAt', 'updatedBy', 'lastLoginAt'])
+          // Cannot modify status or statutCompte
+          (!('status' in incoming()) || incoming().status == existing().status) &&
+          (!('statutCompte' in incoming()) || incoming().statutCompte == existing().statutCompte) &&
+          // Cannot self-assign any administrative/staff roles
+          (!('roles' in incoming()) || !incoming().roles.hasAny(["admin", "direction", "comptabilite", "secretaire", "operations", "chauffeur"])) &&
+          (!('role' in incoming()) || !(["admin", "direction", "comptabilite", "secretaire", "operations", "chauffeur"].hasAny([incoming().role.lower()]))) &&
+          // Either updating personal contact info or promoting to client status
+          (
+            incoming().diff(existing()).affectedKeys().hasOnly(['name', 'nom', 'phone', 'telephone', 'photoURL', 'notes', 'updatedAt', 'updatedBy', 'lastLoginAt']) ||
+            (
+              incoming().diff(existing()).affectedKeys().hasOnly(['statutClient', 'roles', 'role', 'name', 'nom', 'phone', 'telephone', 'updatedAt', 'updatedBy']) &&
+              incoming().statutClient in ['client', 'Client'] &&
+              incoming().roles.hasOnly(['client', 'lecture_seule'])
+            )
+          )
         )
       );
 

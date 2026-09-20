@@ -99,6 +99,48 @@
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Nouvelles interfaces d'authentification LAPERLE TOUR HT (Email/Téléphone + Code) */
+.auth-tabs { display: flex; background: #f1f5f9; border-radius: 10px; padding: 4px; margin-bottom: 20px; gap: 4px; }
+.auth-tab { flex: 1; padding: 10px 14px; font-size: 13px; font-weight: 700; text-align: center; border: none; background: transparent; color: #64748b; border-radius: 8px; cursor: pointer; transition: all .2s ease; }
+.auth-tab.active { background: #ffffff; color: #092e70; box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
+.auth-field { margin-bottom: 16px; text-align: left; }
+.auth-field label { display: block; font-size: 12px; font-weight: 700; color: #092e70; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+.auth-field input { width: 100%; padding: 12px 14px; border: 1.5px solid #cbd5e1; border-radius: 10px; font-size: 14px; color: #0f172a; background: #fff; transition: border-color .15s ease, box-shadow .15s ease; box-sizing: border-box; }
+.auth-field input:focus { outline: none; border-color: #092e70; box-shadow: 0 0 0 3px rgba(9,46,112,0.12); }
+.auth-field-hint { font-size: 11px; color: #64748b; margin-top: 5px; line-height: 1.4; }
+.auth-btn-primary { width: 100%; background: #092e70; color: #fff; border: none; border-radius: 10px; padding: 13px; font-size: 14px; font-weight: 700; cursor: pointer; transition: background .15s ease, transform .1s ease; display: flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; }
+.auth-btn-primary:hover { background: #0c3d94; }
+.auth-btn-primary:active { transform: scale(0.99); }
+.auth-btn-secondary { width: 100%; background: #f8fafc; color: #475569; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px; font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 10px; transition: background .15s; }
+.auth-btn-secondary:hover { background: #f1f5f9; color: #0f172a; }
+
+/* Simulation Code SMS / Email */
+.auth-code-card { background: #f8fafc; border: 1.5px dashed #092e70; border-radius: 12px; padding: 16px; margin: 16px 0; text-align: center; }
+.auth-code-badge { display: inline-flex; align-items: center; gap: 6px; background: #e0f2fe; color: #0369a1; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; margin-bottom: 8px; }
+.auth-code-display { font-size: 26px; font-weight: 900; letter-spacing: 6px; color: #092e70; font-family: monospace; margin: 6px 0; }
+.auth-code-hint { font-size: 11px; color: #64748b; margin-bottom: 10px; }
+.auth-quick-fill-btn { background: #ff7700; color: #fff; border: none; border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: 700; cursor: pointer; transition: background .15s; }
+.auth-quick-fill-btn:hover { background: #e06600; }
+
+/* Raccourcis de test rapide */
+.auth-test-helpers { margin-top: 20px; padding-top: 16px; border-top: 1px dashed #e2e8f0; text-align: left; }
+.auth-test-title { font-size: 11px; font-weight: 700; color: #64748b; margin-bottom: 8px; text-transform: uppercase; }
+.auth-chips-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.auth-chip { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 5px 10px; font-size: 11px; color: #0f2942; cursor: pointer; transition: all .15s ease; }
+.auth-chip:hover { background: #e2e8f0; border-color: #cbd5e1; }
+.auth-chip.admin-chip { background: #fef3c7; border-color: #fde68a; color: #92400e; font-weight: 600; }
+
+/* Styles Espace Lecture Seule et Réservation */
+.lecture-seule-wrapper { max-width: 800px; margin: 30px auto; padding: 0 16px; }
+.lecture-seule-card { background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 28px; margin-bottom: 24px; }
+.badge-prospect { background: #fef3c7; color: #92400e; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; }
+.badge-client { background: #dcfce7; color: #166534; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; }
+.booking-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin: 18px 0; }
+@media (max-width: 640px) { .booking-grid { grid-template-columns: 1fr; } }
+.booking-field label { display: block; font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 5px; }
+.booking-field input, .booking-field select, .booking-field textarea { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; box-sizing: border-box; background: #fff; }
+.booking-confirm-banner { background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 12px; padding: 18px; color: #065f46; margin-bottom: 20px; animation: fadeIn .3s ease-in-out; }
+
 
 
 

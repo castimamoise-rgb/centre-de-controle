@@ -35,11 +35,26 @@ export const SUPER_ADMIN_EMAILS = [
   'castimamoise@gmail.com',
   'castimaklik@gmail.com'
 ];
+export const SUPER_ADMIN_PHONES = [
+  '+509 4440 8687',
+  '+50944408687',
+  '50944408687',
+  '44408687',
+  '4440-8687'
+];
 
 export function isSuperAdminEmail(email) {
   if (!email) return false;
   const e = String(email).toLowerCase().trim();
   return SUPER_ADMIN_EMAILS.includes(e) || e === SUPER_ADMIN_EMAIL.toLowerCase() || e === 'castimaklik@gmail.com';
+}
+
+export function isSuperAdminIdentifier(val) {
+  if (!val) return false;
+  if (isSuperAdminEmail(val)) return true;
+  const digits = String(val).replace(/\D/g, '');
+  if (digits.length >= 8 && digits.endsWith('44408687')) return true;
+  return false;
 }
 
 /**

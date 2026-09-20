@@ -271,7 +271,10 @@
         "email": { "type": "string", "maxLength": 150 },
         "photoURL": { "type": "string", "maxLength": 500 },
         "role": { "type": "string", "enum": ["ADMIN", "DIRECTION", "COMPTABILITE", "SECRETAIRE", "OPERATIONS", "CHAUFFEUR", "CLIENT", "LECTURE_SEULE", "admin", "direction", "comptabilite", "secretaire", "operations", "chauffeur", "client", "lecture_seule"] },
+        "roles": { "type": "array", "items": { "type": "string" } },
         "status": { "type": "string", "enum": ["ACTIF", "INACTIF", "Actif", "Inactif", "actif", "inactif"] },
+        "statutCompte": { "type": "string", "enum": ["ACTIF", "INACTIF", "Actif", "Inactif", "actif", "inactif"] },
+        "statutClient": { "type": "string", "enum": ["prospect", "client", "Prospect", "Client"] },
         "telephone": { "type": "string", "maxLength": 50 },
         "notes": { "type": "string", "maxLength": 500 },
         "lastLoginAt": { "type": "string", "format": "date-time" },
@@ -280,7 +283,7 @@
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["email", "role"]
+      "required": ["role"]
     },
     "notification": {
       "title": "Notification",

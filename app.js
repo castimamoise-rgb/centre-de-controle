@@ -35,12 +35,17 @@ import {
   createNotification, getNotifications, markNotificationRead, deleteNotification, subscribeNotifications,
   getCompanySettings, saveCompanySettings, subscribeCompanySettings,
   // RBAC & Authentication Services
-  ROLES, ROLE_LABELS, STATUS_LABELS, SUPER_ADMIN_EMAIL, isSuperAdminEmail, normalizeRole, normalizeRoles, normalizeStatus,
+  ROLES, ROLE_LABELS, STATUS_LABELS, SUPER_ADMIN_EMAIL, SUPER_ADMIN_EMAILS, SUPER_ADMIN_PHONES,
+  isSuperAdminEmail, isSuperAdminIdentifier, normalizeRole, normalizeRoles, normalizeStatus,
   BUSINESS_ROLES, hasBusinessRole,
   canAccessModule, hasActionPermission, filterDataForUser,
   loginWithGoogle as authLoginGoogle, logoutUser as authLogout, subscribeAuthState,
   ensureUserProfile, getUserProfile, createUserProfile, updateUserLastLogin, formatAuthError, signInWithGoogleOnly,
-  getAllUsers, getUserById, updateUserRole, updateUserRoles, updateUserStatus, updateUserPermissions
+  getAllUsers, getUserById, updateUserRole, updateUserRoles, updateUserStatus, updateUserPermissions,
+  // Authentification E-mail / Téléphone avec code de vérification & transformation Client
+  generateVerificationCode, getPendingVerification, verifyCode,
+  authenticateWithPhoneOrEmail, upgradeProfileToClient,
+  saveUserSession, getUserSession, clearUserSession
 } from './services/index.js';
 
 const DBKEY = "LAPERLE_CENTRE_CONTROL_V3";
@@ -51,15 +56,21 @@ const DEFAULT_USER = {
   nom: "Moïse Castima",
   name: "Moïse Castima",
   email: "castimamoise@gmail.com",
+  telephone: "+509 4440 8687",
+  phone: "+509 4440 8687",
   role: ROLES.ADMIN,
   roles: [ROLES.ADMIN],
-  status: "actif"
+  status: "actif",
+  statutCompte: "actif",
+  statutClient: "client"
 };
 
-let currentUser = DEFAULT_USER;
-let currentUserProfile = DEFAULT_USER;
-let currentRole = ROLES.ADMIN;
-let currentUserRoles = [ROLES.ADMIN];
+// Restaurer la session utilisateur sauvegardée ou demander l'authentification
+const initialSavedSession = getUserSession();
+let currentUser = (initialSavedSession && initialSavedSession.user) ? initialSavedSession.user : null;
+let currentUserProfile = (initialSavedSession && initialSavedSession.profile) ? initialSavedSession.profile : null;
+let currentRole = currentUserProfile ? (currentUserProfile.role || ROLES.LECTURE_SEULE) : null;
+let currentUserRoles = currentUserProfile ? normalizeRoles(currentUserProfile.roles || currentUserProfile.role || [ROLES.LECTURE_SEULE]) : [];
 let firestoreUnsubscribers = [];
 let isAuthInitialized = false;
 
@@ -250,14 +261,24 @@ async function logoutUser() {
     isAuthProcessing = false;
     pendingUnregisteredGoogleUser = null;
     pendingExistingUser = null;
-    await authLogout();
+    clearUserSession();
+    try { await authLogout(); } catch (e) {}
     closeModal();
-    resetCurrentUserState();
+    currentUser = null;
+    currentUserProfile = null;
+    currentUserRoles = [];
+    currentRole = null;
+    firestoreUnsubscribers.forEach(unsub => { try { unsub(); } catch (e) {} });
+    firestoreUnsubscribers = [];
+    const authContainer = document.getElementById("authContainer");
+    const appContainer = document.getElementById("app");
+    if (authContainer) authContainer.style.display = "flex";
+    if (appContainer) appContainer.style.display = "none";
     renderAuthPage("unauthenticated");
-    showToast("Déconnecté de Firebase.");
+    showToast("Déconnexion effectuée avec succès.");
   } catch (err) {
     console.error("Erreur déconnexion:", err);
-    showToast("Erreur lors de la déconnexion.");
+    renderAuthPage("unauthenticated");
   }
 }
 
@@ -1021,19 +1042,20 @@ async function seedInitialDataToFirestoreIfEmpty() {
 
 // Auth Flow State Management
 let isAuthProcessing = false;
-let pendingUnregisteredGoogleUser = null;
-let pendingExistingUser = null;
+let currentAuthMode = "login"; // "login" | "register"
+let activePendingVerification = null;
 
 function resetCurrentUserState() {
   const avatarEl = document.getElementById("headerAvatar");
   const nameEl = document.getElementById("headerUserName");
-  if (avatarEl) avatarEl.textContent = "C";
-  if (nameEl) nameEl.textContent = "Castima";
-  currentUser = DEFAULT_USER;
-  currentUserProfile = DEFAULT_USER;
-  currentUserRoles = [ROLES.ADMIN];
-  currentRole = ROLES.ADMIN;
-  updateRoleBadge([ROLES.ADMIN]);
+  if (avatarEl) avatarEl.textContent = "U";
+  if (nameEl) nameEl.textContent = "Utilisateur";
+  currentUser = null;
+  currentUserProfile = null;
+  currentUserRoles = [];
+  currentRole = null;
+  clearUserSession();
+  updateRoleBadge([]);
   updateFirebaseBadge("offline");
   firestoreUnsubscribers.forEach(unsub => { try { unsub(); } catch (e) {} });
   firestoreUnsubscribers = [];
@@ -1061,216 +1083,209 @@ function setAuthMessage(type, message) {
   `;
 }
 
-function renderAuthButtonState(which, state, labelText) {
-  const loginBtn = document.getElementById("googleLoginBtn");
-  const registerBtn = document.getElementById("googleRegisterBtn");
-  if (!loginBtn || !registerBtn) return;
+function initAuthUI(initialMode = "login") {
+  const authContainer = document.getElementById("authContainer");
+  const appContainer = document.getElementById("app");
+  if (!authContainer || !appContainer) return;
 
-  const googleIconSvg = `
-    <svg class="google-icon" viewBox="0 0 24 24">
-      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-    </svg>
-  `;
+  currentAuthMode = initialMode;
 
-  if (state === 'loading') {
-    loginBtn.disabled = true;
-    registerBtn.disabled = true;
-    if (which === 'login') {
-      loginBtn.innerHTML = `<span class="auth-spinner"></span> <span>${esc(labelText || 'Connexion en cours...')}</span>`;
-    } else {
-      registerBtn.innerHTML = `<span class="auth-spinner"></span> <span>${esc(labelText || 'Création de votre compte...')}</span>`;
+  const tabLogin = document.getElementById("authTabLogin");
+  const tabRegister = document.getElementById("authTabRegister");
+  const nameField = document.getElementById("authNameField");
+  const inputName = document.getElementById("authInputName");
+  const inputId = document.getElementById("authInputIdentifier");
+  const labelId = document.getElementById("authIdentifierLabel");
+  const hintId = document.getElementById("authIdentifierHint");
+  const btnSendCode = document.getElementById("authBtnSendCode");
+
+  const stepId = document.getElementById("authStepIdentifier");
+  const stepCode = document.getElementById("authStepCode");
+  const inputCode = document.getElementById("authInputCode");
+  const btnVerify = document.getElementById("authBtnVerifyCode");
+  const btnBack = document.getElementById("authBtnBack");
+  const btnResend = document.getElementById("authBtnResend");
+  const btnQuickFill = document.getElementById("authBtnQuickFill");
+  const codeDisplay = document.getElementById("authCodeDisplay");
+  const codeTarget = document.getElementById("authCodeTarget");
+
+  // Chips de test rapides
+  const chipAdminPhone = document.getElementById("chipAdminPhone");
+  const chipAdminEmail = document.getElementById("chipAdminEmail");
+  const chipProspectPhone = document.getElementById("chipProspectPhone");
+  const chipProspectEmail = document.getElementById("chipProspectEmail");
+
+  function setMode(mode) {
+    currentAuthMode = mode;
+    if (tabLogin) tabLogin.classList.toggle("active", mode === "login");
+    if (tabRegister) tabRegister.classList.toggle("active", mode === "register");
+    if (nameField) nameField.style.display = mode === "register" ? "block" : "none";
+    if (labelId) {
+      labelId.textContent = mode === "register"
+        ? "Votre E-mail ou Numéro de téléphone pour l'inscription"
+        : "E-mail ou Numéro de téléphone";
     }
-  } else if (state === 'success') {
-    loginBtn.disabled = true;
-    registerBtn.disabled = true;
-    if (which === 'login') {
-      loginBtn.innerHTML = `<span>✅ ${esc(labelText || 'Connexion réussie.')}</span>`;
-    } else {
-      registerBtn.innerHTML = `<span>✅ ${esc(labelText || 'Compte créé avec succès.')}</span>`;
+    if (hintId) {
+      hintId.textContent = mode === "register"
+        ? "Saisissez votre e-mail ou téléphone haïtien (+509...)."
+        : "Utilisez votre adresse e-mail ou votre numéro de téléphone.";
     }
-  } else {
-    loginBtn.disabled = false;
-    registerBtn.disabled = false;
-    loginBtn.innerHTML = `${googleIconSvg} <span>Se connecter avec Google</span>`;
-    registerBtn.innerHTML = `${googleIconSvg} <span>Créer mon compte avec Google</span>`;
+    if (btnSendCode) {
+      btnSendCode.innerHTML = mode === "register"
+        ? `<span>📲</span> <span>Créer mon compte et recevoir le code</span>`
+        : `<span>📲</span> <span>Envoyer le code de vérification</span>`;
+    }
+    setAuthMessage('idle', '');
+  }
+
+  setMode(initialMode);
+
+  if (tabLogin) tabLogin.onclick = () => setMode("login");
+  if (tabRegister) tabRegister.onclick = () => setMode("register");
+
+  if (chipAdminPhone) {
+    chipAdminPhone.onclick = () => {
+      setMode("login");
+      if (inputId) inputId.value = "+509 4440 8687";
+    };
+  }
+  if (chipAdminEmail) {
+    chipAdminEmail.onclick = () => {
+      setMode("login");
+      if (inputId) inputId.value = "castimamoise@gmail.com";
+    };
+  }
+  if (chipProspectPhone) {
+    chipProspectPhone.onclick = () => {
+      setMode("register");
+      if (inputId) inputId.value = "+509 3700 8899";
+      if (inputName) inputName.value = "Jean-Baptiste Moïse";
+    };
+  }
+  if (chipProspectEmail) {
+    chipProspectEmail.onclick = () => {
+      setMode("register");
+      if (inputId) inputId.value = "voyageur@gmail.com";
+      if (inputName) inputName.value = "Marie Nicole";
+    };
+  }
+
+  // Étape 1 : Envoi du code
+  if (btnSendCode) {
+    btnSendCode.onclick = () => {
+      const identifier = inputId ? inputId.value.trim() : "";
+      const name = inputName ? inputName.value.trim() : "";
+
+      if (!identifier) {
+        setAuthMessage("error", "Veuillez entrer une adresse e-mail ou un numéro de téléphone.");
+        return;
+      }
+
+      if (currentAuthMode === "register" && !name) {
+        setAuthMessage("error", "Veuillez indiquer votre nom et prénom pour la création de votre profil.");
+        return;
+      }
+
+      try {
+        setAuthMessage("loading", "Génération et envoi du code de confirmation en cours...");
+        btnSendCode.disabled = true;
+
+        const payload = generateVerificationCode(identifier, currentAuthMode, name);
+        activePendingVerification = payload;
+
+        setTimeout(() => {
+          btnSendCode.disabled = false;
+          setAuthMessage("success", `Code envoyé avec succès par ${payload.type === 'email' ? 'e-mail' : 'SMS'} !`);
+          if (stepId) stepId.style.display = "none";
+          if (stepCode) stepCode.style.display = "block";
+          if (codeDisplay) codeDisplay.textContent = payload.code;
+          if (codeTarget) codeTarget.textContent = `Code ${payload.type === 'email' ? 'e-mail' : 'SMS'} envoyé à ${payload.identifier}`;
+          if (inputCode) {
+            inputCode.value = "";
+            inputCode.focus();
+          }
+        }, 400);
+      } catch (err) {
+        btnSendCode.disabled = false;
+        setAuthMessage("error", err.message || "Erreur lors de l'envoi du code.");
+      }
+    };
+  }
+
+  // Remplissage express du code
+  if (btnQuickFill) {
+    btnQuickFill.onclick = () => {
+      if (activePendingVerification && inputCode) {
+        inputCode.value = activePendingVerification.code;
+        setAuthMessage("info", "Code renseigné. Cliquez sur 'Vérifier le code et accéder'.");
+      }
+    };
+  }
+
+  // Revenir en arrière
+  if (btnBack) {
+    btnBack.onclick = () => {
+      if (stepId) stepId.style.display = "block";
+      if (stepCode) stepCode.style.display = "none";
+      setAuthMessage("idle", "");
+    };
+  }
+
+  // Renvoyer le code
+  if (btnResend) {
+    btnResend.onclick = () => {
+      const identifier = inputId ? inputId.value.trim() : "";
+      const name = inputName ? inputName.value.trim() : "";
+      if (!identifier) return;
+      const payload = generateVerificationCode(identifier, currentAuthMode, name);
+      activePendingVerification = payload;
+      if (codeDisplay) codeDisplay.textContent = payload.code;
+      setAuthMessage("success", "Nouveau code généré et envoyé !");
+    };
+  }
+
+  // Étape 2 : Vérification du code & Authentification
+  if (btnVerify) {
+    btnVerify.onclick = async () => {
+      const identifier = inputId ? inputId.value.trim() : "";
+      const code = inputCode ? inputCode.value.trim() : "";
+      const name = inputName ? inputName.value.trim() : "";
+
+      if (!code || code.length < 6) {
+        setAuthMessage("error", "Veuillez saisir les 6 chiffres du code de confirmation.");
+        return;
+      }
+
+      try {
+        btnVerify.disabled = true;
+        btnVerify.innerHTML = `<span class="auth-spinner"></span> Vérification du code...`;
+        setAuthMessage("loading", "Vérification de l'identité et authentification...");
+
+        const result = await authenticateWithPhoneOrEmail(identifier, code, name, currentAuthMode);
+
+        setAuthMessage("success", "Authentification réussie ! Bienvenue chez LAPERLE TOUR HT.");
+        btnVerify.innerHTML = `<span>✅</span> <span>Accès accordé</span>`;
+
+        setTimeout(() => {
+          btnVerify.disabled = false;
+          btnVerify.innerHTML = `<span>✅</span> <span>Vérifier le code et accéder</span>`;
+          completeUserSignIn(result.user, result.profile, result.isNew);
+        }, 400);
+      } catch (err) {
+        btnVerify.disabled = false;
+        btnVerify.innerHTML = `<span>✅</span> <span>Vérifier le code et accéder</span>`;
+        setAuthMessage("error", err.message || "Code incorrect ou erreur d'authentification.");
+      }
+    };
   }
 }
 
-async function handleGoogleLoginFlow() {
-  if (isAuthProcessing) return;
-  isAuthProcessing = true;
-  pendingUnregisteredGoogleUser = null;
-  pendingExistingUser = null;
-
-  renderAuthButtonState('login', 'loading', 'Connexion en cours...');
-  setAuthMessage('loading', 'Connexion en cours...');
-
-  try {
-    const user = await signInWithGoogleOnly();
-    setAuthMessage('loading', 'Vérification du compte chez LAPERLE TOUR HT...');
-
-    // Rechercher l'utilisateur dans Firestore : utilisateurs/{uid}
-    const profile = await getUserProfile(user.uid, user.email);
-
-    if (profile) {
-      // Profil existe : afficher "Connexion réussie", charger profil et vérifier rôles
-      setAuthMessage('success', 'Connexion réussie.');
-      renderAuthButtonState('login', 'success', 'Connexion réussie.');
-      await updateUserLastLogin(user.uid);
-
-      setTimeout(() => {
-        isAuthProcessing = false;
-        completeUserSignIn(user, profile);
-      }, 400);
-    } else {
-      // Aucun profil LAPERLE n'existe pour ce compte Google
-      // NE PAS rester bloqué.
-      isAuthProcessing = false;
-      pendingUnregisteredGoogleUser = user;
-      renderAuthPage('account_not_found');
-    }
-  } catch (err) {
-    isAuthProcessing = false;
-    console.error("Erreur connexion Google:", err);
-    const msg = formatAuthError(err);
-    setAuthMessage('error', msg);
-    renderAuthButtonState('login', 'idle');
-    showToast(msg);
-  }
-}
-
-async function handleGoogleRegisterFlow() {
-  if (isAuthProcessing) return;
-  isAuthProcessing = true;
-  pendingUnregisteredGoogleUser = null;
-  pendingExistingUser = null;
-
-  renderAuthButtonState('register', 'loading', 'Création de votre compte...');
-  setAuthMessage('loading', 'Création de votre compte...');
-
-  try {
-    const user = await signInWithGoogleOnly();
-    setAuthMessage('loading', 'Vérification du profil existant...');
-
-    // Rechercher utilisateurs/{uid}
-    const existing = await getUserProfile(user.uid, user.email);
-
-    if (existing) {
-      // Le profil existe déjà !
-      // Ne pas créer un deuxième profil.
-      isAuthProcessing = false;
-      pendingExistingUser = { user, profile: existing };
-      renderAuthPage('account_already_exists');
-    } else {
-      // Le profil n'existe pas : créer automatiquement
-      setAuthMessage('loading', 'Création de votre compte en cours...');
-      const newProfile = await createUserProfile(user);
-
-      setAuthMessage('success', 'Votre compte LAPERLE TOUR HT a été créé avec succès.');
-      renderAuthButtonState('register', 'success', 'Compte créé avec succès.');
-
-      setTimeout(() => {
-        isAuthProcessing = false;
-        completeUserSignIn(user, newProfile, true); // true = force profil uniquement, pas de Dashboard
-      }, 500);
-    }
-  } catch (err) {
-    isAuthProcessing = false;
-    console.error("Erreur création compte Google:", err);
-    const msg = formatAuthError(err);
-    setAuthMessage('error', msg);
-    renderAuthButtonState('register', 'idle');
-    showToast(msg);
-  }
-}
-
-async function confirmCreateAccount() {
-  if (!pendingUnregisteredGoogleUser) {
-    renderAuthPage('unauthenticated');
-    return;
-  }
-  const btn = document.getElementById('confirmCreateBtn');
-  const cancelBtn = document.getElementById('cancelPromptBtn');
-  if (btn) {
-    btn.disabled = true;
-    btn.innerHTML = `<span class="auth-spinner"></span> Création du compte en cours...`;
-  }
-  if (cancelBtn) cancelBtn.disabled = true;
-
-  try {
-    const user = pendingUnregisteredGoogleUser;
-    const newProfile = await createUserProfile(user);
-    setAuthMessage('success', 'Votre compte LAPERLE TOUR HT a été créé avec succès.');
-
-    setTimeout(() => {
-      pendingUnregisteredGoogleUser = null;
-      completeUserSignIn(user, newProfile, true); // force profil uniquement, pas de Dashboard
-    }, 400);
-  } catch (err) {
-    console.error("Erreur création de profil:", err);
-    const msg = formatAuthError(err);
-    setAuthMessage('error', msg);
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = "Créer mon compte";
-    }
-    if (cancelBtn) cancelBtn.disabled = false;
-  }
-}
-
-async function cancelAccountPrompt() {
-  pendingUnregisteredGoogleUser = null;
-  pendingExistingUser = null;
-  isAuthProcessing = false;
-  try {
-    await authLogout();
-  } catch (e) {}
-  renderAuthPage('unauthenticated');
-}
-
-async function proceedExistingLogin() {
-  if (!pendingExistingUser) {
-    renderAuthPage('unauthenticated');
-    return;
-  }
-  const btn = document.getElementById('proceedLoginBtn');
-  const cancelBtn = document.getElementById('cancelExistingBtn');
-  if (btn) {
-    btn.disabled = true;
-    btn.innerHTML = `<span class="auth-spinner"></span> Connexion en cours...`;
-  }
-  if (cancelBtn) cancelBtn.disabled = true;
-
-  try {
-    const { user, profile } = pendingExistingUser;
-    await updateUserLastLogin(user.uid);
-    setAuthMessage('success', 'Connexion réussie.');
-
-    setTimeout(() => {
-      pendingExistingUser = null;
-      completeUserSignIn(user, profile);
-    }, 400);
-  } catch (err) {
-    console.error("Erreur connexion compte existant:", err);
-    const msg = formatAuthError(err);
-    setAuthMessage('error', msg);
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = "Se connecter";
-    }
-    if (cancelBtn) cancelBtn.disabled = false;
-  }
-}
-
-function completeUserSignIn(user, profile, forceProfileOnly = false) {
+function completeUserSignIn(user, profile, isNew = false) {
   currentUser = user;
   currentUserProfile = profile;
 
   // 1. Vérification du statut du compte (inactif / suspendu)
-  if (currentUserProfile && normalizeStatus(currentUserProfile.status) === "inactif") {
+  if (currentUserProfile && normalizeStatus(currentUserProfile.status || currentUserProfile.statutCompte) === "inactif") {
     currentUserRoles = ["inactif"];
     currentRole = "inactif";
     firestoreUnsubscribers.forEach(unsub => { try { unsub(); } catch (e) {} });
@@ -1279,26 +1294,43 @@ function completeUserSignIn(user, profile, forceProfileOnly = false) {
     return;
   }
 
-  // 2. Résolution stricte des rôles (préservation des rôles existants garantie)
-  if (isSuperAdminEmail(user.email)) {
+  // 2. Résolution stricte des rôles :
+  // - Super Admin par email ou téléphone -> [ROLES.ADMIN]
+  // - Première inscription -> roles: [ROLES.LECTURE_SEULE], statutCompte: "actif", statutClient: "prospect"
+  // - Utilisateur existant -> conserve TOUJOURS ses rôles existants
+  const isSuperAdmin = isSuperAdminIdentifier(user.email) || isSuperAdminIdentifier(user.phoneNumber) ||
+                       isSuperAdminIdentifier(profile?.email) || isSuperAdminIdentifier(profile?.telephone);
+
+  if (isSuperAdmin) {
     currentUserRoles = [ROLES.ADMIN];
     currentRole = ROLES.ADMIN;
+    if (currentUserProfile) {
+      currentUserProfile.roles = [ROLES.ADMIN];
+      currentUserProfile.role = ROLES.ADMIN;
+    }
+  } else if (isNew) {
+    currentUserRoles = [ROLES.LECTURE_SEULE];
+    currentRole = ROLES.LECTURE_SEULE;
+    if (currentUserProfile) {
+      currentUserProfile.roles = [ROLES.LECTURE_SEULE];
+      currentUserProfile.role = ROLES.LECTURE_SEULE;
+      currentUserProfile.statutCompte = "actif";
+      currentUserProfile.statutClient = "prospect";
+    }
   } else {
     currentUserRoles = normalizeRoles(currentUserProfile?.roles || currentUserProfile?.role || [ROLES.LECTURE_SEULE]);
     currentRole = currentUserRoles[0] || ROLES.LECTURE_SEULE;
   }
 
+  saveUserSession(user, currentUserProfile);
+
   const avatarEl = document.getElementById("headerAvatar");
   const nameEl = document.getElementById("headerUserName");
   if (avatarEl) {
-    if (user.photoURL) {
-      avatarEl.innerHTML = `<img src="${user.photoURL}" class="user-avatar-img" alt="">`;
-    } else {
-      avatarEl.textContent = (user.displayName || user.email || "A").charAt(0).toUpperCase();
-    }
+    avatarEl.textContent = (user.displayName || user.email || user.phoneNumber || "U").charAt(0).toUpperCase();
   }
   if (nameEl) {
-    nameEl.textContent = user.displayName?.split(" ")[0] || user.email?.split("@")[0] || "Utilisateur";
+    nameEl.textContent = user.displayName?.split(" ")[0] || user.email?.split("@")[0] || user.phoneNumber || "Utilisateur";
   }
   updateFirebaseBadge("connected");
   updateRoleBadge(currentUserRoles);
@@ -1307,9 +1339,9 @@ function completeUserSignIn(user, profile, forceProfileOnly = false) {
   buildNavigation();
 
   // 4. Routage selon habilitations :
-  // - lecture_seule uniquement -> Page Profil uniquement (Pas de Dashboard)
-  // - rôle métier -> Dashboard
-  if (forceProfileOnly || !hasBusinessRole(currentUserRoles)) {
+  // - lecture_seule uniquement -> Page Profil uniquement (Pas de Dashboard, aucun module métier)
+  // - rôle métier ou client -> Dashboard ou espace client
+  if (!hasBusinessRole(currentUserRoles)) {
     current = "profile";
     location.hash = "profile";
   } else {
@@ -1335,12 +1367,15 @@ function renderAuthPage(state = "unauthenticated") {
   const appContainer = document.getElementById("app");
   if (!authContainer || !appContainer) return;
 
-  // Accès direct sans authentification obligatoire : le dashboard LAPERLE s'affiche toujours
-  authContainer.style.display = "none";
-  appContainer.style.display = "block";
-  return;
+  if (state === "authenticated") {
+    authContainer.style.display = "none";
+    appContainer.style.display = "block";
+    return;
+  }
 
   if (state === "deactivated") {
+    authContainer.style.display = "flex";
+    appContainer.style.display = "none";
     authContainer.innerHTML = `
       <div class="auth-card" style="border-top:4px solid #ef4444;">
         <span style="font-size:44px;display:block;margin-bottom:12px;">🔒</span>
@@ -1361,155 +1396,17 @@ function renderAuthPage(state = "unauthenticated") {
     return;
   }
 
-  if (state === "account_not_found") {
-    authContainer.innerHTML = `
-      <div class="auth-card">
-        <img src="logo-laperle.jpg" alt="LAPERLE TOUR HT" class="auth-logo">
-        <h1 class="auth-title">CENTRE DE CONTRÔLE <em>LAPERLE</em></h1>
-        <div class="auth-subtitle">LAPERLE TOUR HT</div>
-        <div class="auth-tagline">« Un coup d'œil sur Haïti »</div>
-        <div class="auth-divider"></div>
-        
-        <div class="auth-message warning" style="text-align:left;padding:16px;margin-bottom:16px;">
-          <div style="font-weight:700;font-size:14px;color:#92400e;margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-            <span style="font-size:16px;">ℹ️</span> Ce compte Google n'est pas encore enregistré chez LAPERLE TOUR HT.
-          </div>
-          <div style="font-size:13px;color:#475569;margin-bottom:14px;line-height:1.5;">
-            Souhaitez-vous créer votre compte ?
-          </div>
-          <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
-            <button id="confirmCreateBtn" class="primary" style="background:#15803d;padding:10px 18px;font-weight:700;border:none;border-radius:8px;color:#fff;cursor:pointer;">
-              Créer mon compte
-            </button>
-            <button id="cancelPromptBtn" class="secondary" style="padding:10px 18px;border:1px solid #cbd5e1;background:#fff;border-radius:8px;color:#334e68;cursor:pointer;">
-              Annuler
-            </button>
-          </div>
-        </div>
-
-        <a href="https://wa.me/50944408687?text=Bonjour%20LAPERLE%20TOUR%20HT%2C%20je%20souhaite%20obtenir%20un%20acc%C3%A8s%20%C3%A0%20l%27application." target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;padding:12px;background:#25d366;color:#ffffff;border-radius:10px;text-decoration:none;font-size:13px;font-weight:700;box-shadow:0 2px 8px rgba(37,211,102,.25);">
-          <span style="font-size:18px">💬</span> Contacter un administrateur via WhatsApp : +509 4440 8687
-        </a>
-        <div style="display:flex;justify-content:center;gap:12px;margin:20px 0 10px;font-size:11px;color:#092e70;font-weight:600">
-          <span>🛡️ Sécurité</span>
-          <span>💺 Confort</span>
-          <span>⏱️ Ponctualité</span>
-          <span>👥 Confiance</span>
-        </div>
-        <div class="auth-footer">
-          Transport • Tourisme • Location • Abonnement • Taxi<br>
-          Version 3.0 • Sécurisé par Google Firebase Authentication & Cloud Firestore
-        </div>
-      </div>
-    `;
-    document.getElementById("confirmCreateBtn")?.addEventListener("click", confirmCreateAccount);
-    document.getElementById("cancelPromptBtn")?.addEventListener("click", cancelAccountPrompt);
-    return;
-  }
-
-  if (state === "account_already_exists") {
-    authContainer.innerHTML = `
-      <div class="auth-card">
-        <img src="logo-laperle.jpg" alt="LAPERLE TOUR HT" class="auth-logo">
-        <h1 class="auth-title">CENTRE DE CONTRÔLE <em>LAPERLE</em></h1>
-        <div class="auth-subtitle">LAPERLE TOUR HT</div>
-        <div class="auth-tagline">« Un coup d'œil sur Haïti »</div>
-        <div class="auth-divider"></div>
-
-        <div class="auth-message info" style="text-align:left;padding:16px;margin-bottom:16px;">
-          <div style="font-weight:700;font-size:14px;color:#0f2942;margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-            <span style="font-size:16px;">ℹ️</span> Ce compte possède déjà un compte LAPERLE TOUR HT.
-          </div>
-          <div style="font-size:13px;color:#475569;margin-bottom:14px;line-height:1.5;">
-            Vos habilitations actuelles sont conservées. Souhaitez-vous vous connecter ?
-          </div>
-          <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
-            <button id="proceedLoginBtn" class="primary" style="background:#092e70;padding:10px 18px;font-weight:700;border:none;border-radius:8px;color:#fff;cursor:pointer;">
-              Se connecter
-            </button>
-            <button id="cancelExistingBtn" class="secondary" style="padding:10px 18px;border:1px solid #cbd5e1;background:#fff;border-radius:8px;color:#334e68;cursor:pointer;">
-              Annuler
-            </button>
-          </div>
-        </div>
-
-        <a href="https://wa.me/50944408687?text=Bonjour%20LAPERLE%20TOUR%20HT%2C%20je%20souhaite%20obtenir%20un%20acc%C3%A8s%20%C3%A0%20l%27application." target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;padding:12px;background:#25d366;color:#ffffff;border-radius:10px;text-decoration:none;font-size:13px;font-weight:700;box-shadow:0 2px 8px rgba(37,211,102,.25);">
-          <span style="font-size:18px">💬</span> Contacter un administrateur via WhatsApp : +509 4440 8687
-        </a>
-        <div style="display:flex;justify-content:center;gap:12px;margin:20px 0 10px;font-size:11px;color:#092e70;font-weight:600">
-          <span>🛡️ Sécurité</span>
-          <span>💺 Confort</span>
-          <span>⏱️ Ponctualité</span>
-          <span>👥 Confiance</span>
-        </div>
-        <div class="auth-footer">
-          Transport • Tourisme • Location • Abonnement • Taxi<br>
-          Version 3.0 • Sécurisé par Google Firebase Authentication & Cloud Firestore
-        </div>
-      </div>
-    `;
-    document.getElementById("proceedLoginBtn")?.addEventListener("click", proceedExistingLogin);
-    document.getElementById("cancelExistingBtn")?.addEventListener("click", cancelAccountPrompt);
-    return;
-  }
-
   // État standard : "unauthenticated"
-  authContainer.innerHTML = `
-    <div class="auth-card">
-      <img src="logo-laperle.jpg" alt="LAPERLE TOUR HT" class="auth-logo">
-      <h1 class="auth-title">CENTRE DE CONTRÔLE <em>LAPERLE</em></h1>
-      <div class="auth-subtitle">LAPERLE TOUR HT</div>
-      <div class="auth-tagline">« Un coup d'œil sur Haïti »</div>
-      <div class="auth-divider"></div>
-      <p class="auth-desc">Accès sécurisé réservé au personnel habilité et aux clients autorisés. Connectez-vous avec votre compte Google / adresse e-mail pour accéder à votre espace.</p>
-
-      <div id="authMessageContainer" style="display:none;"></div>
-
-      <button class="google-signin-btn" id="googleLoginBtn">
-        <svg class="google-icon" viewBox="0 0 24 24">
-          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-        </svg>
-        <span>Se connecter avec Google</span>
-      </button>
-
-      <button class="google-signin-btn" id="googleRegisterBtn" style="margin-top:10px;background:#f0fdf4;border-color:#bbf7d0;color:#166534">
-        <svg class="google-icon" viewBox="0 0 24 24">
-          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-        </svg>
-        <span>Créer mon compte avec Google</span>
-      </button>
-
-      <a href="https://wa.me/50944408687?text=Bonjour%20LAPERLE%20TOUR%20HT%2C%20je%20souhaite%20obtenir%20un%20acc%C3%A8s%20%C3%A0%20l%27application." target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;padding:12px;background:#25d366;color:#ffffff;border-radius:10px;text-decoration:none;font-size:13px;font-weight:700;box-shadow:0 2px 8px rgba(37,211,102,.25);">
-        <span style="font-size:18px">💬</span> Contacter un administrateur via WhatsApp : +509 4440 8687
-      </a>
-      <div style="display:flex;justify-content:center;gap:12px;margin:20px 0 10px;font-size:11px;color:#092e70;font-weight:600">
-        <span>🛡️ Sécurité</span>
-        <span>💺 Confort</span>
-        <span>⏱️ Ponctualité</span>
-        <span>👥 Confiance</span>
-      </div>
-      <div class="auth-footer">
-        Transport • Tourisme • Location • Abonnement • Taxi<br>
-        Version 3.0 • Sécurisé par Google Firebase Authentication & Cloud Firestore
-      </div>
-    </div>
-  `;
-  document.getElementById("googleLoginBtn")?.addEventListener("click", handleGoogleLoginFlow);
-  document.getElementById("googleRegisterBtn")?.addEventListener("click", handleGoogleRegisterFlow);
+  authContainer.style.display = "flex";
+  appContainer.style.display = "none";
+  initAuthUI("login");
 }
 
-// Optional authentication listener (non-bloquant, conserve le profil administrateur actif par défaut)
+// Optional authentication listener (restaure la session si existante)
 try {
   onAuthStateChanged(auth, async (user) => {
     if (isAuthProcessing) return;
-
-    if (user) {
+    if (user && !currentUser) {
       try {
         const profile = await getUserProfile(user.uid, user.email);
         if (profile) completeUserSignIn(user, profile);
@@ -1517,7 +1414,6 @@ try {
         console.warn("Profil Firestore:", e?.message);
       }
     }
-    render();
   });
 } catch (e) {}
 
@@ -1527,7 +1423,21 @@ try {
   }).catch(() => {});
 } catch (e) {}
 
-render();
+// Initialisation de la session utilisateur au démarrage
+function initSessionAtStartup() {
+  const session = getUserSession();
+  if (session && session.user) {
+    completeUserSignIn(session.user, session.profile || session.user, false);
+  } else {
+    currentUser = null;
+    currentUserProfile = null;
+    currentUserRoles = [];
+    currentRole = null;
+    renderAuthPage("unauthenticated");
+  }
+}
+
+initSessionAtStartup();
 
 function go(k) {
   document.getElementById("sidebar")?.classList.remove("open");
@@ -1545,12 +1455,10 @@ function go(k) {
 
 function render() {
   if (!currentUser) {
-    currentUser = DEFAULT_USER;
-    currentUserProfile = DEFAULT_USER;
-    currentRole = ROLES.ADMIN;
-    currentUserRoles = [ROLES.ADMIN];
+    renderAuthPage("unauthenticated");
+    return;
   }
-  if (currentUserProfile && normalizeStatus(currentUserProfile.status) === "inactif") {
+  if (currentUserProfile && normalizeStatus(currentUserProfile.status || currentUserProfile.statutCompte) === "inactif") {
     renderAuthPage("deactivated");
     return;
   }
@@ -2674,92 +2582,250 @@ function importData(e) {
   r.readAsText(f);
 }
 
+async function handleConfirmClientReservation() {
+  const dest = document.getElementById("firstResDest")?.value || "Port-au-Prince ➔ Cap-Haïtien";
+  const date = document.getElementById("firstResDate")?.value || today();
+  const service = document.getElementById("firstResService")?.value || "Transport Interurbain";
+  const passengers = document.getElementById("firstResPass")?.value || "1";
+  const btn = document.getElementById("btnConfirmFirstRes");
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<span class="auth-spinner"></span> Confirmation de votre réservation...`;
+  }
+
+  try {
+    const uid = currentUser?.uid;
+    if (!uid) throw new Error("Utilisateur non connecté ou session invalide.");
+
+    // 1. Mise à jour automatique du profil Firestore : statutClient: "client", roles: ["client"]
+    const updated = await upgradeProfileToClient(uid);
+
+    // 2. Création de l'enregistrement de réservation dans la collection 'reservations'
+    const resId = "RES-" + Date.now().toString(36).toUpperCase();
+    const resItem = {
+      id: resId,
+      code: resId,
+      nomClient: updated.nom || currentUser.displayName || "Client LAPERLE",
+      clientUid: uid,
+      telephone: updated.telephone || currentUser.phoneNumber || "",
+      email: updated.email || currentUser.email || "",
+      trajet: dest,
+      route: dest,
+      typePrestation: service,
+      service: service,
+      dateDepart: date,
+      date: date,
+      passagers: parseInt(passengers, 10) || 1,
+      statut: "Confirmée",
+      montantTotal: 2500,
+      devise: "HTG",
+      createdAt: new Date().toISOString()
+    };
+
+    try {
+      if (typeof saveItemToFirestore === "function") {
+        await saveItemToFirestore("reservations", resItem);
+      }
+    } catch (e) {
+      console.warn("Enregistrement Firestore réservation:", e);
+    }
+
+    if (!Array.isArray(state["reservations"])) state["reservations"] = [];
+    state["reservations"].unshift(resItem);
+
+    // 3. Mettre à jour l'état mémoire & local
+    currentUserProfile = updated;
+    currentUserRoles = [ROLES.CLIENT];
+    currentRole = ROLES.CLIENT;
+    saveUserSession(currentUser, updated);
+    updateRoleBadge(currentUserRoles);
+
+    // 4. Mettre à jour la navigation pour débloquer l'Espace Client
+    buildNavigation();
+
+    showToast("🎉 Félicitations ! Votre réservation est confirmée. Vous êtes maintenant CLIENT de LAPERLE TOUR HT.");
+
+    // 5. Rediriger immédiatement vers le Dashboard / Espace Client
+    setTimeout(() => {
+      current = "dashboard";
+      location.hash = "dashboard";
+      render();
+    }, 500);
+
+  } catch (err) {
+    console.error("Erreur confirmation réservation client:", err);
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<span>🎫</span> <span>Confirmer ma réservation et activer mon Espace Client</span>`;
+    }
+    showToast("Erreur: " + (err.message || "Impossible de valider la réservation"));
+  }
+}
+window.handleConfirmClientReservation = handleConfirmClientReservation;
+
 function renderLectureSeuleProfilePage() {
   const user = currentUser;
   const profile = currentUserProfile || {};
-  const displayName = profile.nom || profile.name || user?.displayName || user?.email?.split('@')[0] || "Utilisateur";
+  const displayName = profile.nom || profile.name || user?.displayName || user?.email?.split('@')[0] || user?.phoneNumber || "Utilisateur";
   const email = profile.email || user?.email || "—";
+  const telephone = profile.telephone || user?.phoneNumber || "—";
   const photo = profile.photoURL || user?.photoURL || "";
-  const status = normalizeStatus(profile.status || "actif");
+  const statutCompte = profile.statutCompte || profile.status || "actif";
+  const statutClient = profile.statutClient || "prospect";
 
   const page = document.getElementById("page");
   if (!page) return;
 
   page.innerHTML = `
-    <div style="max-width: 680px; margin: 20px auto; padding: 0 16px;">
+    <div style="max-width: 760px; margin: 24px auto; padding: 0 16px;">
       <!-- Carte d'identité du Profil -->
-      <div style="background: linear-gradient(135deg, #092e70 0%, #174291 100%); border-radius: 16px; padding: 28px 24px; color: #ffffff; box-shadow: 0 8px 24px rgba(9,46,112,0.18); margin-bottom: 20px;">
+      <div style="background: linear-gradient(135deg, #092e70 0%, #174291 100%); border-radius: 16px; padding: 28px 24px; color: #ffffff; box-shadow: 0 8px 24px rgba(9,46,112,0.18); margin-bottom: 22px;">
         <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
           <div style="width: 76px; height: 76px; border-radius: 50%; background: #ffffff; color: #092e70; display: grid; place-items: center; font-size: 30px; font-weight: 800; border: 3px solid #f7941d; overflow: hidden; flex-shrink: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.18);">
             ${photo ? `<img src="${esc(photo)}" style="width:100%;height:100%;object-fit:cover;" alt="${esc(displayName)}">` : esc(displayName.charAt(0).toUpperCase())}
           </div>
           <div style="flex: 1; min-width: 220px;">
-            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px;">
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px;">
               <h2 style="margin: 0; font-size: 22px; font-weight: 800; color: #ffffff;">${esc(displayName)}</h2>
-              <span class="user-role-badge lecture_seule" style="font-size: 11px; padding: 3px 8px; border-radius: 20px; font-weight: 700; background: #e0e7ff; color: #3730a3;">Lecture Seule</span>
+              <span class="user-role-badge lecture_seule" style="font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 700; background: #e0e7ff; color: #3730a3;">Lecture Seule</span>
+              <span style="font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 700; background: #fef3c7; color: #92400e; border: 1px solid #fde68a;">Prospect</span>
             </div>
-            <div style="font-size: 13px; opacity: 0.9; margin-bottom: 8px;">${esc(email)}</div>
-            <div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.18); padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;">
-              <span>✅</span> Statut du compte : <b>${status === 'actif' ? 'Actif' : esc(status)}</b>
+            <div style="font-size: 13px; opacity: 0.9; margin-bottom: 8px;">
+              ${email !== "—" ? `<span>✉️ ${esc(email)}</span>` : ""}
+              ${telephone !== "—" ? `<span style="margin-left:${email !== "—" ? '12px' : '0'}">📞 ${esc(telephone)}</span>` : ""}
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.18); padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;">
+                <span>✅</span> Statut du compte : <b>${esc(statutCompte)}</b>
+              </div>
+              <div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.18); padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;">
+                <span>👤</span> Statut client : <b>${esc(statutClient)}</b>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
+      <!-- Notice Stricte Règle Métier -->
+      <div style="background: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 8px; padding: 16px; margin-bottom: 22px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+        <div style="font-weight: 700; color: #92400e; font-size: 14px; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+          <span>🔒</span> Restriction d'accès en Lecture Seule
+        </div>
+        <div style="font-size: 13px; color: #78350f; line-height: 1.5;">
+          <b>Lecture seule :</b> accès uniquement à votre propre profil.<br>
+          Aucun Dashboard, aucun module métier, aucune donnée des autres utilisateurs n'est accessible avant confirmation d'une première réservation.
+        </div>
+      </div>
+
       <!-- Détails du Profil -->
-      <div class="panel" style="margin-bottom: 20px; border-radius: 12px; padding: 22px; background: #ffffff; border: 1px solid #e2e8f0;">
+      <div class="panel" style="margin-bottom: 22px; border-radius: 12px; padding: 22px; background: #ffffff; border: 1px solid #e2e8f0;">
         <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 16px;">
           <h3 style="margin: 0; color: #092e70; font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
-            <span>👤</span> Mon Profil & Habilitations
+            <span>👤</span> Informations de mon compte
           </h3>
         </div>
 
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 16px;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px;">
           <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
-            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Nom complet</div>
+            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Nom & Prénom</div>
             <div style="color: #0f172a; font-weight: 700; font-size: 14px;">${esc(displayName)}</div>
           </div>
 
           <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
-            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Adresse e-mail</div>
-            <div style="color: #0f172a; font-weight: 700; font-size: 14px; word-break: break-all;">${esc(email)}</div>
+            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Identifiant principal</div>
+            <div style="color: #0f172a; font-weight: 700; font-size: 14px; word-break: break-all;">${esc(email !== "—" ? email : telephone)}</div>
           </div>
 
           <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
-            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Statut actuel</div>
-            <div style="color: #166534; font-weight: 700; font-size: 14px;">✅ Compte Actif</div>
+            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Rôles système</div>
+            <div style="color: #3730a3; font-weight: 700; font-size: 14px;">["lecture_seule"]</div>
           </div>
 
           <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
-            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Rôle système</div>
-            <div style="color: #3730a3; font-weight: 700; font-size: 14px;">Lecture Seule</div>
-            <small style="color: #64748b; font-size: 11px; display: block; margin-top: 2px;">(En attente d'attribution métier)</small>
+            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Statut Client</div>
+            <div style="color: #b45309; font-weight: 700; font-size: 14px;">prospect</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Métier : Première réservation pour devenir Client -->
+      <div class="panel" style="margin-bottom: 22px; border-radius: 12px; padding: 22px; background: #ffffff; border: 2px solid #bbf7d0; box-shadow: 0 4px 16px rgba(34,197,94,0.08);">
+        <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+          <div>
+            <h3 style="margin: 0; color: #166534; font-size: 17px; font-weight: 800; display: flex; align-items: center; gap: 8px;">
+              <span>🎫</span> Réserver un trajet LAPERLE (Activer mon Espace Client)
+            </h3>
+            <p style="margin: 4px 0 0; font-size: 12px; color: #475569;">
+              Après une réservation confirmée : votre profil est automatiquement transformé en <b>client</b> (<code>statutClient: "client"</code>) avec accès complet à votre espace.
+            </p>
+          </div>
+          <span style="background: #dcfce7; color: #166534; font-weight: 700; font-size: 12px; padding: 4px 10px; border-radius: 20px;">
+            Accès Espace Client
+          </span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 16px;">
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 700; color: #334e68; margin-bottom: 4px;">Destination / Trajet</label>
+            <select id="firstResDest" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; background: #f8fafc; font-weight: 600;">
+              <option value="Port-au-Prince ➔ Cap-Haïtien">Port-au-Prince ➔ Cap-Haïtien</option>
+              <option value="Port-au-Prince ➔ Jacmel">Port-au-Prince ➔ Jacmel</option>
+              <option value="Port-au-Prince ➔ Les Cayes">Port-au-Prince ➔ Les Cayes</option>
+              <option value="Port-au-Prince ➔ Gonaïves">Port-au-Prince ➔ Gonaïves</option>
+              <option value="Course Privée VIP Port-au-Prince / Pétion-Ville">Course Privée VIP (Pétion-Ville)</option>
+              <option value="Navette Aéroport International Toussaint Louverture">Navette Aéroport International</option>
+            </select>
+          </div>
+
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 700; color: #334e68; margin-bottom: 4px;">Type de prestation</label>
+            <select id="firstResService" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; background: #f8fafc; font-weight: 600;">
+              <option value="Transport Interurbain">Transport Interurbain</option>
+              <option value="Course Taxi / Navette">Course Taxi / Navette</option>
+              <option value="Location avec Chauffeur">Location avec Chauffeur</option>
+              <option value="Abonnement Mensuel">Abonnement Mensuel</option>
+            </select>
+          </div>
+
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 700; color: #334e68; margin-bottom: 4px;">Date souhaitée</label>
+            <input type="date" id="firstResDate" value="${today()}" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; background: #f8fafc; font-weight: 600;">
+          </div>
+
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 700; color: #334e68; margin-bottom: 4px;">Nombre de passagers</label>
+            <select id="firstResPass" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; background: #f8fafc; font-weight: 600;">
+              <option value="1">1 passager</option>
+              <option value="2">2 passagers</option>
+              <option value="3">3 passagers</option>
+              <option value="4">4 passagers ou plus</option>
+            </select>
           </div>
         </div>
 
-        <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 14px; color: #1e40af; font-size: 13px; line-height: 1.6;">
-          <strong style="display: block; margin-bottom: 4px; font-size: 13px;">ℹ️ Information d'accès :</strong>
-          Votre compte est sécurisé et enregistré sur Firebase Cloud. Pour accéder au Tableau de Bord et aux modules opérationnels (Réservations, Factures, Courses, Véhicules, Clients), veuillez contacter la direction LAPERLE TOUR HT pour activer vos rôles métiers.
-        </div>
+        <button id="btnConfirmFirstRes" onclick="handleConfirmClientReservation()" style="width: 100%; padding: 13px; background: #16a34a; border: none; color: #ffffff; font-size: 14px; font-weight: 700; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 8px rgba(22,163,74,0.25); transition: background 0.15s ease;">
+          <span>🎫</span> <span>Confirmer ma réservation et activer mon Espace Client</span>
+        </button>
       </div>
 
       <!-- Contacter LAPERLE TOUR HT -->
       <div class="panel" style="margin-bottom: 20px; border-radius: 12px; padding: 22px; background: #ffffff; border: 1px solid #e2e8f0;">
         <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 14px;">
           <h3 style="margin: 0; color: #092e70; font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
-            <span>📞</span> Contacter LAPERLE TOUR HT
+            <span>📞</span> Service Client LAPERLE TOUR HT
           </h3>
         </div>
         <p style="color: #475569; font-size: 13px; margin: 0 0 14px; line-height: 1.5;">
-          Pour toute demande d'habilitation, attribution de rôle (Chauffeur, Client, Secrétaire, Comptable, Direction) ou assistance technique :
+          Besoin d'un devis personnalisé, d'une assistance ou d'un voyage de groupe ? Nos agents sont à votre écoute :
         </p>
         <div style="display: flex; flex-direction: column; gap: 10px;">
-          <a href="https://wa.me/50944408687?text=Bonjour%20LAPERLE%20TOUR%20HT%2C%20je%20viens%20de%20cr%C3%A9er%20mon%20compte%20Google%20(${encodeURIComponent(email)})%20et%20je%20souhaite%20demander%20l%27activation%20de%20mes%20habilitations%20m%C3%A9tiers." target="_blank" rel="noopener noreferrer" style="display: flex; align-items: center; justify-content: center; gap: 8px; padding: 13px; background: #25d366; color: #ffffff; border-radius: 8px; text-decoration: none; font-size: 13px; font-weight: 700; box-shadow: 0 2px 8px rgba(37,211,102,0.25);">
-            <span style="font-size: 18px;">💬</span> Contacter via WhatsApp : +509 4440 8687
+          <a href="https://wa.me/50944408687?text=Bonjour%20LAPERLE%20TOUR%20HT%2C%20je%20suis%20prospect%20sur%20votre%20plateforme%20et%20je%20souhaite%20r%C3%A9server%20un%20transport." target="_blank" rel="noopener noreferrer" style="display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px; background: #25d366; color: #ffffff; border-radius: 8px; text-decoration: none; font-size: 13px; font-weight: 700; box-shadow: 0 2px 8px rgba(37,211,102,0.25);">
+            <span style="font-size: 18px;">💬</span> Assistance WhatsApp : +509 4440 8687
           </a>
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
             <a href="tel:+50944408687" style="display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; color: #092e70; text-decoration: none; font-size: 13px; font-weight: 600;">
-              <span>📞</span> Tél : +509 4440 8687
+              <span>📞</span> +509 4440 8687
             </a>
             <a href="mailto:laperletourht@gmail.com" style="display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; color: #092e70; text-decoration: none; font-size: 13px; font-weight: 600;">
               <span>✉️</span> laperletourht@gmail.com
