@@ -70,6 +70,17 @@ export async function sendFirebaseEmailLink(email, customName = '', mode = 'logi
   }
 
   const cleanEmail = String(email).trim().toLowerCase();
+  const isSuperAdmin = isSuperAdminEmail(cleanEmail) || isSuperAdminIdentifier(cleanEmail);
+
+  // RÈGLE STRICTE LAPERLE : Si mode connexion et compte non super admin, vérifier l'existence préalable du compte
+  if (mode === 'login' && !isSuperAdmin) {
+    const existing = await getUserProfileByIdentifier(cleanEmail);
+    if (!existing) {
+      const notRegErr = new Error(`L'adresse « ${cleanEmail} » n'est associée à aucun compte inscrit sur LAPERLE TOUR HT. Veuillez d'abord créer votre compte via l'onglet « Inscription ».`);
+      notRegErr.code = 'auth/user-not-registered';
+      throw notRegErr;
+    }
+  }
   
   // URL de redirection pour le retour après clic sur le lien
   const redirectUrl = window.location.origin + window.location.pathname;
@@ -179,10 +190,21 @@ export async function completeEmailLinkSignIn(providedEmail = null, url = window
  * 3. AUTHENTIFICATION PAR TÉLÉPHONE AVEC FIREBASE PHONE AUTHENTICATION
  * Conserve l'authentification par téléphone si elle existe
  */
-export async function sendFirebasePhoneVerification(phoneNumber, buttonOrContainerId = 'authBtnSendCode', customName = '') {
+export async function sendFirebasePhoneVerification(phoneNumber, buttonOrContainerId = 'authBtnSendCode', customName = '', mode = 'login') {
   if (!phoneNumber) throw new Error("Veuillez saisir un numéro de téléphone valide.");
 
   const cleanPhone = String(phoneNumber).trim();
+  const isSuperAdmin = isSuperAdminIdentifier(cleanPhone);
+
+  // RÈGLE STRICTE LAPERLE : Si mode connexion et compte non super admin, vérifier l'existence préalable du compte
+  if (mode === 'login' && !isSuperAdmin) {
+    const existing = await getUserProfileByIdentifier(cleanPhone);
+    if (!existing) {
+      const notRegErr = new Error(`Le numéro « ${cleanPhone} » n'est associé à aucun compte inscrit sur LAPERLE TOUR HT. Veuillez d'abord créer votre compte via l'onglet « Inscription » avant de vous connecter.`);
+      notRegErr.code = 'auth/user-not-registered';
+      throw notRegErr;
+    }
+  }
 
   try {
     if (!phoneRecaptchaVerifier) {
@@ -195,7 +217,8 @@ export async function sendFirebasePhoneVerification(phoneNumber, buttonOrContain
     pendingPhoneConfirmation = {
       confirmationResult,
       phone: cleanPhone,
-      name: customName ? String(customName).trim() : ''
+      name: customName ? String(customName).trim() : '',
+      mode: mode || 'login'
     };
 
     return {
@@ -364,7 +387,17 @@ export async function processAuthenticatedUser(user, email = '', customName = ''
     return { user: resolvedUserObj, profile: existingProfile, isNew: false };
   }
 
-  // 3. CAS NOUVEAU COMPTE :
+  // 3. RÈGLE STRICTE LAPERLE :
+  // Si le compte n'est pas encore inscrit et tente de se connecter, refuser la connexion.
+  if (!isSuperAdmin && mode === 'login') {
+    try { await signOut(auth); } catch (e) {}
+    clearUserSession();
+    const notRegErr = new Error("Ce compte n'est pas encore inscrit sur LAPERLE TOUR HT. Veuillez d'abord créer votre compte via l'onglet « Inscription » avant de pouvoir vous connecter.");
+    notRegErr.code = 'auth/user-not-registered';
+    throw notRegErr;
+  }
+
+  // 4. CAS NOUVEAU COMPTE (UNIQUEMENT LORS D'UNE INSCRIPTION EXPLICITE OU SUPER ADMIN) :
   // Nouveau compte = roles: ["lecture_seule"], accès uniquement à son profil
   // (sauf si Super Admin principal)
   const now = new Date().toISOString();
@@ -523,19 +556,46 @@ export async function updateUserLastLogin(uid) {
   }
 }
 
-export async function ensureUserProfile(user) {
+export async function ensureUserProfile(user, mode = 'register') {
   if (!user || !user.uid) return null;
-  const existing = await getUserProfile(user.uid, user.email);
+  const userEmail = (user.email || '').toLowerCase().trim();
+  const isSuperAdmin = isSuperAdminEmail(userEmail) || isSuperAdminIdentifier(userEmail);
+
+  let existing = await getUserProfile(user.uid, userEmail);
+  if (!existing && userEmail) {
+    existing = await getUserProfileByIdentifier(userEmail);
+  }
+
   if (existing) {
-    await updateUserLastLogin(user.uid);
+    const isDeactivated = normalizeStatus(existing.status || existing.statutCompte) === 'inactif';
+    if (isDeactivated) {
+      try { await signOut(auth); } catch (e) {}
+      clearUserSession();
+      throw new Error("Ce compte a été désactivé ou suspendu par l'administration LAPERLE TOUR HT.");
+    }
+    await updateUserLastLogin(existing.uid || existing.id || user.uid);
     return existing;
   }
+
+  // RÈGLE STRICTE LAPERLE : Si le compte Google n'est pas inscrit et est en mode connexion
+  if (!isSuperAdmin && mode === 'login') {
+    try { await signOut(auth); } catch (e) {}
+    clearUserSession();
+    const notRegErr = new Error(`Le compte Google (${userEmail}) n'est pas encore inscrit sur LAPERLE TOUR HT. Veuillez d'abord cliquer sur l'onglet « Inscription » pour créer votre compte avant de vous connecter.`);
+    notRegErr.code = 'auth/user-not-registered';
+    throw notRegErr;
+  }
+
   return await createUserProfile(user);
 }
 
-export async function loginWithGoogle() {
+export async function loginWithGoogle(mode = 'login') {
   const user = await signInWithGoogleOnly();
-  const profile = await ensureUserProfile(user);
+  if (!user || !user.uid) {
+    throw new Error("Session Google introuvable.");
+  }
+  const profile = await ensureUserProfile(user, mode);
+  saveUserSession(user, profile);
   return { user, profile };
 }
 

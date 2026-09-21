@@ -140,9 +140,10 @@ export async function updateUserRoles(userId, newRolesInput, callerProfile = nul
   };
 
   try {
-    await updateDoc(doc(db, COLLECTION_NAME, String(userId)), updates);
+    await setDoc(doc(db, COLLECTION_NAME, String(userId)), updates, { merge: true });
     return { id: userId, ...updates };
   } catch (error) {
+    console.warn("Firestore updateUserRoles:", error?.message);
     handleFirestoreError(error, OperationType.UPDATE, `${COLLECTION_NAME}/${userId}`);
   }
 }
@@ -172,14 +173,16 @@ export async function updateUserStatus(userId, newStatus, callerProfile = null) 
 
   const updates = {
     status: normStatus,
+    statutCompte: normStatus,
     updatedAt: now,
     updatedBy: currentUserEmail
   };
 
   try {
-    await updateDoc(doc(db, COLLECTION_NAME, String(userId)), updates);
+    await setDoc(doc(db, COLLECTION_NAME, String(userId)), updates, { merge: true });
     return { id: userId, ...updates };
   } catch (error) {
+    console.warn("Firestore updateUserStatus:", error?.message);
     handleFirestoreError(error, OperationType.UPDATE, `${COLLECTION_NAME}/${userId}`);
   }
 }

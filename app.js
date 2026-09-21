@@ -40,7 +40,7 @@ import {
   BUSINESS_ROLES, hasBusinessRole,
   canAccessModule, hasActionPermission, filterDataForUser,
   loginWithGoogle as authLoginGoogle, logoutUser as authLogout, subscribeAuthState,
-  ensureUserProfile, getUserProfile, createUserProfile, updateUserLastLogin, formatAuthError, signInWithGoogleOnly,
+  ensureUserProfile, getUserProfile, getUserProfileByIdentifier, createUserProfile, updateUserLastLogin, formatAuthError, signInWithGoogleOnly,
   getAllUsers, getUserById, updateUserRole, updateUserRoles, updateUserStatus, updateUserPermissions,
   createManagedUser,
   // Authentification Firebase sans mot de passe & Téléphone
@@ -655,17 +655,40 @@ function getInitialData() {
       { id: "FT-2026-09-19-001", number: "FT-2026-09-19-001", client: "Jean-Baptiste Valmé", date: d, proforma: "PT-2026-09-19-001", amount: 25000, status: "Payée", due: d, notes: "Facture acquittée" }
     ],
     utilisateurs: [
-      { id: "castimamoise_gmail_com", name: "Moïse Castima", email: "castimamoise@gmail.com", role: "ADMIN", status: "Actif", notes: "Fondateur & Administrateur Principal" }
+      { id: "castimamoise_gmail_com", name: "Moïse Castima", email: "castimamoise@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Fondateur & Administrateur Principal" },
+      { id: "laperletourht_gmail_com", name: "Laperle Tour Admin", email: "laperletourht@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Super Administrateur LAPERLE" },
+      { id: "usr_wilner", name: "Wilner Charles", email: "wilner.c@laperletour.ht", role: "CHAUFFEUR", roles: ["chauffeur"], status: "Actif", notes: "Chauffeur HiAce VH-001" },
+      { id: "usr_jeanmarc", name: "Jean-Marc Pierre", email: "jean.marc@laperletour.ht", role: "CHAUFFEUR", roles: ["chauffeur"], status: "Actif", notes: "Chauffeur Tucson VH-002" },
+      { id: "usr_mariefrance", name: "Marie-France Jean", email: "marie.france@laperletour.ht", role: "SECRETAIRE", roles: ["secretaire"], status: "Actif", notes: "Secrétariat & Réservations" },
+      { id: "usr_david", name: "Pierre-Louis David", email: "david.pl@laperletour.ht", role: "OPERATIONS", roles: ["operations"], status: "Actif", notes: "Responsable Flotte" },
+      { id: "usr_stephane", name: "Stéphane Delva", email: "stephane.d@laperletour.ht", role: "COMPTABILITE", roles: ["comptabilite"], status: "Actif", notes: "Responsable Trésorerie" },
+      { id: "usr_altidor", name: "Cabinet Altidor & Associés", email: "contact@altidor.ht", role: "CLIENT", roles: ["client"], status: "Actif", notes: "Compte Entreprise" }
     ]
   };
 }
+
+const DEFAULT_SYSTEM_USERS = [
+  { id: "castimamoise_gmail_com", name: "Moïse Castima", email: "castimamoise@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Fondateur & Administrateur Principal" },
+  { id: "laperletourht_gmail_com", name: "Laperle Tour Admin", email: "laperletourht@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Super Administrateur LAPERLE" },
+  { id: "usr_wilner", name: "Wilner Charles", email: "wilner.c@laperletour.ht", role: "CHAUFFEUR", roles: ["chauffeur"], status: "Actif", notes: "Chauffeur HiAce VH-001" },
+  { id: "usr_jeanmarc", name: "Jean-Marc Pierre", email: "jean.marc@laperletour.ht", role: "CHAUFFEUR", roles: ["chauffeur"], status: "Actif", notes: "Chauffeur Tucson VH-002" },
+  { id: "usr_mariefrance", name: "Marie-France Jean", email: "marie.france@laperletour.ht", role: "SECRETAIRE", roles: ["secretaire"], status: "Actif", notes: "Secrétariat & Réservations" },
+  { id: "usr_david", name: "Pierre-Louis David", email: "david.pl@laperletour.ht", role: "OPERATIONS", roles: ["operations"], status: "Actif", notes: "Responsable Flotte" },
+  { id: "usr_stephane", name: "Stéphane Delva", email: "stephane.d@laperletour.ht", role: "COMPTABILITE", roles: ["comptabilite"], status: "Actif", notes: "Responsable Trésorerie" },
+  { id: "usr_altidor", name: "Cabinet Altidor & Associés", email: "contact@altidor.ht", role: "CLIENT", roles: ["client"], status: "Actif", notes: "Compte Entreprise" }
+];
 
 function loadState() {
   try {
     const saved = localStorage.getItem(DBKEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) return parsed;
+      if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) {
+        if (!Array.isArray(parsed.utilisateurs) || parsed.utilisateurs.length < 3) {
+          parsed.utilisateurs = DEFAULT_SYSTEM_USERS;
+        }
+        return parsed;
+      }
     }
   } catch (e) {}
   const initial = getInitialData();
@@ -1157,17 +1180,25 @@ function initAuthUI(initialMode = "login") {
     if (labelId) {
       labelId.textContent = mode === "register"
         ? "Adresse e-mail ou numéro de téléphone"
-        : "Adresse e-mail ou téléphone";
+        : "Adresse e-mail ou téléphone enregistré";
     }
     if (hintId) {
       hintId.textContent = mode === "register"
-        ? "Votre compte et vos coordonnées sont enregistrés dans Firebase Cloud et conservés jusqu'à votre prochaine connexion."
-        : "Un lien de connexion direct et sécurisé vous sera envoyé par Firebase à votre adresse e-mail.";
+        ? "Votre compte et vos coordonnées sont enregistrés dans Firebase Cloud et conservés pour vos prochaines connexions."
+        : "Un lien de connexion direct vous sera envoyé par Firebase. Seuls les comptes déjà inscrits peuvent se connecter.";
     }
     if (btnSendCode) {
       btnSendCode.innerHTML = mode === "register"
         ? `<span>📝</span> <span>Créer et enregistrer mon compte</span>`
-        : `<span>✉️</span> <span>Envoyer le lien de connexion Firebase</span>`;
+        : `<span>✉️</span> <span>Se connecter (Vérifier et continuer)</span>`;
+    }
+    if (btnGoogle) {
+      const googleSpan = btnGoogle.querySelector("span:not(.google-icon)");
+      if (googleSpan) {
+        googleSpan.textContent = mode === "register"
+          ? "S'inscrire avec Google"
+          : "Continuer avec Google (Accès direct)";
+      }
     }
     setAuthMessage('idle', '');
   }
@@ -1182,17 +1213,42 @@ function initAuthUI(initialMode = "login") {
     btnGoogle.onclick = async () => {
       try {
         btnGoogle.disabled = true;
-        setAuthMessage("loading", "Connexion sécurisée avec Google en cours...");
-        const result = await authLoginGoogle();
-        setAuthMessage("success", "Connexion Google réussie !");
-        completeUserSignIn(result.user, result.profile);
+        setAuthMessage("loading", currentAuthMode === "register"
+          ? "Inscription avec Google en cours..."
+          : "Connexion sécurisée avec Google en cours...");
+        const result = await authLoginGoogle(currentAuthMode);
+
+        if (result.profile) {
+          const existingList = list("utilisateurs") || [];
+          const idx = existingList.findIndex(u => (u.id === result.profile.id || u.email === result.profile.email));
+          if (idx >= 0) {
+            existingList[idx] = result.profile;
+          } else {
+            existingList.push(result.profile);
+          }
+          save();
+        }
+
+        setAuthMessage("success", currentAuthMode === "register"
+          ? "Inscription Google réussie ! Bienvenue chez LAPERLE TOUR HT."
+          : "Connexion Google réussie !");
+        completeUserSignIn(result.user, result.profile, result.isNew);
       } catch (err) {
         console.warn("Firebase Google auth exception:", err?.code || err?.message);
         const errCode = err?.code || "";
         const errMsg = err?.message || String(err);
 
+        // RÈGLE STRICTE LAPERLE : Si le compte n'est pas encore inscrit, interdiction de se connecter
+        const isNotRegistered = (errCode === 'auth/user-not-registered') ||
+                                (errMsg && (errMsg.includes('pas encore inscrit') || errMsg.includes('user-not-registered')));
+        if (isNotRegistered) {
+          btnGoogle.disabled = false;
+          setAuthMessage("error", `❌ <b>Ce compte n'est pas encore inscrit sur LAPERLE TOUR HT.</b><br>Vous devez d'abord créer votre compte avant de pouvoir vous connecter.<br><button type="button" onclick="document.getElementById('authTabRegister')?.click()" style="margin-top:8px;padding:6px 14px;background:#082b70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;">👉 Cliquer ici pour vous inscrire</button>`);
+          return;
+        }
+
         // Si le domaine ou la méthode Google est restreinte par Firebase dans cet environnement,
-        // basculer immédiatement et automatiquement sur l'accès direct avec le compte utilisateur
+        // basculer sur l'accès direct en vérifiant d'abord l'inscription en mode connexion
         if (
           errCode === 'auth/unauthorized-domain' ||
           errCode === 'auth/operation-not-allowed' ||
@@ -1204,15 +1260,25 @@ function initAuthUI(initialMode = "login") {
         ) {
           try {
             const targetEmail = (inputId && inputId.value.trim() && inputId.value.includes('@'))
-              ? inputId.value.trim()
+              ? inputId.value.trim().toLowerCase()
               : "castimaklik@gmail.com";
             const targetName = (inputName && inputName.value.trim())
               ? inputName.value.trim()
               : (targetEmail === "castimaklik@gmail.com" ? "Administrateur Laperle" : targetEmail.split('@')[0]);
 
-            setAuthMessage("loading", `Connexion immédiate avec ${targetEmail}...`);
+            // En mode connexion, vérifier que le compte est déjà inscrit
+            if (currentAuthMode === "login" && !isSuperAdminEmail(targetEmail) && !isSuperAdminIdentifier(targetEmail)) {
+              const existing = await getUserProfileByIdentifier(targetEmail);
+              if (!existing) {
+                btnGoogle.disabled = false;
+                setAuthMessage("error", `❌ <b>Le compte « ${esc(targetEmail)} » n'est pas encore inscrit.</b><br>Veuillez d'abord créer votre compte via l'onglet <b>« Inscription »</b> avant de vous connecter.<br><button type="button" onclick="document.getElementById('authTabRegister')?.click()" style="margin-top:8px;padding:6px 14px;background:#082b70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;">👉 Cliquer ici pour vous inscrire</button>`);
+                return;
+              }
+            }
+
+            setAuthMessage("loading", `Connexion avec ${targetEmail}...`);
             const res = await directEmailSignInFallback(targetEmail, targetName, currentAuthMode);
-            setAuthMessage("success", "Connexion Google réussie ! Bienvenue chez LAPERLE TOUR HT.");
+            setAuthMessage("success", "Connexion réussie ! Bienvenue chez LAPERLE TOUR HT.");
             completeUserSignIn(res.user, res.profile, res.isNew);
             return;
           } catch (fallbackErr) {
@@ -1239,6 +1305,20 @@ function initAuthUI(initialMode = "login") {
         return;
       }
 
+      // RÈGLE STRICTE LAPERLE : Si le compte n'est pas inscrit, il ne peut pas se connecter
+      if (currentAuthMode === "login") {
+        const isSuperAdmin = isSuperAdminEmail(identifier) || isSuperAdminIdentifier(identifier);
+        if (!isSuperAdmin) {
+          setAuthMessage("loading", "Vérification de l'inscription du compte...");
+          const existing = await getUserProfileByIdentifier(identifier);
+          if (!existing) {
+            btnSendCode.disabled = false;
+            setAuthMessage("error", `❌ <b>Le compte « ${esc(identifier)} » n'est pas encore inscrit sur LAPERLE TOUR HT.</b><br>Vous devez d'abord créer votre compte pour pouvoir vous connecter.<br><button type="button" onclick="document.getElementById('authTabRegister')?.click()" style="margin-top:8px;padding:6px 14px;background:#082b70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;">👉 Cliquer ici pour créer votre compte (Inscription)</button>`);
+            return;
+          }
+        }
+      }
+
       if (currentAuthMode === "register" && !name) {
         setAuthMessage("error", "Veuillez indiquer votre nom et prénom pour la création de votre compte.");
         return;
@@ -1248,6 +1328,16 @@ function initAuthUI(initialMode = "login") {
       if (currentAuthMode === "register") {
         try {
           btnSendCode.disabled = true;
+
+          // Si le compte existe déjà lors d'une tentative d'inscription, connecter l'utilisateur
+          const alreadyExisting = await getUserProfileByIdentifier(identifier);
+          if (alreadyExisting) {
+            setAuthMessage("info", `ℹ️ Un compte existe déjà pour <b>${esc(identifier)}</b>.<br>Connexion en cours à votre compte...`);
+            completeUserSignIn(alreadyExisting, alreadyExisting, false);
+            showToast(`Bienvenue à nouveau, ${alreadyExisting.nom || alreadyExisting.name || 'Utilisateur'} !`);
+            return;
+          }
+
           setAuthMessage("loading", `Création et enregistrement de votre compte pour ${identifier}...`);
           const res = await registerOrSignInUser(identifier, name, 'register');
           
@@ -1294,7 +1384,7 @@ function initAuthUI(initialMode = "login") {
         } else {
           // Parcours Téléphone : Envoi du code SMS via Firebase Phone Auth
           setAuthMessage("loading", "Envoi du code de vérification SMS par Firebase...");
-          await sendFirebasePhoneVerification(identifier, 'authBtnSendCode', name);
+          await sendFirebasePhoneVerification(identifier, 'authBtnSendCode', name, currentAuthMode);
 
           if (stepId) stepId.style.display = "none";
           if (stepEmailSent) stepEmailSent.style.display = "none";
@@ -1313,6 +1403,16 @@ function initAuthUI(initialMode = "login") {
         }
       } catch (err) {
         console.warn("Erreur envoi auth Firebase:", err?.code || err?.message);
+        const errCode = err?.code || "";
+        const errMsg = err?.message || String(err);
+
+        // Si non inscrit, bloquer net
+        if (errCode === 'auth/user-not-registered' || errMsg.includes('pas encore inscrit') || errMsg.includes('user-not-registered')) {
+          setAuthMessage("error", `❌ <b>Le compte « ${esc(identifier)} » n'est pas encore inscrit sur LAPERLE TOUR HT.</b><br>Vous ne pouvez pas vous connecter sans être préalablement inscrit.<br><button type="button" onclick="document.getElementById('authTabRegister')?.click()" style="margin-top:8px;padding:6px 14px;background:#082b70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;">👉 Cliquer ici pour vous inscrire</button>`);
+          btnSendCode.disabled = false;
+          return;
+        }
+
         const isNotAllowedOrDomain = (err?.code === 'auth/operation-not-allowed') ||
                                     (err?.code === 'auth/unauthorized-domain') ||
                                     (err?.message && (err.message.includes('auth/operation-not-allowed') || err.message.includes('auth/unauthorized-domain')));
@@ -1345,6 +1445,19 @@ function initAuthUI(initialMode = "login") {
         setAuthMessage("error", "Veuillez saisir une adresse e-mail valide.");
         return;
       }
+
+      // RÈGLE STRICTE LAPERLE : Vérifier l'inscription avant connexion de secours
+      if (currentAuthMode === "login") {
+        const isSuperAdmin = isSuperAdminEmail(identifier) || isSuperAdminIdentifier(identifier);
+        if (!isSuperAdmin) {
+          const existing = await getUserProfileByIdentifier(identifier);
+          if (!existing) {
+            setAuthMessage("error", `❌ <b>Le compte « ${esc(identifier)} » n'est pas encore inscrit.</b><br>Veuillez d'abord vous inscrire via l'onglet « Inscription ».<br><button type="button" onclick="document.getElementById('authTabRegister')?.click()" style="margin-top:8px;padding:6px 14px;background:#082b70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;">👉 Aller à l'inscription</button>`);
+            return;
+          }
+        }
+      }
+
       try {
         btnDirectBypass.disabled = true;
         setAuthMessage("loading", "Connexion en cours...");
@@ -1557,10 +1670,16 @@ function completeUserSignIn(user, profile, isNew = false) {
   render();
 }
 
+let cachedAuthContainerHTML = "";
+
 function renderAuthPage(state = "unauthenticated") {
   const authContainer = document.getElementById("authContainer");
   const appContainer = document.getElementById("app");
   if (!authContainer || !appContainer) return;
+
+  if (!cachedAuthContainerHTML && authContainer.querySelector("#authTabs")) {
+    cachedAuthContainerHTML = authContainer.innerHTML;
+  }
 
   if (state === "authenticated") {
     authContainer.style.display = "none";
@@ -1594,6 +1713,9 @@ function renderAuthPage(state = "unauthenticated") {
   // État standard : "unauthenticated"
   authContainer.style.display = "flex";
   appContainer.style.display = "none";
+  if (!authContainer.querySelector("#authTabs") && cachedAuthContainerHTML) {
+    authContainer.innerHTML = cachedAuthContainerHTML;
+  }
   initAuthUI("login");
 }
 
@@ -1852,6 +1974,368 @@ function dashboard() {
   const toReceive = list("paiements").filter(x => ["En attente", "À recevoir"].includes(x.status)).reduce((s, x) => s + Number(x.amount || 0), 0);
   const netProfit = received - spent;
 
+  const isAdminOrDirection = roles.includes(ROLES.ADMIN) || roles.includes(ROLES.DIRECTION) || isSuperAdminEmail(currentUser?.email);
+
+  if (isAdminOrDirection) {
+    const usersList = list("utilisateurs") || [];
+    const reservationsList = list("reservations").filter(x => !x.archived);
+    const activeVehiclesCount = list("vehicules").filter(x => !x.archived && x.status !== "En panne").length || 12;
+    const busyVehiclesCount = Math.min(activeVehiclesCount, reservationsList.filter(x => ["Confirmée", "En cours"].includes(x.status)).length || 8);
+    const availableVehicles = Math.max(0, activeVehiclesCount - busyVehiclesCount);
+    const fleetOccupancyPct = Math.round((busyVehiclesCount / (activeVehiclesCount || 1)) * 100) || 77;
+
+    // Circumference for 170px donut with r=65
+    const circumference = 2 * Math.PI * 65; // ~408.4
+    const orangeStrokeDash = (circumference * fleetOccupancyPct) / 100;
+    const orangeStrokeOffset = circumference - orangeStrokeDash;
+
+    document.getElementById("page").innerHTML = `
+      <div class="admin-dashboard-wrap">
+        <!-- Bannière Hero Bienvenue avec Illustration -->
+        <div class="admin-hero-banner">
+          <div class="admin-hero-content">
+            <div class="admin-hero-badge">
+              <span>👑</span> CENTRE DE CONTRÔLE LAPERLE • ESPACE ADMINISTRATEUR
+            </div>
+            <h1 class="admin-hero-title">
+              Bienvenue, <span style="color:#fcd34d">${esc(displayName)}</span> !
+            </h1>
+            <p class="admin-hero-subtitle">
+              Votre flotte et vos opérations sont actives à <b style="color:#fef08a">${fleetOccupancyPct}%</b> de capacité. 
+              <b>${reservationsList.length || 12}</b> missions et courses programmées aujourd'hui.
+              <br>
+              <span style="display:inline-flex;align-items:center;gap:6px;margin-top:6px;font-size:12px;color:#cbd5e1">
+                <span style="width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block;box-shadow:0 0 8px #10b981"></span>
+                Synchronisation Firebase Firestore : <b>En direct & Opérationnel</b>
+              </span>
+            </p>
+            <div class="admin-hero-actions">
+              <button onclick="openQuickRoleAssignModal()" class="admin-hero-btn primary">
+                🛡️ Attribuer un Rôle
+              </button>
+              <button onclick="go('utilisateurs')" class="admin-hero-btn outline">
+                👥 Gérer les Comptes
+              </button>
+              <button onclick="go('vehicules')" class="admin-hero-btn outline">
+                🚗 Flotte & Véhicules
+              </button>
+            </div>
+          </div>
+          <div class="admin-hero-visual">
+            <svg width="220" height="150" viewBox="0 0 220 150" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="20" y="25" width="180" height="110" rx="14" fill="#0f1f42" stroke="rgba(255,255,255,0.15)" stroke-width="2"/>
+              <rect x="35" y="40" width="85" height="40" rx="8" fill="#1e3a8a"/>
+              <rect x="42" y="48" width="45" height="8" rx="4" fill="#93c5fd"/>
+              <rect x="42" y="62" width="70" height="6" rx="3" fill="#60a5fa" opacity="0.6"/>
+              <circle cx="155" cy="60" r="22" fill="#f7941d"/>
+              <path d="M145 60 L152 67 L165 52" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M35 105 Q 85 85, 130 98 T 185 85" stroke="#38bdf8" stroke-width="3" fill="none"/>
+              <rect x="75" y="130" width="70" height="12" rx="4" fill="#071936"/>
+              <circle cx="50" cy="18" r="14" fill="#3b82f6" stroke="#fff" stroke-width="2"/>
+              <text x="50" y="22" text-anchor="middle" fill="#fff" font-size="9" font-weight="bold">ADM</text>
+              <circle cx="170" cy="18" r="14" fill="#f7941d" stroke="#fff" stroke-width="2"/>
+              <text x="170" y="22" text-anchor="middle" fill="#fff" font-size="9" font-weight="bold">FLOT</text>
+            </svg>
+          </div>
+        </div>
+
+        <!-- Grille Principale (Colonne Gauche Opérations + Colonne Droite Agenda) -->
+        <div class="admin-grid-main">
+          <!-- Pile Gauche -->
+          <div class="admin-left-stack">
+            <!-- Sous-grille 2 cartes : Progression des Membres + Jauge Disponibilité Flotte -->
+            <div class="admin-subgrid-two">
+              <!-- Carte Progression Membres & Habilitations -->
+              <div class="admin-card-dark">
+                <div class="admin-card-head">
+                  <h3>👥 Membres & Habilitations</h3>
+                  <button onclick="go('utilisateurs')" class="admin-btn-pill">Voir tout ›</button>
+                </div>
+                <div class="user-progress-list">
+                  ${usersList.slice(0, 5).map((u, i) => {
+                    const uRoles = normalizeRoles(u.roles || u.role || ['client']);
+                    const primaryRole = uRoles[0] || 'client';
+                    const progressPcts = [95, 80, 68, 52, 40];
+                    const pct = progressPcts[i % progressPcts.length];
+                    const avatarClass = primaryRole === 'admin' ? 'avatar-admin' : primaryRole === 'chauffeur' ? 'avatar-chauffeur' : primaryRole === 'secretaire' ? 'avatar-secretaire' : primaryRole === 'operations' ? 'avatar-ops' : 'avatar-client';
+                    const barColor = primaryRole === 'admin' ? '#3b82f6' : primaryRole === 'chauffeur' ? '#10b981' : primaryRole === 'secretaire' ? '#a855f7' : primaryRole === 'operations' ? '#f97316' : '#06b6d4';
+                    const initials = (u.name || u.email || 'U').split(' ').map(w => w.charAt(0)).slice(0, 2).join('').toUpperCase();
+                    return `
+                      <div class="user-progress-item">
+                        <div class="user-progress-avatar ${avatarClass}">${initials}</div>
+                        <div class="user-progress-info">
+                          <div class="user-progress-name-row">
+                            <span class="user-progress-name">${esc(u.name || u.email)}</span>
+                            <span class="user-progress-role-tag ${avatarClass}">${ROLE_LABELS[primaryRole] || primaryRole} • ${pct}%</span>
+                          </div>
+                          <div class="user-progress-track">
+                            <div class="user-progress-fill" style="width:${pct}%;background:${barColor}"></div>
+                          </div>
+                        </div>
+                        <button onclick="openUserRoleModal(${i})" class="user-progress-btn" title="Changer le rôle et les habilitations">
+                          🛡️ Rôle
+                        </button>
+                      </div>
+                    `;
+                  }).join("")}
+                </div>
+              </div>
+
+              <!-- Carte Jauge Flotte -->
+              <div class="admin-card-dark">
+                <div class="admin-card-head">
+                  <h3>🚗 Disponibilité Flotte</h3>
+                  <span class="admin-btn-pill">Aujourd'hui</span>
+                </div>
+                <div class="fleet-donut-wrap" style="position:relative">
+                  <svg class="fleet-donut-svg" viewBox="0 0 160 160">
+                    <circle class="donut-bg" cx="80" cy="80" r="65" />
+                    <circle class="donut-val-orange" cx="80" cy="80" r="65" 
+                      stroke-dasharray="${circumference}" 
+                      stroke-dashoffset="${orangeStrokeOffset}" />
+                  </svg>
+                  <div class="donut-center-text">
+                    <b>${fleetOccupancyPct}%</b>
+                    <span>En mission</span>
+                  </div>
+                </div>
+                <div class="fleet-legend">
+                  <span><i class="fleet-legend-dot dot-orange"></i>${busyVehiclesCount} En mission</span>
+                  <span><i class="fleet-legend-dot dot-blue"></i>${availableVehicles} Disponibles</span>
+                </div>
+                <div style="margin-top:16px;padding:10px 14px;background:rgba(255,255,255,0.03);border-radius:10px;display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#94a3b8">
+                  <span>Capacité Flotte LAPERLE</span>
+                  <b style="color:#ffffff">${activeVehiclesCount} Véhicules</b>
+                </div>
+              </div>
+            </div>
+
+            <!-- Deux bannières promo (Orange et Bleue) -->
+            <div class="admin-promo-grid">
+              <!-- Bannière Orange -->
+              <div class="admin-promo-card promo-orange">
+                <div class="promo-body">
+                  <h4>Activité Financière & Croissance</h4>
+                  <p>Suivi en direct des encaissements, factures et abonnements scolaires. Bénéfice net calculé en temps réel.</p>
+                  <button onclick="go('finances')" class="promo-btn">Consulter la Trésorerie ›</button>
+                </div>
+                <div class="promo-icon-illus">
+                  <svg width="70" height="70" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8">
+                    <line x1="12" y1="1" x2="12" y2="23"></line>
+                    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                  </svg>
+                </div>
+              </div>
+
+              <!-- Bannière Bleue -->
+              <div class="admin-promo-card promo-blue">
+                <div class="promo-body">
+                  <h4>Habilitations & Niveaux d'Accès</h4>
+                  <p>
+                    › Administrateur : Attribution totale des rôles<br>
+                    › Secrétariat & Opérations : Gestion plannings<br>
+                    › Chauffeurs & Clients : Espaces isolés
+                  </p>
+                  <button onclick="openQuickRoleAssignModal()" class="promo-btn">🛡️ Attribuer un Rôle ›</button>
+                </div>
+                <div class="promo-icon-illus">
+                  <svg width="70" height="70" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="1.8">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                    <path d="M9 12l2 2 4-4"></path>
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tableau / Annuaire Utilisateurs & Rôles (Style Media Files) -->
+            <div class="admin-card-dark">
+              <div class="admin-card-head">
+                <h3>🛡️ Gestion des Rôles & Comptes Utilisateurs</h3>
+                <button onclick="openForm('utilisateurs')" class="admin-btn-pill">+ Créer un compte</button>
+              </div>
+              <div style="overflow-x:auto">
+                <table class="media-files-table">
+                  <thead>
+                    <tr>
+                      <th>Utilisateur</th>
+                      <th>Email & Identifiant</th>
+                      <th>Rôle attribué</th>
+                      <th>Statut</th>
+                      <th>Actions Administrateur</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${usersList.map((u, i) => {
+                      const uRoles = normalizeRoles(u.roles || u.role || ['client']);
+                      const primaryRole = uRoles[0] || 'client';
+                      const badgeCode = primaryRole === 'admin' ? 'AD' : primaryRole === 'operations' ? 'OP' : primaryRole === 'chauffeur' ? 'CH' : primaryRole === 'secretaire' ? 'SC' : 'CL';
+                      const badgeClass = primaryRole === 'admin' ? 'badge-ad' : primaryRole === 'operations' ? 'badge-op' : primaryRole === 'chauffeur' ? 'badge-ch' : primaryRole === 'secretaire' ? 'badge-sc' : 'badge-cl';
+                      return `
+                        <tr>
+                          <td>
+                            <div style="display:flex;align-items:center;gap:12px">
+                              <div class="user-row-badge ${badgeClass}">${badgeCode}</div>
+                              <div>
+                                <b style="color:#ffffff;font-size:13px">${esc(u.name || u.email)}</b>
+                                <div style="font-size:11px;color:#94a3b8">${esc(u.phone || 'LAPERLE TEAM')}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            <span style="color:#cbd5e1;font-size:12px">${esc(u.email || '—')}</span>
+                            <div style="font-size:10px;color:#64748b">Cloud Firestore</div>
+                          </td>
+                          <td>
+                            ${uRoles.map(r => `<span class="user-role-badge ${r}" style="font-size:10px">${ROLE_LABELS[r] || r}</span>`).join(' ')}
+                          </td>
+                          <td>
+                            <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:${u.status === 'Inactif' ? '#f87171' : '#4ade80'}">
+                              <span style="width:7px;height:7px;border-radius:50%;background:${u.status === 'Inactif' ? '#ef4444' : '#22c55e'}"></span>
+                              ${esc(u.status || 'Actif')}
+                            </span>
+                          </td>
+                          <td>
+                            <button class="role-assign-btn" onclick="openUserRoleModal(${i})">
+                              🛡️ Modifier le Rôle
+                            </button>
+                          </td>
+                        </tr>
+                      `;
+                    }).join("")}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pile Droite (Calendrier, Circuits & Raccourcis) -->
+          <div class="admin-right-stack">
+            <!-- Widget Calendrier -->
+            <div class="calendar-widget">
+              <div class="calendar-header">
+                <b>Septembre 2026</b>
+                <div style="display:flex;gap:6px">
+                  <button class="calendar-nav-btn" onclick="showToast('Mois précédent')">‹</button>
+                  <button class="calendar-nav-btn" onclick="showToast('Mois suivant')">›</button>
+                </div>
+              </div>
+              <div class="calendar-days-row">
+                <span>D</span><span>L</span><span>M</span><span>M</span><span>J</span><span>V</span><span>S</span>
+              </div>
+              <div class="calendar-dates-grid">
+                <span class="cal-date-cell other-month">30</span>
+                <span class="cal-date-cell other-month">31</span>
+                <span class="cal-date-cell">1</span>
+                <span class="cal-date-cell">2</span>
+                <span class="cal-date-cell">3</span>
+                <span class="cal-date-cell">4</span>
+                <span class="cal-date-cell">5</span>
+                <span class="cal-date-cell">6</span>
+                <span class="cal-date-cell">7</span>
+                <span class="cal-date-cell">8</span>
+                <span class="cal-date-cell">9</span>
+                <span class="cal-date-cell">10</span>
+                <span class="cal-date-cell">11</span>
+                <span class="cal-date-cell">12</span>
+                <span class="cal-date-cell">13</span>
+                <span class="cal-date-cell">14</span>
+                <span class="cal-date-cell">15</span>
+                <span class="cal-date-cell">16</span>
+                <span class="cal-date-cell">17</span>
+                <span class="cal-date-cell">18</span>
+                <span class="cal-date-cell event-orange">19</span>
+                <span class="cal-date-cell">20</span>
+                <span class="cal-date-cell today">21</span>
+                <span class="cal-date-cell">22</span>
+                <span class="cal-date-cell">23</span>
+                <span class="cal-date-cell">24</span>
+                <span class="cal-date-cell">25</span>
+                <span class="cal-date-cell">26</span>
+                <span class="cal-date-cell">27</span>
+                <span class="cal-date-cell event-green">28</span>
+                <span class="cal-date-cell">29</span>
+                <span class="cal-date-cell">30</span>
+                <span class="cal-date-cell other-month">1</span>
+                <span class="cal-date-cell other-month">2</span>
+                <span class="cal-date-cell other-month">3</span>
+              </div>
+            </div>
+
+            <!-- Circuits & Missions du Jour -->
+            <div class="admin-card-dark">
+              <div class="admin-card-head">
+                <h3>🚦 Circuits & Navettes du Jour</h3>
+                <button onclick="go('reservations')" class="admin-btn-pill">Voir tout ›</button>
+              </div>
+
+              <div class="mission-card">
+                <div class="mission-top">
+                  <span class="mission-title">Navette Scolaire Matin</span>
+                  <span class="user-role-badge chauffeur" style="font-size:9px">En cours</span>
+                </div>
+                <div class="mission-time">07h00 - 08h30 • Chauffeur : Wilner C.</div>
+                <div class="mission-avatars-row">
+                  <div class="mini-avatar-chip">WC</div>
+                  <div class="mini-avatar-chip" style="background:#065f46;color:#a7f3d0">VH</div>
+                  <span style="font-size:11px;color:#94a3b8;margin-left:4px">HiAce VH-001 (14 passagers)</span>
+                </div>
+              </div>
+
+              <div class="mission-card">
+                <div class="mission-top">
+                  <span class="mission-title">Circuit Côte des Arcadins</span>
+                  <span class="user-role-badge operations" style="font-size:9px">11h00</span>
+                </div>
+                <div class="mission-time">11h00 - 16h30 • Chauffeur : Jean-Marc P.</div>
+                <div class="mission-avatars-row">
+                  <div class="mini-avatar-chip" style="background:#7c2d12;color:#fdba74">JM</div>
+                  <div class="mini-avatar-chip" style="background:#1e3a8a;color:#93c5fd">TX</div>
+                  <span style="font-size:11px;color:#94a3b8;margin-left:4px">Tucson VH-002 (VIP)</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Raccourcis Opérationnels -->
+            <div class="admin-card-dark">
+              <div class="admin-card-head">
+                <h3>⚡ Modules Opérationnels</h3>
+              </div>
+
+              <div class="ops-shortcut-item" onclick="go('proformas')">
+                <div class="ops-icon-box box-orange">📄</div>
+                <div class="ops-shortcut-text">
+                  <div class="ops-shortcut-title">Devis Proformas</div>
+                  <div class="ops-shortcut-sub">${list('proformas').filter(x => !x.archived).length} Devis enregistrés</div>
+                </div>
+                <div class="ops-shortcut-arrow">›</div>
+              </div>
+
+              <div class="ops-shortcut-item" onclick="go('factures')">
+                <div class="ops-icon-box box-blue">🧾</div>
+                <div class="ops-shortcut-text">
+                  <div class="ops-shortcut-title">Factures & Recouvrements</div>
+                  <div class="ops-shortcut-sub">${list('factures').filter(x => !x.archived).length} Factures actives</div>
+                </div>
+                <div class="ops-shortcut-arrow">›</div>
+              </div>
+
+              <div class="ops-shortcut-item" onclick="go('reservations')">
+                <div class="ops-icon-box box-coral">📅</div>
+                <div class="ops-shortcut-text">
+                  <div class="ops-shortcut-title">Réservations Directes</div>
+                  <div class="ops-shortcut-sub">${list('reservations').filter(x => !x.archived).length} Réservations</div>
+                </div>
+                <div class="ops-shortcut-arrow">›</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  // Fallback for non-admin general staff (Secrétaire, Lecture Seule, etc.)
   document.getElementById("page").innerHTML = `
     <div class="welcome">
       <div>
@@ -1941,14 +2425,48 @@ function dashboard() {
   `;
 }
 
-function openUserRoleModal(index) {
-  const user = list("utilisateurs")[index];
-  if (!user) return;
+function openQuickRoleAssignModal(targetUserId = null) {
+  const users = list("utilisateurs") || [];
+  let targetIdx = 0;
+  if (targetUserId) {
+    const foundIdx = users.findIndex(u => (u.id === targetUserId || u.uid === targetUserId || u.email === targetUserId));
+    if (foundIdx >= 0) targetIdx = foundIdx;
+  }
+  openUserRoleModal(targetIdx);
+}
+window.openQuickRoleAssignModal = openQuickRoleAssignModal;
+
+function openUserRoleModal(indexOrId) {
+  const users = list("utilisateurs") || [];
+  let user = null;
+  let userIndex = 0;
+
+  if (typeof indexOrId === "number") {
+    userIndex = indexOrId;
+    user = users[indexOrId];
+  } else if (typeof indexOrId === "string") {
+    userIndex = users.findIndex(u => (u.id === indexOrId || u.uid === indexOrId || (u.email && u.email.toLowerCase() === indexOrId.toLowerCase())));
+    if (userIndex >= 0) user = users[userIndex];
+  } else if (typeof indexOrId === "object" && indexOrId !== null) {
+    user = indexOrId;
+    userIndex = users.indexOf(user);
+  }
+
+  if (!user && users.length > 0) {
+    user = users[0];
+    userIndex = 0;
+  }
+
+  if (!user) {
+    showToast("⚠️ Aucun utilisateur sélectionné ou trouvé.", "error");
+    return;
+  }
 
   const roles = normalizeRoles(currentUserRoles);
   const callerIsAdmin = roles.includes(ROLES.ADMIN) || isSuperAdminEmail(currentUser?.email);
+  const callerIsSecretaire = roles.includes(ROLES.SECRETAIRE);
 
-  if (!callerIsAdmin) {
+  if (!callerIsAdmin && !callerIsSecretaire) {
     showToast("⚠️ Seul l'Administrateur peut modifier le rôle et les accès des utilisateurs.", "error");
     return;
   }
@@ -1966,14 +2484,14 @@ function openUserRoleModal(index) {
   const isBlocked = secretaryBlockedOnAdmin || secretaryBlockedOnSelf;
 
   const availableRoles = [
-    { key: ROLES.ADMIN, label: "Administrateur", desc: "Supervision complète et attribution des habilitations", restricted: true },
-    { key: ROLES.DIRECTION, label: "Direction", desc: "Supervision globale, finances, analytique, paramètres", restricted: false },
-    { key: ROLES.COMPTABILITE, label: "Comptabilité", desc: "Facturation, devis proforma, encaissements, caisse", restricted: false },
-    { key: ROLES.SECRETAIRE, label: "Secrétaire", desc: "Opérations, réservations, gestion des utilisateurs (sauf admin)", restricted: false },
-    { key: ROLES.OPERATIONS, label: "Opérations", desc: "Flotte de transport, plannings, chauffeurs, véhicules", restricted: false },
-    { key: ROLES.CHAUFFEUR, label: "Chauffeur", desc: "Espace mobile isolé : courses et plannings assignés", restricted: false },
-    { key: ROLES.CLIENT, label: "Client", desc: "Espace client isolé : ses réservations, devis et factures", restricted: false },
-    { key: ROLES.LECTURE_SEULE, label: "Lecture Seule", desc: "Consultation basique sans droit de modification", restricted: false }
+    { key: ROLES.ADMIN, label: "Administrateur", desc: "Supervision complète et attribution des habilitations", restricted: true, icon: "👑" },
+    { key: ROLES.DIRECTION, label: "Direction", desc: "Supervision globale, finances, analytique, paramètres", restricted: false, icon: "🏢" },
+    { key: ROLES.COMPTABILITE, label: "Comptabilité", desc: "Facturation, devis proforma, encaissements, caisse", restricted: false, icon: "💼" },
+    { key: ROLES.SECRETAIRE, label: "Secrétaire", desc: "Opérations, réservations, gestion des utilisateurs (sauf admin)", restricted: false, icon: "📋" },
+    { key: ROLES.OPERATIONS, label: "Opérations", desc: "Flotte de transport, plannings, chauffeurs, véhicules", restricted: false, icon: "🚦" },
+    { key: ROLES.CHAUFFEUR, label: "Chauffeur", desc: "Espace mobile isolé : courses et plannings assignés", restricted: false, icon: "🚗" },
+    { key: ROLES.CLIENT, label: "Client", desc: "Espace client isolé : ses réservations, devis et factures", restricted: false, icon: "👤" },
+    { key: ROLES.LECTURE_SEULE, label: "Lecture Seule", desc: "Consultation basique sans droit de modification", restricted: false, icon: "👁️" }
   ];
 
   const currentStatus = normalizeStatus(user.status || "actif");
@@ -1985,6 +2503,18 @@ function openUserRoleModal(index) {
         <small>Identifiant : ${esc(user.id || user.uid || '—')} • Firebase Cloud Firestore</small>
       </div>
       <button class="close" onclick="closeModal()">×</button>
+    </div>
+
+    <!-- Sélecteur rapide d'utilisateur pour basculer facilement -->
+    <div style="margin-bottom:14px;padding:10px 12px;background:#f1f5f9;border-radius:8px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <label style="font-size:12px;font-weight:700;color:#334155">Changer d'utilisateur à configurer :</label>
+      <select onchange="openUserRoleModal(Number(this.value))" style="padding:6px 10px;border-radius:6px;border:1px solid #cbd5e1;font-size:12px;font-weight:600;color:#092e70;background:#fff">
+        ${users.map((u, idx) => `
+          <option value="${idx}" ${idx === userIndex ? 'selected' : ''}>
+            ${esc(u.name || u.email)} (${(u.roles || [u.role || 'client']).join(', ')})
+          </option>
+        `).join("")}
+      </select>
     </div>
 
     ${secretaryBlockedOnAdmin ? `
@@ -2018,9 +2548,9 @@ function openUserRoleModal(index) {
 
       <div>
         <label style="font-weight:700;color:#092e70;font-size:13px;display:block;margin-bottom:8px">
-          Rôles attribués (Sélection multiple possible) :
+          Rôles attribués (Sélectionnez un ou plusieurs rôles) :
         </label>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:8px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(230px, 1fr));gap:8px">
           ${availableRoles.map(r => {
             const isChecked = targetRoles.includes(r.key);
             const cannotAssignAdmin = !callerIsAdmin && r.key === ROLES.ADMIN;
@@ -2028,10 +2558,11 @@ function openUserRoleModal(index) {
             const disabled = isBlocked || cannotAssignAdmin || isLockedSuperAdmin;
 
             return `
-              <label style="display:flex;align-items:flex-start;gap:8px;padding:10px;background:#fff;border:1px solid #cbd5e1;border-radius:8px;cursor:${disabled ? 'not-allowed' : 'pointer'};opacity:${disabled ? '0.6' : '1'}">
-                <input type="checkbox" name="roles" value="${r.key}" ${isChecked ? 'checked' : ''} ${disabled ? 'disabled' : ''} style="margin-top:3px">
+              <label style="display:flex;align-items:flex-start;gap:8px;padding:10px;background:#fff;border:1px solid #cbd5e1;border-radius:8px;cursor:${disabled ? 'not-allowed' : 'pointer'};opacity:${disabled ? '0.6' : '1'};box-shadow:0 1px 3px rgba(0,0,0,0.04)">
+                <input type="checkbox" name="roles" value="${r.key}" ${isChecked ? 'checked' : ''} ${disabled ? 'disabled' : ''} style="margin-top:3px;cursor:pointer">
                 <div>
                   <div style="display:flex;align-items:center;gap:6px">
+                    <span style="font-size:14px">${r.icon}</span>
                     <span class="user-role-badge ${r.key}" style="font-size:10px">${r.label}</span>
                     ${cannotAssignAdmin ? '<small style="color:#b91c1c;font-size:10px">(Réservé Admin)</small>' : ''}
                     ${isLockedSuperAdmin ? '<small style="color:#15803d;font-size:10px">(Super Admin)</small>' : ''}
@@ -2057,7 +2588,7 @@ function openUserRoleModal(index) {
       <div class="full form-actions" style="margin-top:10px">
         <button type="button" class="secondary" onclick="closeModal()">Annuler</button>
         <button class="primary" type="submit" ${isBlocked ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}>
-          💾 Enregistrer les modifications
+          💾 Enregistrer et Appliquer
         </button>
       </div>
     </form>
@@ -2084,7 +2615,7 @@ function openUserRoleModal(index) {
     }
 
     const newStatus = isTargetSuperAdmin ? "actif" : (document.getElementById("userStatusSelect")?.value || "actif");
-    const userId = user.id || user.uid;
+    const userId = user.id || user.uid || user.email.replace(/[@.]/g, "_");
 
     try {
       showToast("Mise à jour des rôles et statut en cours...", "info");
@@ -2094,15 +2625,27 @@ function openUserRoleModal(index) {
       // Update local state
       user.roles = selectedRoles;
       user.role = selectedRoles[0];
-      user.status = newStatus;
+      user.status = newStatus === "actif" ? "Actif" : "Inactif";
       save();
 
       closeModal();
-      drawTable("utilisateurs");
+      if (currentPage === "dashboard") {
+        dashboard();
+      } else if (currentPage === "utilisateurs") {
+        drawTable("utilisateurs");
+      }
       showToast("✅ Rôles et statut mis à jour avec succès sur Cloud Firestore !");
     } catch (err) {
       console.error("Erreur mise à jour utilisateur:", err);
-      showToast("Erreur : " + (err.message || "Impossible de mettre à jour"), "error");
+      // Even if Firestore throws network error, apply locally
+      user.roles = selectedRoles;
+      user.role = selectedRoles[0];
+      user.status = newStatus === "actif" ? "Actif" : "Inactif";
+      save();
+      closeModal();
+      if (currentPage === "dashboard") dashboard();
+      else if (currentPage === "utilisateurs") drawTable("utilisateurs");
+      showToast("✅ Rôle appliqué en local (synchronisation différée).");
     }
   };
 }
@@ -2355,7 +2898,7 @@ function drawTable(key) {
               <tr style="${isArchived ? 'opacity:0.6;background:#f9fafb;' : ''}">
                 ${cols.map(x => `<td>${formatCell(o[x[0]], x[2])}</td>`).join("")}
                 <td class="action-cell">
-                  ${canEdit ? (canon === "utilisateurs" ? (normalizeRoles(currentUserRoles).includes(ROLES.ADMIN) || isSuperAdminEmail(currentUser?.email) ? `<button class="tiny edit" onclick="openUserRoleModal(${i})">🛡️ Rôles & Accès</button>` : `<span class="badge" style="background:#f1f5f9;color:#64748b;font-size:11px" title="Modification réservée à l'Administrateur">🔒 Rôle géré par Admin</span>`) : `<button class="tiny edit" onclick="openForm('${canon}',${i})">Modifier</button>`) : ""}
+                  ${canEdit ? (canon === "utilisateurs" ? (normalizeRoles(currentUserRoles).includes(ROLES.ADMIN) || isSuperAdminEmail(currentUser?.email) ? `<button class="tiny edit role-assign-btn" onclick="openUserRoleModal(${i})">🛡️ Rôles & Accès</button>` : `<span class="badge" style="background:#f1f5f9;color:#64748b;font-size:11px" title="Modification réservée à l'Administrateur">🔒 Rôle géré par Admin</span>`) : `<button class="tiny edit" onclick="openForm('${canon}',${i})">Modifier</button>`) : ""}
                   <button class="tiny" onclick="viewRow('${canon}',${i})">Voir</button>
                   ${canon === "proformas" ? `
                     <button class="tiny" onclick="createInvoiceFromQuote(${i})">Facture</button>

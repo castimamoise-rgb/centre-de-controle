@@ -21,7 +21,7 @@ import {
 export const firebaseConfig = {
   projectId: "pragmatic-port-83bk6",
   appId: "1:521694060859:web:ae2b6f370b00671486d71e",
-  apiKey: "AQ.Ab8RN6LpG9mdijU4phHcIN2Rm4NLokTWh_7zQOxv-moS2Z4qNg",
+  apiKey: "AIzaSyA5bY7uu74D7RyOcq-LnqFO84ggIVQXRfs",
   authDomain: "pragmatic-port-83bk6.firebaseapp.com",
   firestoreDatabaseId: "ai-studio-centredecontrole-21d992ae-a8b2-4e21-be4f-d17f771ab5bf",
   storageBucket: "pragmatic-port-83bk6.firebasestorage.app",
