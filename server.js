@@ -8,6 +8,8 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = 3000;
 
+app.use(express.json());
+
 // Health check endpoint for dev-server readiness checks
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', app: 'Centre de Contrôle Laperle' });

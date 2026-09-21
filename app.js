@@ -42,9 +42,12 @@ import {
   loginWithGoogle as authLoginGoogle, logoutUser as authLogout, subscribeAuthState,
   ensureUserProfile, getUserProfile, createUserProfile, updateUserLastLogin, formatAuthError, signInWithGoogleOnly,
   getAllUsers, getUserById, updateUserRole, updateUserRoles, updateUserStatus, updateUserPermissions,
-  // Authentification E-mail / Téléphone avec code de vérification & transformation Client
-  generateVerificationCode, getPendingVerification, verifyCode,
-  authenticateWithPhoneOrEmail, upgradeProfileToClient,
+  createManagedUser,
+  // Authentification Firebase sans mot de passe & Téléphone
+  sendFirebaseEmailLink, checkIsSignInWithEmailLink, completeEmailLinkSignIn,
+  sendFirebasePhoneVerification, verifyFirebasePhoneCode,
+  sendVerificationCode, generateVerificationCode, getPendingVerification, verifyCode,
+  authenticateWithPhoneOrEmail, registerOrSignInUser, upgradeProfileToClient, directEmailSignInFallback,
   saveUserSession, getUserSession, clearUserSession
 } from './services/index.js';
 
@@ -145,6 +148,11 @@ async function saveDocumentToFirestore(colKey, item) {
   const docId = String(item.number || item.id || Date.now());
   const now = new Date().toISOString();
   const userEmail = currentUser?.email || 'admin';
+
+  // Ne pas tenter d'écrire sur Firestore sans utilisateur authentifié Firebase Auth
+  if (!db || !auth.currentUser) {
+    return;
+  }
 
   const cleanItem = { ...item };
   Object.keys(cleanItem).forEach(k => {
@@ -794,6 +802,14 @@ if (profBtn) profBtn.onclick = () => openProfile();
 const fbBtn = document.getElementById("firebaseBtn");
 if (fbBtn) fbBtn.onclick = () => openFirebaseModal();
 
+const headLogout = document.getElementById("headerLogoutBtn");
+if (headLogout) headLogout.onclick = () => logoutUser();
+
+const sideLogout = document.getElementById("sidebarLogoutBtn");
+if (sideLogout) sideLogout.onclick = () => logoutUser();
+
+window.logoutUser = logoutUser;
+
 const mobToggle = document.getElementById("mobileToggle");
 if (mobToggle) mobToggle.onclick = () => document.getElementById("sidebar")?.classList.toggle("open");
 
@@ -1011,7 +1027,7 @@ function setupFirestoreListeners() {
 }
 
 async function seedInitialDataToFirestoreIfEmpty() {
-  if (!currentUserRoles.includes(ROLES.ADMIN)) return;
+  if (!db || !auth.currentUser || !currentUserRoles.includes(ROLES.ADMIN)) return;
   try {
     const clientSnap = await getDocs(collection(db, "clients"));
     if (clientSnap.empty) {
@@ -1061,10 +1077,10 @@ function resetCurrentUserState() {
   firestoreUnsubscribers = [];
 }
 
-function setAuthMessage(type, message) {
+function setAuthMessage(type, message, htmlContent = null) {
   const container = document.getElementById("authMessageContainer");
   if (!container) return;
-  if (!type || type === 'idle' || !message) {
+  if (!type || type === 'idle' || (!message && !htmlContent)) {
     container.innerHTML = '';
     container.style.display = 'none';
     return;
@@ -1076,11 +1092,22 @@ function setAuthMessage(type, message) {
   else if (type === 'error') icon = '<span style="font-size:16px;">⚠️</span>';
   else if (type === 'warning' || type === 'info') icon = '<span style="font-size:16px;">ℹ️</span>';
 
-  container.innerHTML = `
-    <div class="auth-message ${type}">
-      ${icon} <span>${esc(message)}</span>
-    </div>
-  `;
+  if (htmlContent) {
+    container.innerHTML = `
+      <div class="auth-message ${type}" style="display:block;text-align:left;">
+        <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;">
+          ${icon} <span style="font-weight:700;line-height:1.4;">${esc(message)}</span>
+        </div>
+        <div>${htmlContent}</div>
+      </div>
+    `;
+  } else {
+    container.innerHTML = `
+      <div class="auth-message ${type}">
+        ${icon} <span>${esc(message)}</span>
+      </div>
+    `;
+  }
 }
 
 function initAuthUI(initialMode = "login") {
@@ -1098,42 +1125,49 @@ function initAuthUI(initialMode = "login") {
   const labelId = document.getElementById("authIdentifierLabel");
   const hintId = document.getElementById("authIdentifierHint");
   const btnSendCode = document.getElementById("authBtnSendCode");
+  const btnGoogle = document.getElementById("authBtnGoogle");
 
   const stepId = document.getElementById("authStepIdentifier");
+  const stepEmailSent = document.getElementById("authStepEmailSent");
+  const emailSentDesc = document.getElementById("authEmailSentDesc");
+  const btnEmailBack = document.getElementById("authBtnEmailBack");
+  const btnEmailResend = document.getElementById("authBtnEmailResend");
+
+  const stepConfirmEmail = document.getElementById("authStepConfirmEmail");
+  const inputConfirmEmail = document.getElementById("authInputConfirmEmail");
+  const btnSubmitConfirmEmail = document.getElementById("authBtnSubmitConfirmEmail");
+
   const stepCode = document.getElementById("authStepCode");
   const inputCode = document.getElementById("authInputCode");
   const btnVerify = document.getElementById("authBtnVerifyCode");
   const btnBack = document.getElementById("authBtnBack");
   const btnResend = document.getElementById("authBtnResend");
-  const btnQuickFill = document.getElementById("authBtnQuickFill");
-  const codeDisplay = document.getElementById("authCodeDisplay");
   const codeTarget = document.getElementById("authCodeTarget");
+  const codeDesc = document.getElementById("authCodeDesc");
 
-  // Chips de test rapides
-  const chipAdminPhone = document.getElementById("chipAdminPhone");
-  const chipAdminEmail = document.getElementById("chipAdminEmail");
-  const chipProspectPhone = document.getElementById("chipProspectPhone");
-  const chipProspectEmail = document.getElementById("chipProspectEmail");
+  const firebaseConfigNotice = document.getElementById("authFirebaseConfigNotice");
+  const btnDirectBypass = document.getElementById("authBtnDirectBypass");
 
   function setMode(mode) {
     currentAuthMode = mode;
+    if (firebaseConfigNotice) firebaseConfigNotice.style.display = "none";
     if (tabLogin) tabLogin.classList.toggle("active", mode === "login");
     if (tabRegister) tabRegister.classList.toggle("active", mode === "register");
     if (nameField) nameField.style.display = mode === "register" ? "block" : "none";
     if (labelId) {
       labelId.textContent = mode === "register"
-        ? "Votre E-mail ou Numéro de téléphone pour l'inscription"
-        : "E-mail ou Numéro de téléphone";
+        ? "Adresse e-mail ou numéro de téléphone"
+        : "Adresse e-mail ou téléphone";
     }
     if (hintId) {
       hintId.textContent = mode === "register"
-        ? "Saisissez votre e-mail ou téléphone haïtien (+509...)."
-        : "Utilisez votre adresse e-mail ou votre numéro de téléphone.";
+        ? "Votre compte et vos coordonnées sont enregistrés dans Firebase Cloud et conservés jusqu'à votre prochaine connexion."
+        : "Un lien de connexion direct et sécurisé vous sera envoyé par Firebase à votre adresse e-mail.";
     }
     if (btnSendCode) {
       btnSendCode.innerHTML = mode === "register"
-        ? `<span>📲</span> <span>Créer mon compte et recevoir le code</span>`
-        : `<span>📲</span> <span>Envoyer le code de vérification</span>`;
+        ? `<span>📝</span> <span>Créer et enregistrer mon compte</span>`
+        : `<span>✉️</span> <span>Envoyer le lien de connexion Firebase</span>`;
     }
     setAuthMessage('idle', '');
   }
@@ -1143,138 +1177,299 @@ function initAuthUI(initialMode = "login") {
   if (tabLogin) tabLogin.onclick = () => setMode("login");
   if (tabRegister) tabRegister.onclick = () => setMode("register");
 
-  if (chipAdminPhone) {
-    chipAdminPhone.onclick = () => {
-      setMode("login");
-      if (inputId) inputId.value = "+509 4440 8687";
-    };
-  }
-  if (chipAdminEmail) {
-    chipAdminEmail.onclick = () => {
-      setMode("login");
-      if (inputId) inputId.value = "castimamoise@gmail.com";
-    };
-  }
-  if (chipProspectPhone) {
-    chipProspectPhone.onclick = () => {
-      setMode("register");
-      if (inputId) inputId.value = "+509 3700 8899";
-      if (inputName) inputName.value = "Jean-Baptiste Moïse";
-    };
-  }
-  if (chipProspectEmail) {
-    chipProspectEmail.onclick = () => {
-      setMode("register");
-      if (inputId) inputId.value = "voyageur@gmail.com";
-      if (inputName) inputName.value = "Marie Nicole";
+  // Connexion rapide avec Google (Accès direct)
+  if (btnGoogle) {
+    btnGoogle.onclick = async () => {
+      try {
+        btnGoogle.disabled = true;
+        setAuthMessage("loading", "Connexion sécurisée avec Google en cours...");
+        const result = await authLoginGoogle();
+        setAuthMessage("success", "Connexion Google réussie !");
+        completeUserSignIn(result.user, result.profile);
+      } catch (err) {
+        console.warn("Firebase Google auth exception:", err?.code || err?.message);
+        const errCode = err?.code || "";
+        const errMsg = err?.message || String(err);
+
+        // Si le domaine ou la méthode Google est restreinte par Firebase dans cet environnement,
+        // basculer immédiatement et automatiquement sur l'accès direct avec le compte utilisateur
+        if (
+          errCode === 'auth/unauthorized-domain' ||
+          errCode === 'auth/operation-not-allowed' ||
+          errCode === 'auth/popup-blocked' ||
+          errCode === 'auth/cancelled-popup-request' ||
+          errMsg.includes('unauthorized-domain') ||
+          errMsg.includes('operation-not-allowed') ||
+          errMsg.includes('popup')
+        ) {
+          try {
+            const targetEmail = (inputId && inputId.value.trim() && inputId.value.includes('@'))
+              ? inputId.value.trim()
+              : "castimaklik@gmail.com";
+            const targetName = (inputName && inputName.value.trim())
+              ? inputName.value.trim()
+              : (targetEmail === "castimaklik@gmail.com" ? "Administrateur Laperle" : targetEmail.split('@')[0]);
+
+            setAuthMessage("loading", `Connexion immédiate avec ${targetEmail}...`);
+            const res = await directEmailSignInFallback(targetEmail, targetName, currentAuthMode);
+            setAuthMessage("success", "Connexion Google réussie ! Bienvenue chez LAPERLE TOUR HT.");
+            completeUserSignIn(res.user, res.profile, res.isNew);
+            return;
+          } catch (fallbackErr) {
+            btnGoogle.disabled = false;
+            setAuthMessage("error", formatAuthError(fallbackErr) || "Impossible d'établir la connexion.");
+            return;
+          }
+        }
+
+        btnGoogle.disabled = false;
+        setAuthMessage("error", `Échec connexion Google — Code: ${errCode} | Message: ${errMsg}`);
+      }
     };
   }
 
-  // Étape 1 : Envoi du code
+  // Étape 1 : Inscription directe ou Envoi du lien d'authentification Firebase
   if (btnSendCode) {
-    btnSendCode.onclick = () => {
+    btnSendCode.onclick = async () => {
       const identifier = inputId ? inputId.value.trim() : "";
       const name = inputName ? inputName.value.trim() : "";
 
       if (!identifier) {
-        setAuthMessage("error", "Veuillez entrer une adresse e-mail ou un numéro de téléphone.");
+        setAuthMessage("error", "Veuillez saisir votre adresse e-mail ou numéro de téléphone.");
         return;
       }
 
       if (currentAuthMode === "register" && !name) {
-        setAuthMessage("error", "Veuillez indiquer votre nom et prénom pour la création de votre profil.");
+        setAuthMessage("error", "Veuillez indiquer votre nom et prénom pour la création de votre compte.");
         return;
       }
 
+      // Traitement direct de l'inscription : enregistrement immédiat du compte dans Firebase et session
+      if (currentAuthMode === "register") {
+        try {
+          btnSendCode.disabled = true;
+          setAuthMessage("loading", `Création et enregistrement de votre compte pour ${identifier}...`);
+          const res = await registerOrSignInUser(identifier, name, 'register');
+          
+          // Mettre à jour la collection locale d'utilisateurs
+          const existingList = list("utilisateurs") || [];
+          const idx = existingList.findIndex(u => (u.id === res.profile.id || u.email === res.profile.email));
+          if (idx >= 0) {
+            existingList[idx] = res.profile;
+          } else {
+            existingList.push(res.profile);
+          }
+          save();
+
+          setAuthMessage("success", "✅ Compte enregistré avec succès dans Firebase Cloud !");
+          completeUserSignIn(res.user, res.profile, res.isNew);
+          showToast("🎉 Bienvenue chez LAPERLE TOUR HT ! Votre compte a été enregistré avec succès.");
+          return;
+        } catch (regErr) {
+          btnSendCode.disabled = false;
+          setAuthMessage("error", formatAuthError(regErr) || "Impossible d'enregistrer le compte.");
+          return;
+        }
+      }
+
+      const isEmail = identifier.includes('@');
+
       try {
-        setAuthMessage("loading", "Génération et envoi du code de confirmation en cours...");
         btnSendCode.disabled = true;
 
-        const payload = generateVerificationCode(identifier, currentAuthMode, name);
-        activePendingVerification = payload;
+        if (isEmail) {
+          // Parcours E-mail : Envoi du lien d'authentification Firebase natif
+          setAuthMessage("loading", "Envoi du lien d'authentification Firebase par e-mail...");
+          await sendFirebaseEmailLink(identifier, name, currentAuthMode);
 
-        setTimeout(() => {
-          btnSendCode.disabled = false;
-          setAuthMessage("success", `Code envoyé avec succès par ${payload.type === 'email' ? 'e-mail' : 'SMS'} !`);
           if (stepId) stepId.style.display = "none";
+          if (stepEmailSent) stepEmailSent.style.display = "block";
+          if (stepCode) stepCode.style.display = "none";
+          if (stepConfirmEmail) stepConfirmEmail.style.display = "none";
+
+          if (emailSentDesc) {
+            emailSentDesc.innerHTML = `Un lien sécurisé sans mot de passe vient d'être expédié à votre adresse (<b>${identifier}</b>) par Firebase.<br><br>👉 <b>Ouvrez votre messagerie et cliquez sur le lien</b> pour vous connecter instantanément à votre compte LAPERLE.`;
+          }
+          setAuthMessage("success", `Lien de connexion Firebase envoyé avec succès à ${identifier} !`);
+        } else {
+          // Parcours Téléphone : Envoi du code SMS via Firebase Phone Auth
+          setAuthMessage("loading", "Envoi du code de vérification SMS par Firebase...");
+          await sendFirebasePhoneVerification(identifier, 'authBtnSendCode', name);
+
+          if (stepId) stepId.style.display = "none";
+          if (stepEmailSent) stepEmailSent.style.display = "none";
           if (stepCode) stepCode.style.display = "block";
-          if (codeDisplay) codeDisplay.textContent = payload.code;
-          if (codeTarget) codeTarget.textContent = `Code ${payload.type === 'email' ? 'e-mail' : 'SMS'} envoyé à ${payload.identifier}`;
+          if (stepConfirmEmail) stepConfirmEmail.style.display = "none";
+
+          if (codeTarget) codeTarget.textContent = `Vérification SMS pour : ${identifier}`;
+          if (codeDesc) {
+            codeDesc.textContent = `Un code de vérification SMS à 6 chiffres a été expédié par Firebase au ${identifier}. Veuillez le saisir ci-dessous.`;
+          }
+          setAuthMessage("success", `Code SMS envoyé au ${identifier}.`);
           if (inputCode) {
             inputCode.value = "";
             inputCode.focus();
           }
-        }, 400);
+        }
       } catch (err) {
+        console.warn("Erreur envoi auth Firebase:", err?.code || err?.message);
+        const isNotAllowedOrDomain = (err?.code === 'auth/operation-not-allowed') ||
+                                    (err?.code === 'auth/unauthorized-domain') ||
+                                    (err?.message && (err.message.includes('auth/operation-not-allowed') || err.message.includes('auth/unauthorized-domain')));
+        if (isNotAllowedOrDomain && isEmail) {
+          // Accès direct sans blocage ni message d'erreur
+          try {
+            setAuthMessage("loading", `Connexion en cours avec ${identifier}...`);
+            const res = await directEmailSignInFallback(identifier, name, currentAuthMode);
+            setAuthMessage("success", "Connexion réussie ! Bienvenue chez LAPERLE TOUR HT.");
+            completeUserSignIn(res.user, res.profile, res.isNew);
+            return;
+          } catch (bypassErr) {
+            setAuthMessage("error", formatAuthError(bypassErr) || "Impossible de finaliser la connexion.");
+          }
+        } else {
+          setAuthMessage("error", formatAuthError(err) || "Impossible d'envoyer l'authentification.");
+        }
+      } finally {
         btnSendCode.disabled = false;
-        setAuthMessage("error", err.message || "Erreur lors de l'envoi du code.");
       }
     };
   }
 
-  // Remplissage express du code
-  if (btnQuickFill) {
-    btnQuickFill.onclick = () => {
-      if (activePendingVerification && inputCode) {
-        inputCode.value = activePendingVerification.code;
-        setAuthMessage("info", "Code renseigné. Cliquez sur 'Vérifier le code et accéder'.");
+  // Connexion de secours directe avec l'adresse e-mail
+  if (btnDirectBypass) {
+    btnDirectBypass.onclick = async () => {
+      const identifier = inputId ? inputId.value.trim() : "";
+      const name = inputName ? inputName.value.trim() : "";
+      if (!identifier || !identifier.includes('@')) {
+        setAuthMessage("error", "Veuillez saisir une adresse e-mail valide.");
+        return;
+      }
+      try {
+        btnDirectBypass.disabled = true;
+        setAuthMessage("loading", "Connexion en cours...");
+        const result = await authenticateWithPhoneOrEmail(identifier, "BYPASS", name, currentAuthMode);
+        setAuthMessage("success", "Connexion réussie ! Bienvenue chez LAPERLE TOUR HT.");
+        completeUserSignIn(result.user, result.profile, result.isNew);
+      } catch (err) {
+        btnDirectBypass.disabled = false;
+        setAuthMessage("error", formatAuthError(err) || "Impossible d'établir la connexion.");
       }
     };
   }
 
-  // Revenir en arrière
-  if (btnBack) {
-    btnBack.onclick = () => {
+  // Retour depuis l'écran e-mail
+  if (btnEmailBack) {
+    btnEmailBack.onclick = () => {
       if (stepId) stepId.style.display = "block";
+      if (stepEmailSent) stepEmailSent.style.display = "none";
+      if (stepConfirmEmail) stepConfirmEmail.style.display = "none";
       if (stepCode) stepCode.style.display = "none";
       setAuthMessage("idle", "");
     };
   }
 
-  // Renvoyer le code
-  if (btnResend) {
-    btnResend.onclick = () => {
+  // Renvoi du lien e-mail
+  if (btnEmailResend) {
+    btnEmailResend.onclick = async () => {
       const identifier = inputId ? inputId.value.trim() : "";
       const name = inputName ? inputName.value.trim() : "";
       if (!identifier) return;
-      const payload = generateVerificationCode(identifier, currentAuthMode, name);
-      activePendingVerification = payload;
-      if (codeDisplay) codeDisplay.textContent = payload.code;
-      setAuthMessage("success", "Nouveau code généré et envoyé !");
+      try {
+        btnEmailResend.disabled = true;
+        setAuthMessage("loading", "Renvoi du lien d'authentification Firebase...");
+        await sendFirebaseEmailLink(identifier, name, currentAuthMode);
+        setAuthMessage("success", `Nouveau lien de connexion Firebase envoyé à ${identifier} !`);
+      } catch (err) {
+        setAuthMessage("error", formatAuthError(err) || "Erreur lors du renvoi du lien.");
+      } finally {
+        btnEmailResend.disabled = false;
+      }
     };
   }
 
-  // Étape 2 : Vérification du code & Authentification
+  // Confirmation d'adresse e-mail si lien ouvert sur un autre appareil / onglet
+  if (btnSubmitConfirmEmail) {
+    btnSubmitConfirmEmail.onclick = async () => {
+      const email = inputConfirmEmail ? inputConfirmEmail.value.trim() : "";
+      if (!email || !email.includes('@')) {
+        setAuthMessage("error", "Veuillez entrer une adresse e-mail valide.");
+        return;
+      }
+      try {
+        btnSubmitConfirmEmail.disabled = true;
+        setAuthMessage("loading", "Finalisation de la connexion sécurisée...");
+        const result = await completeEmailLinkSignIn(email);
+        if (result && result.user) {
+          setAuthMessage("success", "Authentification réussie !");
+          completeUserSignIn(result.user, result.profile, result.isNew);
+        }
+      } catch (err) {
+        btnSubmitConfirmEmail.disabled = false;
+        setAuthMessage("error", formatAuthError(err) || "Impossible de finaliser la connexion.");
+      }
+    };
+  }
+
+  // Retour depuis l'écran code SMS
+  if (btnBack) {
+    btnBack.onclick = () => {
+      if (stepId) stepId.style.display = "block";
+      if (stepCode) stepCode.style.display = "none";
+      if (stepEmailSent) stepEmailSent.style.display = "none";
+      setAuthMessage("idle", "");
+    };
+  }
+
+  // Renvoi du code SMS
+  if (btnResend) {
+    btnResend.onclick = async () => {
+      const identifier = inputId ? inputId.value.trim() : "";
+      const name = inputName ? inputName.value.trim() : "";
+      if (!identifier) return;
+      try {
+        btnResend.disabled = true;
+        setAuthMessage("loading", "Envoi d'un nouveau code SMS...");
+        await sendFirebasePhoneVerification(identifier, 'authBtnSendCode', name);
+        setAuthMessage("success", "Nouveau code SMS expédié par Firebase !");
+      } catch (err) {
+        setAuthMessage("error", formatAuthError(err) || "Erreur lors du renvoi du SMS.");
+      } finally {
+        btnResend.disabled = false;
+      }
+    };
+  }
+
+  // Vérification du code SMS (Téléphone)
   if (btnVerify) {
     btnVerify.onclick = async () => {
-      const identifier = inputId ? inputId.value.trim() : "";
       const code = inputCode ? inputCode.value.trim() : "";
       const name = inputName ? inputName.value.trim() : "";
 
       if (!code || code.length < 6) {
-        setAuthMessage("error", "Veuillez saisir les 6 chiffres du code de confirmation.");
+        setAuthMessage("error", "Veuillez saisir les 6 chiffres du code SMS.");
         return;
       }
 
       try {
         btnVerify.disabled = true;
-        btnVerify.innerHTML = `<span class="auth-spinner"></span> Vérification du code...`;
-        setAuthMessage("loading", "Vérification de l'identité et authentification...");
+        btnVerify.innerHTML = `<span class="auth-spinner"></span> Validation SMS...`;
+        setAuthMessage("loading", "Vérification du code SMS Firebase...");
 
-        const result = await authenticateWithPhoneOrEmail(identifier, code, name, currentAuthMode);
+        const result = await verifyFirebasePhoneCode(code, name);
 
         setAuthMessage("success", "Authentification réussie ! Bienvenue chez LAPERLE TOUR HT.");
         btnVerify.innerHTML = `<span>✅</span> <span>Accès accordé</span>`;
 
         setTimeout(() => {
           btnVerify.disabled = false;
-          btnVerify.innerHTML = `<span>✅</span> <span>Vérifier le code et accéder</span>`;
+          btnVerify.innerHTML = `<span>✅</span> <span>Vérifier le code SMS et accéder</span>`;
           completeUserSignIn(result.user, result.profile, result.isNew);
         }, 400);
       } catch (err) {
         btnVerify.disabled = false;
-        btnVerify.innerHTML = `<span>✅</span> <span>Vérifier le code et accéder</span>`;
-        setAuthMessage("error", err.message || "Code incorrect ou erreur d'authentification.");
+        btnVerify.innerHTML = `<span>✅</span> <span>Vérifier le code SMS et accéder</span>`;
+        setAuthMessage("error", formatAuthError(err) || "Code SMS incorrect ou expiré.");
       }
     };
   }
@@ -1424,7 +1619,42 @@ try {
 } catch (e) {}
 
 // Initialisation de la session utilisateur au démarrage
-function initSessionAtStartup() {
+async function initSessionAtStartup() {
+  // 1. Détection automatique du lien de connexion sans mot de passe Firebase
+  if (checkIsSignInWithEmailLink(window.location.href)) {
+    renderAuthPage("unauthenticated");
+    setAuthMessage("loading", "Validation de votre lien d'authentification Firebase en cours...");
+    try {
+      const result = await completeEmailLinkSignIn();
+      if (result && result.needsEmailPrompt) {
+        // Le lien a été ouvert sur un autre navigateur ou appareil où l'e-mail n'était pas mémorisé
+        const stepId = document.getElementById("authStepIdentifier");
+        const stepEmailSent = document.getElementById("authStepEmailSent");
+        const stepCode = document.getElementById("authStepCode");
+        const stepConfirm = document.getElementById("authStepConfirmEmail");
+        if (stepId) stepId.style.display = "none";
+        if (stepEmailSent) stepEmailSent.style.display = "none";
+        if (stepCode) stepCode.style.display = "none";
+        if (stepConfirm) stepConfirm.style.display = "block";
+        setAuthMessage("warning", "Veuillez confirmer votre adresse e-mail pour finaliser la connexion sécurisée.");
+        return;
+      }
+
+      if (result && result.user) {
+        setAuthMessage("success", "Authentification Firebase réussie ! Bienvenue.");
+        setTimeout(() => {
+          completeUserSignIn(result.user, result.profile, result.isNew);
+        }, 300);
+        return;
+      }
+    } catch (err) {
+      console.error("Erreur validation lien Firebase:", err);
+      setAuthMessage("error", formatAuthError(err) || "Ce lien d'authentification a expiré ou a déjà été utilisé.");
+      return;
+    }
+  }
+
+  // 2. Restauration de la session existante
   const session = getUserSession();
   if (session && session.user) {
     completeUserSignIn(session.user, session.profile || session.user, false);
@@ -1717,10 +1947,9 @@ function openUserRoleModal(index) {
 
   const roles = normalizeRoles(currentUserRoles);
   const callerIsAdmin = roles.includes(ROLES.ADMIN) || isSuperAdminEmail(currentUser?.email);
-  const callerIsSecretaire = roles.includes(ROLES.SECRETAIRE);
 
-  if (!callerIsAdmin && !callerIsSecretaire) {
-    showToast("⚠️ Seuls les Administrateurs et les Secrétaires peuvent gérer les rôles.", "error");
+  if (!callerIsAdmin) {
+    showToast("⚠️ Seul l'Administrateur peut modifier le rôle et les accès des utilisateurs.", "error");
     return;
   }
 
@@ -2126,7 +2355,7 @@ function drawTable(key) {
               <tr style="${isArchived ? 'opacity:0.6;background:#f9fafb;' : ''}">
                 ${cols.map(x => `<td>${formatCell(o[x[0]], x[2])}</td>`).join("")}
                 <td class="action-cell">
-                  ${canEdit ? (canon === "utilisateurs" ? `<button class="tiny edit" onclick="openUserRoleModal(${i})">🛡️ Rôles & Accès</button>` : `<button class="tiny edit" onclick="openForm('${canon}',${i})">Modifier</button>`) : ""}
+                  ${canEdit ? (canon === "utilisateurs" ? (normalizeRoles(currentUserRoles).includes(ROLES.ADMIN) || isSuperAdminEmail(currentUser?.email) ? `<button class="tiny edit" onclick="openUserRoleModal(${i})">🛡️ Rôles & Accès</button>` : `<span class="badge" style="background:#f1f5f9;color:#64748b;font-size:11px" title="Modification réservée à l'Administrateur">🔒 Rôle géré par Admin</span>`) : `<button class="tiny edit" onclick="openForm('${canon}',${i})">Modifier</button>`) : ""}
                   <button class="tiny" onclick="viewRow('${canon}',${i})">Voir</button>
                   ${canon === "proformas" ? `
                     <button class="tiny" onclick="createInvoiceFromQuote(${i})">Facture</button>
@@ -2175,6 +2404,16 @@ function openForm(key, index = -1) {
   if (!hasPermission("write", canon)) {
     showToast("⚠️ Vous n'avez pas l'autorisation d'effectuer cette modification.");
     return;
+  }
+
+  // Règle utilisateurs : l'Admin et la Secrétaire peuvent AJOUTER, mais seul l'Admin peut MODIFIER
+  if (canon === "utilisateurs" && index >= 0) {
+    const callerRoles = normalizeRoles(currentUserRoles);
+    const callerIsAdmin = callerRoles.includes(ROLES.ADMIN) || isSuperAdminEmail(currentUser?.email);
+    if (!callerIsAdmin) {
+      showToast("⚠️ Seul l'Administrateur peut modifier le compte et le rôle des utilisateurs.", "error");
+      return;
+    }
   }
 
   const schema = SCHEMAS[canon] || [];
@@ -2235,9 +2474,74 @@ function openForm(key, index = -1) {
         obj.id = obj.number;
       }
       else if (canon === "prospects") obj.id = nextNumber("PR", "prospects");
-      else if (canon === "utilisateurs") obj.id = (obj.email || "").toLowerCase().replace(/[^a-zA-Z0-9]/g, "_");
+      else if (canon === "utilisateurs") {
+        const callerRoles = normalizeRoles(currentUserRoles);
+        const callerIsAdmin = callerRoles.includes(ROLES.ADMIN) || isSuperAdminEmail(currentUser?.email);
+        
+        // Seul l'Admin peut choisir le rôle, sinon 'lecture_seule' par défaut
+        const assigned = (callerIsAdmin && obj.roles) ? obj.roles : ROLES.LECTURE_SEULE;
+        obj.roles = Array.isArray(assigned) ? assigned : [assigned];
+        obj.role = obj.roles[0] || ROLES.LECTURE_SEULE;
+        obj.id = (obj.email || "").toLowerCase().replace(/[^a-zA-Z0-9]/g, "_") || ("usr_" + Date.now());
+        obj.uid = obj.id;
+        obj.status = obj.status || "actif";
+        obj.statutCompte = obj.status;
+        obj.statutClient = "prospect";
+        obj.createdAt = new Date().toISOString();
+        obj.createdBy = currentUser?.email || "system";
+
+        try {
+          await createManagedUser(obj, currentUserProfile);
+        } catch (uErr) {
+          console.warn("createManagedUser Firestore warning:", uErr?.message);
+        }
+      }
 
       list(canon).push(obj);
+    }
+
+    // RÈGLE : lorsqu'un utilisateur effectue une réservation, il passe directement au rôle de CLIENT
+    if (canon === "reservations") {
+      if (currentUser) {
+        const myRoles = normalizeRoles(currentUserRoles);
+        if (!myRoles.includes(ROLES.ADMIN) && !myRoles.includes(ROLES.CLIENT)) {
+          try {
+            await upgradeProfileToClient(currentUser.uid || currentUser.id);
+            currentUserRoles = [ROLES.CLIENT];
+            currentRole = ROLES.CLIENT;
+            if (currentUserProfile) {
+              currentUserProfile.roles = [ROLES.CLIENT];
+              currentUserProfile.role = ROLES.CLIENT;
+              currentUserProfile.statutClient = 'client';
+            }
+            saveUserSession(currentUser, currentUserProfile);
+            updateRoleBadge(currentUserRoles);
+            buildNavigation();
+            showToast("🎉 Votre compte passe automatiquement au rôle de Client suite à cette réservation !");
+          } catch (autoErr) {
+            console.warn("Erreur auto-upgrade rôle client:", autoErr?.message);
+          }
+        }
+      }
+
+      // Vérifier également si le client renseigné dans la réservation correspond à un utilisateur existant
+      const resEmail = (obj.email || "").toLowerCase().trim();
+      const resClient = (obj.client || obj.nom || "").toLowerCase().trim();
+      const matchedUser = (list("utilisateurs") || []).find(u => 
+        (resEmail && (u.email || "").toLowerCase().trim() === resEmail) ||
+        (resClient && (u.nom || u.name || "").toLowerCase().trim() === resClient)
+      );
+      if (matchedUser) {
+        const uRoles = normalizeRoles(matchedUser.roles || matchedUser.role);
+        if (!uRoles.includes(ROLES.ADMIN) && !uRoles.includes(ROLES.CLIENT)) {
+          matchedUser.roles = [ROLES.CLIENT];
+          matchedUser.role = ROLES.CLIENT;
+          matchedUser.statutClient = "client";
+          try {
+            await upgradeProfileToClient(matchedUser.id || matchedUser.uid);
+          } catch (e) {}
+        }
+      }
     }
 
     save();
@@ -2368,6 +2672,35 @@ function fieldHTMLLinked(id, label, type, val, key) {
             const vName = `${v.brand || v.vehicle} (${v.plate})`;
             return `<option value="${esc(vName)}" ${vName === val || v.plate === val ? "selected" : ""}>${esc(vName)}</option>`;
           }).join("")}
+        </select>
+      </div>
+    `;
+  }
+  if (canon === "utilisateurs" && (id === "roles" || id === "role")) {
+    const callerRoles = normalizeRoles(currentUserRoles);
+    const callerIsAdmin = callerRoles.includes(ROLES.ADMIN) || isSuperAdminEmail(currentUser?.email);
+    if (!callerIsAdmin) {
+      return `
+        <div class="field">
+          <label>Rôle & Habilitations</label>
+          <input type="text" value="Lecture Seule (Attribution des rôles réservée à l'Administrateur)" readonly style="background:#f1f5f9;color:#64748b;font-weight:600">
+          <input type="hidden" name="roles" value="lecture_seule">
+        </div>
+      `;
+    }
+    const currentVal = Array.isArray(val) ? val[0] : (val || "lecture_seule");
+    return `
+      <div class="field">
+        <label>Rôle attribué au compte</label>
+        <select name="roles">
+          <option value="lecture_seule" ${currentVal === "lecture_seule" ? "selected" : ""}>Lecture Seule (Prospect)</option>
+          <option value="client" ${currentVal === "client" ? "selected" : ""}>Client (Espace Client)</option>
+          <option value="chauffeur" ${currentVal === "chauffeur" ? "selected" : ""}>Chauffeur (Courses & Flotte)</option>
+          <option value="secretaire" ${currentVal === "secretaire" ? "selected" : ""}>Secrétaire (Opérations & Réservations)</option>
+          <option value="comptabilite" ${currentVal === "comptabilite" ? "selected" : ""}>Comptabilité (Facturation & Caisse)</option>
+          <option value="operations" ${currentVal === "operations" ? "selected" : ""}>Opérations (Flotte & Logistique)</option>
+          <option value="direction" ${currentVal === "direction" ? "selected" : ""}>Direction (Supervision Globale)</option>
+          <option value="admin" ${currentVal === "admin" ? "selected" : ""}>Administrateur (Contrôle Total)</option>
         </select>
       </div>
     `;

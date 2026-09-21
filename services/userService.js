@@ -49,25 +49,77 @@ export async function getUserById(id) {
 }
 
 /**
- * Met à jour les rôles multiples d'un utilisateur (ADMIN ou SECRÉTAIRE)
- * Respecte les contraintes :
- * - SECRÉTAIRE ne peut jamais s'attribuer ADMIN ni attribuer ADMIN à quiconque.
- * - SECRÉTAIRE ne peut pas modifier un profil ADMIN.
+ * Permet à un Administrateur ou une Secrétaire d'ajouter un nouvel utilisateur.
+ * Règle stricte LAPERLE :
+ * - Si le créateur est ADMIN : il peut définir le rôle initial de l'utilisateur.
+ * - Si le créateur est SECRÉTAIRE : l'utilisateur créé aura obligatoirement le rôle LECTURE_SEULE
+ *   (car seul l'Administrateur peut attribuer ou modifier les rôles).
+ */
+export async function createManagedUser(userData, callerProfile = null) {
+  const callerRoles = normalizeRoles(callerProfile || auth.currentUser);
+  const callerEmail = callerProfile?.email || auth.currentUser?.email || '';
+  const callerIsAdmin = callerRoles.includes(ROLES.ADMIN) || isSuperAdminEmail(callerEmail);
+  const callerIsSecretaire = callerRoles.includes(ROLES.SECRETAIRE);
+
+  if (!callerIsAdmin && !callerIsSecretaire) {
+    throw new Error("Seuls les Administrateurs et les Secrétaires peuvent ajouter un utilisateur.");
+  }
+
+  const email = (userData.email || '').trim().toLowerCase();
+  const nom = (userData.name || userData.nom || (email ? email.split('@')[0] : 'Nouvel Utilisateur')).trim();
+  const phone = (userData.phone || userData.telephone || '').trim();
+  const cleanId = (userData.id || (email ? 'usr_' + email.replace(/[^a-zA-Z0-9]/g, '_') : 'usr_' + Date.now())).trim();
+
+  // Seul l'Administrateur peut choisir le rôle; sinon rôle Lecture Seule automatique
+  let assignedRoles = [ROLES.LECTURE_SEULE];
+  if (callerIsAdmin && userData.roles) {
+    assignedRoles = normalizeRoles(userData.roles);
+  }
+
+  const now = new Date().toISOString();
+  const newUser = {
+    id: cleanId,
+    uid: cleanId,
+    nom: nom,
+    name: nom,
+    email: email,
+    telephone: phone,
+    phone: phone,
+    roles: assignedRoles,
+    role: assignedRoles[0] || ROLES.LECTURE_SEULE,
+    status: userData.status || 'actif',
+    statutCompte: userData.status || 'actif',
+    statutClient: userData.statutClient || 'prospect',
+    createdAt: now,
+    updatedAt: now,
+    createdBy: callerEmail || 'system'
+  };
+
+  try {
+    await setDoc(doc(db, COLLECTION_NAME, cleanId), newUser);
+    return newUser;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, `${COLLECTION_NAME}/${cleanId}`);
+  }
+}
+
+/**
+ * Met à jour les rôles d'un utilisateur
+ * Règle stricte LAPERLE :
+ * - SEUL l'Administrateur peut changer le rôle d'un utilisateur.
  * - Le Super Admin (castimamoise@gmail.com) reste obligatoirement ADMIN.
  */
 export async function updateUserRoles(userId, newRolesInput, callerProfile = null) {
   const cleanRoles = normalizeRoles(newRolesInput);
-  const currentUserEmail = auth.currentUser?.email || 'admin';
-  const currentUid = auth.currentUser?.uid || '';
+  const currentUserEmail = auth.currentUser?.email || callerProfile?.email || 'admin';
   const now = new Date().toISOString();
 
   // Identifier les rôles de la personne qui effectue la modification
   const callerRoles = normalizeRoles(callerProfile || auth.currentUser);
   const callerIsAdmin = callerRoles.includes(ROLES.ADMIN) || isSuperAdminEmail(currentUserEmail);
-  const callerIsSecretaire = callerRoles.includes(ROLES.SECRETAIRE);
 
-  if (!callerIsAdmin && !callerIsSecretaire) {
-    throw new Error("Seul un Administrateur ou une Secrétaire peut gérer les rôles des utilisateurs.");
+  if (!callerIsAdmin) {
+    throw new Error("Seul l'Administrateur peut modifier le rôle des utilisateurs.");
   }
 
   // Récupérer le document utilisateur existant
@@ -77,25 +129,6 @@ export async function updateUserRoles(userId, newRolesInput, callerProfile = nul
   if (existing && existing.email && isSuperAdminEmail(existing.email)) {
     if (!cleanRoles.includes(ROLES.ADMIN)) {
       throw new Error("Impossible de rétrograder le compte Super Administrateur principal.");
-    }
-  }
-
-  // Contraintes pour la Secrétaire
-  if (!callerIsAdmin && callerIsSecretaire) {
-    // 1. Ne peut pas modifier son propre profil pour s'attribuer des privilèges
-    if (userId === currentUid) {
-      throw new Error("Une Secrétaire ne peut pas modifier ses propres rôles.");
-    }
-
-    // 2. Ne peut pas modifier un utilisateur qui est déjà Admin
-    const targetRoles = normalizeRoles(existing);
-    if (targetRoles.includes(ROLES.ADMIN)) {
-      throw new Error("Une Secrétaire ne peut pas modifier le compte d'un Administrateur.");
-    }
-
-    // 3. Ne peut jamais attribuer le rôle ADMIN
-    if (cleanRoles.includes(ROLES.ADMIN)) {
-      throw new Error("Seul un Administrateur peut attribuer le rôle Administrateur.");
     }
   }
 

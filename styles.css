@@ -1,7 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 :root{--navy:#082b70;--blue:#123c98;--blue2:#1769e0;--orange:#f7941d;--green:#35a853;--light:#f4f7fb;--border:#dfe6ef;--text:#102b61;--muted:#65758b;--red:#d93025;--shadow:0 2px 10px rgba(15,42,90,.08)}
-*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,Arial,sans-serif;background:var(--light);color:#172033}button,input,select,textarea{font:inherit}
-.app{min-height:100vh}.sidebar{position:fixed;left:0;top:0;bottom:0;width:250px;background:linear-gradient(180deg,#082b70 0%,#06306f 100%);color:white;z-index:20;display:flex;flex-direction:column;padding:12px;box-shadow:2px 0 16px rgba(4,20,48,.15)}.side-brand{height:114px;display:flex;align-items:center;justify-content:center;border-bottom:1px solid rgba(255,255,255,.14);flex-shrink:0}.side-brand img{width:160px;height:96px;object-fit:contain;border-radius:8px;background:white;padding:3px}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;min-height:100%;height:auto;overflow-x:hidden;overflow-y:auto;font-family:Inter,Arial,sans-serif;background:var(--light);color:#172033;-webkit-overflow-scrolling:touch}
+button,input,select,textarea{font:inherit}
+.app{min-height:100vh;display:flex;flex-direction:column}.sidebar{position:fixed;left:0;top:0;bottom:0;width:250px;background:linear-gradient(180deg,#082b70 0%,#06306f 100%);color:white;z-index:20;display:flex;flex-direction:column;padding:12px;box-shadow:2px 0 16px rgba(4,20,48,.15)}.side-brand{height:114px;display:flex;align-items:center;justify-content:center;border-bottom:1px solid rgba(255,255,255,.14);flex-shrink:0}.side-brand img{width:160px;height:96px;object-fit:contain;border-radius:8px;background:white;padding:3px}
 #mainNav{padding:8px 0;overflow-y:auto;flex:1;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.25) transparent}#mainNav::-webkit-scrollbar{width:4px}#mainNav::-webkit-scrollbar-thumb{background:rgba(255,255,255,.25);border-radius:4px}.nav-section-title{font-size:10px;font-weight:700;letter-spacing:1px;color:rgba(255,255,255,.5);text-transform:uppercase;padding:10px 10px 3px;display:block}.nav-item{width:100%;border:0;background:transparent;color:white;display:flex;align-items:center;gap:11px;padding:9px 12px;margin:2px 0;border-radius:8px;text-align:left;cursor:pointer;font-weight:500;font-size:13px;transition:background .15s ease}.nav-item:hover{background:rgba(255,255,255,.12);color:white}.nav-item.active{background:var(--orange);color:white;font-weight:700;box-shadow:0 2px 6px rgba(247,148,29,.35)}.nav-item .nav-icon{width:22px;text-align:center;font-size:16px}.nav-item .nav-badge{margin-left:auto;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:rgba(255,255,255,.2);color:#fff}.nav-item.active .nav-badge{background:rgba(0,0,0,.25);color:#fff}.nav-item .chev{margin-left:4px;opacity:.65;font-size:14px}.side-footer{margin-top:auto;text-align:center;padding:12px 5px 6px;border-top:1px solid rgba(255,255,255,.12);flex-shrink:0}.side-footer b{display:block;font-size:13px;letter-spacing:.3px}.side-footer span{display:block;font-size:12px;font-style:italic;color:#ffd285;margin-top:4px}.side-footer small{display:block;margin-top:8px;opacity:.65;font-size:10px}
 .main{margin-left:250px;min-height:100vh}.header{min-height:116px;background:white;display:flex;align-items:center;justify-content:space-between;padding:10px 28px;border-bottom:1px solid var(--border)}.header-brand{display:flex;align-items:center;gap:14px}.mini-logo{display:none}.mini-logo img{width:50px;height:50px;object-fit:contain;border-radius:8px}.header-title{font-weight:800;font-size:27px;letter-spacing:-.6px;color:#092e70}.header-title em{font-style:normal;color:var(--orange)}.header-subtitle{text-align:center;font-weight:800;font-size:18px;color:#092e70;margin-top:3px}.header-services{text-align:center;font-size:13px;color:#183467;margin-top:4px}.header-right{text-align:right}.top-icons{display:flex;justify-content:flex-end;gap:12px;align-items:center}.icon-btn,.user-btn{border:0;background:white;cursor:pointer;color:#122b59}.icon-btn{position:relative;font-size:18px}.icon-btn span{position:absolute;top:-7px;right:-9px;background:#e52e26;color:white;font-size:9px;border-radius:20px;min-width:16px;padding:2px 4px}.user-btn{display:flex;align-items:center;gap:7px;font-weight:600}.avatar{width:31px;height:31px;background:#0b377f;color:white;border-radius:50%;display:grid;place-items:center}.date-clock{font-size:11px;color:#21375e;margin-top:7px}.date-clock b{display:block}.date-clock strong{font-size:18px;color:#102b61}
 .hero-stripe{height:52px;background:linear-gradient(110deg,#07347d 0 18%,#0b4e9b 18% 19%,#fff 19% 81%,#0b4e9b 81% 82%,#07347d 82%);display:flex;align-items:center;gap:15px;padding:0 20px;color:#092e70}.hero-slogan{font-family:cursive;color:white;font-size:14px;margin-right:auto}.hero-pill{font-size:12px;font-weight:700;display:flex;gap:5px;align-items:center}.search-wrap{display:flex;background:white;border:1px solid #dbe2eb;border-radius:20px;overflow:hidden;width:255px}.search-wrap input{border:0;outline:0;padding:7px 12px;width:100%;font-size:12px}.search-wrap button{border:0;background:white;color:#0b4c9a;font-size:20px;cursor:pointer}
@@ -43,8 +45,8 @@
 .user-status-badge.inactif{background:#fdebea;color:#a82922;border:1px solid #f9c2be}
 
 /* Auth Page Container */
-.auth-page{min-height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 20%,#eaf1fd 0%,#f4f7fb 60%,#e6ecf7 100%);padding:20px;position:fixed;inset:0;z-index:9999}
-.auth-card{background:#ffffff;border:1px solid var(--border);border-radius:16px;box-shadow:0 12px 36px rgba(9,46,112,.12);width:min(440px,100%);padding:36px 28px;text-align:center}
+.auth-page{position:fixed;inset:0;z-index:9999;min-height:100vh;min-height:100dvh;background:radial-gradient(circle at 50% 20%,#eaf1fd 0%,#f4f7fb 60%,#e6ecf7 100%);padding:28px 16px;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;display:flex;justify-content:center;align-items:flex-start}
+.auth-card{background:#ffffff;border:1px solid var(--border);border-radius:16px;box-shadow:0 12px 36px rgba(9,46,112,.12);width:min(480px,100%);padding:32px 24px;text-align:center;margin:auto;box-sizing:border-box}
 .auth-logo{width:160px;height:95px;object-fit:contain;background:#fff;border-radius:10px;padding:4px;margin:0 auto 16px;display:block;border:1px solid #edf2f9}
 .auth-title{font-size:22px;font-weight:800;letter-spacing:-.4px;color:#092e70;margin:0}
 .auth-title em{font-style:normal;color:var(--orange)}
@@ -114,21 +116,15 @@
 .auth-btn-secondary { width: 100%; background: #f8fafc; color: #475569; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px; font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 10px; transition: background .15s; }
 .auth-btn-secondary:hover { background: #f1f5f9; color: #0f172a; }
 
-/* Simulation Code SMS / Email */
-.auth-code-card { background: #f8fafc; border: 1.5px dashed #092e70; border-radius: 12px; padding: 16px; margin: 16px 0; text-align: center; }
-.auth-code-badge { display: inline-flex; align-items: center; gap: 6px; background: #e0f2fe; color: #0369a1; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; margin-bottom: 8px; }
-.auth-code-display { font-size: 26px; font-weight: 900; letter-spacing: 6px; color: #092e70; font-family: monospace; margin: 6px 0; }
-.auth-code-hint { font-size: 11px; color: #64748b; margin-bottom: 10px; }
-.auth-quick-fill-btn { background: #ff7700; color: #fff; border: none; border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: 700; cursor: pointer; transition: background .15s; }
-.auth-quick-fill-btn:hover { background: #e06600; }
-
-/* Raccourcis de test rapide */
-.auth-test-helpers { margin-top: 20px; padding-top: 16px; border-top: 1px dashed #e2e8f0; text-align: left; }
-.auth-test-title { font-size: 11px; font-weight: 700; color: #64748b; margin-bottom: 8px; text-transform: uppercase; }
-.auth-chips-row { display: flex; flex-wrap: wrap; gap: 6px; }
-.auth-chip { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 5px 10px; font-size: 11px; color: #0f2942; cursor: pointer; transition: all .15s ease; }
-.auth-chip:hover { background: #e2e8f0; border-color: #cbd5e1; }
-.auth-chip.admin-chip { background: #fef3c7; border-color: #fde68a; color: #92400e; font-weight: 600; }
+/* Bannière d'envoi du code par e-mail */
+.auth-instruction-banner {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 16px 0;
+  text-align: center;
+}
 
 /* Styles Espace Lecture Seule et Réservation */
 .lecture-seule-wrapper { max-width: 800px; margin: 30px auto; padding: 0 16px; }
@@ -140,6 +136,48 @@
 .booking-field label { display: block; font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 5px; }
 .booking-field input, .booking-field select, .booking-field textarea { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; box-sizing: border-box; background: #fff; }
 .booking-confirm-banner { background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 12px; padding: 18px; color: #065f46; margin-bottom: 20px; animation: fadeIn .3s ease-in-out; }
+
+.logout-header-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.logout-header-btn:hover {
+  background: #fecaca;
+  border-color: #f87171;
+  color: #7f1d1d;
+}
+.sidebar-logout-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: rgba(239, 68, 68, 0.18);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  color: #fecaca;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.sidebar-logout-btn:hover {
+  background: rgba(239, 68, 68, 0.35);
+  border-color: #ef4444;
+  color: #ffffff;
+}
 
 
 

@@ -4,7 +4,12 @@ import {
   GoogleAuthProvider, 
   signInWithPopup, 
   signOut, 
-  onAuthStateChanged 
+  onAuthStateChanged,
+  sendSignInLinkToEmail,
+  isSignInWithEmailLink,
+  signInWithEmailLink,
+  RecaptchaVerifier,
+  signInWithPhoneNumber
 } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -23,6 +28,30 @@ import {
   serverTimestamp
 } from 'firebase/firestore';
 
+export {
+  sendSignInLinkToEmail,
+  isSignInWithEmailLink,
+  signInWithEmailLink,
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  collection,
+  query,
+  where,
+  orderBy,
+  onSnapshot,
+  getDocFromServer,
+  serverTimestamp
+};
+
 export const firebaseConfig = {
   projectId: "pragmatic-port-83bk6",
   appId: "1:521694060859:web:ae2b6f370b00671486d71e",
@@ -40,6 +69,7 @@ export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export const OperationType = {
   CREATE: 'create',
@@ -83,21 +113,3 @@ export async function testConnection() {
     return false;
   }
 }
-
-export { 
-  signInWithPopup, 
-  signOut, 
-  onAuthStateChanged, 
-  doc, 
-  getDoc, 
-  getDocs, 
-  setDoc, 
-  updateDoc,
-  deleteDoc, 
-  collection, 
-  query,
-  where,
-  orderBy,
-  onSnapshot,
-  serverTimestamp
-};
