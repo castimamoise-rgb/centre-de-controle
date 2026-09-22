@@ -878,7 +878,6 @@ export async function getUserProfile(uid, email) {
       }
     } catch (e) {
       console.warn("Erreur getDoc utilisateurs/{uid}:", e?.message);
-      if (e?.code === 'permission-denied') throw e;
     }
   }
 

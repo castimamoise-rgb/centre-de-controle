@@ -34,7 +34,8 @@ export const SUPER_ADMIN_EMAIL = 'castimamoise@gmail.com';
 export const SUPER_ADMIN_EMAILS = [
   'castimamoise@gmail.com',
   'castimaklik@gmail.com',
-  'laperletourht@gmail.com'
+  'laperletourht@gmail.com',
+  'aperletourht@gmail.com'
 ];
 export const SUPER_ADMIN_PHONES = [
   '+509 4440 8687',

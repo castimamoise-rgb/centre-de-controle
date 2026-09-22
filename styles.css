@@ -1602,6 +1602,318 @@ button,input,select,textarea{font:inherit}
   color: #64748b;
 }
 
+/* ==========================================================================
+   ADAPTATION MULTI-APPAREILS : MOBILES / SMARTPHONES, TABLETTES & PC
+   ========================================================================== */
+
+/* 1. Touch targets et fluidité générale pour tous supports */
+button, input, select, textarea, .nav-item, .tiny, .firebase-chip, .user-btn {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 2. Écrans PC et Grands Écrans (>= 1200px) */
+@media (min-width: 1200px) {
+  .page {
+    max-width: 1600px;
+    padding: 24px 30px 45px;
+  }
+  .dashboard-grid {
+    grid-template-columns: 1.15fr 1fr;
+    gap: 16px;
+  }
+  .kpis {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+  }
+}
+
+/* 3. Écrans Tablettes en Mode Paysage et Petits PC (992px à 1199px) */
+@media (max-width: 1199px) and (min-width: 769px) {
+  .sidebar {
+    width: 220px;
+  }
+  .main {
+    margin-left: 220px;
+  }
+  .header {
+    padding: 10px 18px;
+  }
+  .header-title {
+    font-size: 20px;
+  }
+  .header-subtitle {
+    font-size: 15px;
+  }
+  .kpis {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .bottom-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .auth-card-split {
+    width: 95%;
+  }
+}
+
+/* 4. Tablettes Portrait et Écrans Moyens (768px à 991px) */
+@media (max-width: 991px) {
+  .header-services {
+    display: none;
+  }
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .bottom-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .auth-card-split {
+    flex-direction: column;
+    width: 100%;
+    max-width: 580px;
+    min-height: auto;
+    border-radius: 20px;
+  }
+  .auth-brand-side {
+    padding: 26px 20px;
+    min-height: 220px;
+  }
+  .auth-brand-desc {
+    display: none;
+  }
+  .auth-form-side {
+    padding: 30px 24px;
+  }
+}
+
+.sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 20, 48, 0.55);
+  backdrop-filter: blur(2px);
+  z-index: 95;
+  transition: opacity 0.25s ease;
+}
+.sidebar-backdrop.open {
+  display: block;
+}
+
+/* 5. Smartphones & Mobiles (< 768px) */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    left: -270px;
+    top: 0;
+    bottom: 0;
+    width: 260px;
+    z-index: 100;
+    box-shadow: 4px 0 24px rgba(4, 20, 48, 0.4);
+    transition: left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .sidebar.open {
+    left: 0;
+  }
+  .main {
+    margin-left: 0 !important;
+    width: 100%;
+    min-width: 0;
+  }
+  .header {
+    padding: 8px 12px;
+    min-height: 64px;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  }
+  .header-brand {
+    gap: 8px;
+    max-width: 65%;
+  }
+  .header-brand > div:nth-child(3) {
+    display: none;
+  }
+  .mini-logo {
+    display: block;
+  }
+  .mobile-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 24px;
+    border-radius: 8px;
+    background: #f0f4f9;
+  }
+  .header-right {
+    display: flex;
+    align-items: center;
+  }
+  .top-icons {
+    gap: 6px;
+  }
+  .icon-btn, .user-btn, .firebase-chip {
+    min-height: 40px;
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+  #headerLogoutBtn span:last-child {
+    display: none;
+  }
+  .logout-header-btn {
+    padding: 8px 10px;
+    min-height: 40px;
+  }
+  .date-clock {
+    display: none;
+  }
+  .hero-stripe {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 8px 12px;
+    height: auto;
+  }
+  .hero-slogan, .hero-pill {
+    display: none;
+  }
+  .search-wrap {
+    width: 100%;
+    max-width: 100%;
+  }
+  .page {
+    padding: 10px 10px 30px;
+  }
+  .welcome {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 12px 14px;
+    gap: 6px;
+  }
+  .welcome h2 {
+    font-size: 18px;
+  }
+  .kpis {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .kpi {
+    min-height: 80px;
+    padding: 12px;
+  }
+  .section-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .actions {
+    width: 100%;
+  }
+  .actions button {
+    flex: 1;
+    min-height: 42px;
+    justify-content: center;
+    font-size: 13px;
+  }
+  .filters {
+    flex-direction: column;
+  }
+  .filters input, .filters select {
+    width: 100%;
+    min-height: 42px;
+  }
+  .form-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .modal {
+    padding: 16px 14px;
+    border-radius: 12px;
+    width: 96%;
+    max-height: 92vh;
+  }
+  .table-wrap {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+  .table th, .table td {
+    padding: 8px 10px;
+    font-size: 11.5px;
+  }
+  .action-cell .tiny {
+    min-height: 36px;
+    padding: 6px 10px;
+  }
+  .auth-page {
+    padding: 12px 8px;
+    align-items: flex-start;
+  }
+  .auth-card-split {
+    border-radius: 16px;
+    margin: 4px auto;
+  }
+  .auth-brand-side {
+    padding: 20px 16px;
+    min-height: 180px;
+  }
+  .auth-brand-title {
+    font-size: 20px;
+  }
+  .auth-brand-tagline {
+    font-size: 12px;
+  }
+  .auth-form-side {
+    padding: 22px 16px;
+  }
+  .auth-field label {
+    font-size: 12px;
+  }
+  .auth-field input {
+    font-size: 15px; /* Empêche le zoom auto iOS Safari */
+    min-height: 46px;
+  }
+  .auth-btn-primary, .google-signin-btn {
+    min-height: 48px;
+    font-size: 15px;
+  }
+  .auth-tabs {
+    margin-bottom: 16px;
+  }
+  .auth-tab {
+    padding: 12px 8px;
+    font-size: 13px;
+  }
+}
+
+/* 6. Petits Smartphones (< 420px) */
+@media (max-width: 420px) {
+  .header {
+    padding: 6px 8px;
+  }
+  .header-brand {
+    max-width: 70%;
+  }
+  .header-brand img {
+    width: 36px;
+    height: 36px;
+  }
+  .auth-login-heading {
+    font-size: 20px;
+  }
+  .auth-brand-title {
+    font-size: 18px;
+  }
+}
+
+
 
 
 

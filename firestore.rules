@@ -27,19 +27,25 @@ service cloud.firestore {
 
     function isVerified() {
       return isSignedIn() && (
-        request.auth.token.email_verified == true ||
+        ('email_verified' in request.auth.token && request.auth.token.email_verified == true) ||
         isSuperAdminEmail() ||
-        (request.auth.token.firebase != null && request.auth.token.firebase.sign_in_provider == "google.com")
+        ('firebase' in request.auth.token && 
+         'sign_in_provider' in request.auth.token.firebase && 
+         request.auth.token.firebase.sign_in_provider == "google.com")
       );
     }
 
     function isSuperAdminEmail() {
-      return (request.auth.token.email in ["castimamoise@gmail.com", "castimaklik@gmail.com", "laperletourht@gmail.com"]) ||
-             (request.auth.token.phone_number in ["+50944408687", "+50944408688", "+5094440-8687"]);
+      return (
+        ('email' in request.auth.token && 
+         request.auth.token.email in ["castimamoise@gmail.com", "castimaklik@gmail.com", "laperletourht@gmail.com", "aperletourht@gmail.com"]) ||
+        ('phone_number' in request.auth.token && 
+         request.auth.token.phone_number in ["+50944408687", "+50944408688", "+5094440-8687"])
+      );
     }
 
     function isTargetSuperAdminEmail(targetEmail) {
-      return targetEmail in ["castimamoise@gmail.com", "castimaklik@gmail.com", "laperletourht@gmail.com"];
+      return targetEmail in ["castimamoise@gmail.com", "castimaklik@gmail.com", "laperletourht@gmail.com", "aperletourht@gmail.com"];
     }
 
     // -------------------------------------------------------------
@@ -538,7 +544,7 @@ service cloud.firestore {
     match /utilisateurs/{utilisateurId} {
       // ADMIN & SECRETAIRE can list all users; non-admin can only GET their own profile
       allow list: if isAdmin() || isSecretaire();
-      allow get: if isSignedIn() && (isAdmin() || isSecretaire() || request.auth.uid == utilisateurId);
+      allow get: if isSignedIn() && (request.auth.uid == utilisateurId || isAdmin() || isSecretaire());
 
       // Initial self-registration (MUST be role 'lecture_seule', statutCompte 'actif', statutClient 'prospect', unless super admin)
       // Or creation by ADMIN (any role) or SECRETAIRE (strictly non-admin roles)

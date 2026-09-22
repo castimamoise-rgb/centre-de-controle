@@ -313,6 +313,7 @@ async function logoutUser() {
     pendingExistingUser = null;
     setExplicitLogout();
     clearUserSession();
+    clearLogoutInfo(); // Supprime toute information de connexion pour empêcher le pré-remplissage
     try { await authLogout(); } catch (e) {}
     closeModal();
     currentUser = null;
@@ -321,6 +322,24 @@ async function logoutUser() {
     currentRole = null;
     firestoreUnsubscribers.forEach(unsub => { try { unsub(); } catch (e) {} });
     firestoreUnsubscribers = [];
+
+    // Réinitialisation explicite des champs de saisie du formulaire de connexion
+    const loginEmailInput = document.getElementById("authLoginEmail");
+    const loginPwdInput = document.getElementById("authLoginPassword");
+    if (loginEmailInput) {
+      loginEmailInput.value = "";
+      loginEmailInput.setAttribute("value", "");
+    }
+    if (loginPwdInput) {
+      loginPwdInput.value = "";
+      loginPwdInput.setAttribute("value", "");
+    }
+    const regEmailInput = document.getElementById("authRegisterEmail");
+    const regPwdInput = document.getElementById("authRegisterPassword");
+    const regPwdConfInput = document.getElementById("authRegisterPasswordConfirm");
+    if (regEmailInput) regEmailInput.value = "";
+    if (regPwdInput) regPwdInput.value = "";
+    if (regPwdConfInput) regPwdConfInput.value = "";
 
     // Réinitialisation propre de l'URL pour ne pas rester sur un fragment métier
     if (location.hash && location.hash !== "#login") {
@@ -888,7 +907,20 @@ if (sideLogout) sideLogout.onclick = () => logoutUser();
 window.logoutUser = logoutUser;
 
 const mobToggle = document.getElementById("mobileToggle");
-if (mobToggle) mobToggle.onclick = () => document.getElementById("sidebar")?.classList.toggle("open");
+const sideBackdrop = document.getElementById("sidebarBackdrop");
+if (mobToggle) {
+  mobToggle.onclick = () => {
+    const sb = document.getElementById("sidebar");
+    const isOpen = sb?.classList.toggle("open");
+    if (sideBackdrop) sideBackdrop.classList.toggle("open", !!isOpen);
+  };
+}
+if (sideBackdrop) {
+  sideBackdrop.onclick = () => {
+    document.getElementById("sidebar")?.classList.remove("open");
+    sideBackdrop.classList.remove("open");
+  };
+}
 
 window.addEventListener("hashchange", () => {
   current = location.hash.slice(1) || "dashboard";
@@ -1232,13 +1264,9 @@ function initAuthUI(initialMode = "login") {
 
   setMode(initialMode);
 
-  // Restitution automatique du dernier email mémorisé lors de la déconnexion
-  try {
-    const lastInfo = getLogoutInfo();
-    if (lastInfo && lastInfo.email && loginEmail && !loginEmail.value) {
-      loginEmail.value = lastInfo.email;
-    }
-  } catch (e) {}
+  // Sécurité : les champs de connexion restent toujours vierges après déconnexion pour préserver la confidentialité
+  if (loginEmail) loginEmail.value = "";
+  if (loginPassword) loginPassword.value = "";
 
   if (tabLogin) tabLogin.onclick = () => setMode("login");
   if (tabRegister) tabRegister.onclick = () => setMode("register");
@@ -1477,7 +1505,7 @@ function initAuthUI(initialMode = "login") {
         }
       }
 
-      setAuthMessage("error", `Échec connexion Google — ${errMsg}`);
+      setAuthMessage("error", `Échec connexion Google — ${formatAuthError(err) || errMsg}`);
     }
   }
 
@@ -1736,6 +1764,7 @@ initSessionAtStartup();
 
 function go(k) {
   document.getElementById("sidebar")?.classList.remove("open");
+  document.getElementById("sidebarBackdrop")?.classList.remove("open");
   // Un utilisateur avec uniquement lecture_seule ne peut accéder à aucun module métier
   if (!hasBusinessRole(currentUserRoles)) {
     current = "profile";

@@ -31,7 +31,8 @@ function hashPassword(plainText) {
 const SUPER_ADMIN_EMAILS = [
   'castimamoise@gmail.com',
   'castimaklik@gmail.com',
-  'laperletourht@gmail.com'
+  'laperletourht@gmail.com',
+  'aperletourht@gmail.com'
 ];
 
 function isSuperAdminEmail(email) {
