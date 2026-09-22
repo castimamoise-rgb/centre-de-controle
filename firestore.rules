@@ -615,9 +615,9 @@ service cloud.firestore {
           (!('role' in incoming()) || !(["admin", "direction", "comptabilite", "secretaire", "operations", "chauffeur"].hasAny([incoming().role.lower()]))) &&
           // Either updating personal contact info or promoting to client status
           (
-            incoming().diff(existing()).affectedKeys().hasOnly(['name', 'nom', 'phone', 'telephone', 'photoURL', 'notes', 'updatedAt', 'updatedBy', 'lastLoginAt']) ||
+            incoming().diff(existing()).affectedKeys().hasOnly(['name', 'nom', 'prenom', 'username', 'phone', 'telephone', 'photoURL', 'avatar', 'passwordHash', 'notes', 'updatedAt', 'updatedBy', 'lastLoginAt']) ||
             (
-              incoming().diff(existing()).affectedKeys().hasOnly(['statutClient', 'roles', 'role', 'name', 'nom', 'phone', 'telephone', 'updatedAt', 'updatedBy']) &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['statutClient', 'roles', 'role', 'name', 'nom', 'prenom', 'username', 'phone', 'telephone', 'photoURL', 'avatar', 'passwordHash', 'updatedAt', 'updatedBy']) &&
               incoming().statutClient in ['client', 'Client'] &&
               incoming().roles.hasOnly(['client', 'lecture_seule'])
             )

@@ -42,7 +42,7 @@ import {
   loginWithGoogle as authLoginGoogle, logoutUser as authLogout, subscribeAuthState,
   ensureUserProfile, getUserProfile, getUserProfileByIdentifier, createUserProfile, updateUserLastLogin, formatAuthError, signInWithGoogleOnly,
   getAllUsers, getUserById, updateUserRole, updateUserRoles, updateUserStatus, updateUserPermissions,
-  createManagedUser,
+  createManagedUser, updateUserProfile, resetUsersDatabase,
   // Authentification Firebase sans mot de passe & Téléphone
   sendFirebaseEmailLink, checkIsSignInWithEmailLink, completeEmailLinkSignIn,
   sendFirebasePhoneVerification, verifyFirebasePhoneCode,
@@ -728,8 +728,9 @@ function getInitialData() {
       { id: "FT-2026-09-19-001", number: "FT-2026-09-19-001", client: "Jean-Baptiste Valmé", date: d, proforma: "PT-2026-09-19-001", amount: 25000, status: "Payée", due: d, notes: "Facture acquittée" }
     ],
     utilisateurs: [
-      { id: "castimamoise_gmail_com", name: "Moïse Castima", email: "castimamoise@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Fondateur & Administrateur Principal" },
-      { id: "laperletourht_gmail_com", name: "Laperle Tour Admin", email: "laperletourht@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Super Administrateur LAPERLE" },
+      { id: "castimamoise_gmail_com", name: "Moïse Castima", username: "castima", email: "castimamoise@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Fondateur & Administrateur Principal" },
+      { id: "usr_admin_castimaklik", name: "Moïse Castima (Klik)", username: "castimaklik", email: "castimaklik@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Super Administrateur Studio" },
+      { id: "laperletourht_gmail_com", name: "Laperle Tour Admin", username: "laperle", email: "laperletourht@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Super Administrateur LAPERLE" },
       { id: "usr_wilner", name: "Wilner Charles", email: "wilner.c@laperletour.ht", role: "CHAUFFEUR", roles: ["chauffeur"], status: "Actif", notes: "Chauffeur HiAce VH-001" },
       { id: "usr_jeanmarc", name: "Jean-Marc Pierre", email: "jean.marc@laperletour.ht", role: "CHAUFFEUR", roles: ["chauffeur"], status: "Actif", notes: "Chauffeur Tucson VH-002" },
       { id: "usr_mariefrance", name: "Marie-France Jean", email: "marie.france@laperletour.ht", role: "SECRETAIRE", roles: ["secretaire"], status: "Actif", notes: "Secrétariat & Réservations" },
@@ -741,8 +742,9 @@ function getInitialData() {
 }
 
 const DEFAULT_SYSTEM_USERS = [
-  { id: "castimamoise_gmail_com", name: "Moïse Castima", email: "castimamoise@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Fondateur & Administrateur Principal" },
-  { id: "laperletourht_gmail_com", name: "Laperle Tour Admin", email: "laperletourht@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Super Administrateur LAPERLE" },
+  { id: "castimamoise_gmail_com", name: "Moïse Castima", username: "castima", email: "castimamoise@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Fondateur & Administrateur Principal" },
+  { id: "usr_admin_castimaklik", name: "Moïse Castima (Klik)", username: "castimaklik", email: "castimaklik@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Super Administrateur Studio" },
+  { id: "laperletourht_gmail_com", name: "Laperle Tour Admin", username: "laperle", email: "laperletourht@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Super Administrateur LAPERLE" },
   { id: "usr_wilner", name: "Wilner Charles", email: "wilner.c@laperletour.ht", role: "CHAUFFEUR", roles: ["chauffeur"], status: "Actif", notes: "Chauffeur HiAce VH-001" },
   { id: "usr_jeanmarc", name: "Jean-Marc Pierre", email: "jean.marc@laperletour.ht", role: "CHAUFFEUR", roles: ["chauffeur"], status: "Actif", notes: "Chauffeur Tucson VH-002" },
   { id: "usr_mariefrance", name: "Marie-France Jean", email: "marie.france@laperletour.ht", role: "SECRETAIRE", roles: ["secretaire"], status: "Actif", notes: "Secrétariat & Réservations" },
@@ -1579,10 +1581,15 @@ function completeUserSignIn(user, profile, isNew = false) {
   const avatarEl = document.getElementById("headerAvatar");
   const nameEl = document.getElementById("headerUserName");
   if (avatarEl) {
-    avatarEl.textContent = (user.displayName || user.email || user.phoneNumber || "U").charAt(0).toUpperCase();
+    const photo = currentUserProfile?.photoURL || user.photoURL;
+    if (photo) {
+      avatarEl.innerHTML = `<img src="${esc(photo)}" class="user-avatar-img" alt="Avatar">`;
+    } else {
+      avatarEl.textContent = (currentUserProfile?.nom || user.displayName || user.email || user.phoneNumber || "U").charAt(0).toUpperCase();
+    }
   }
   if (nameEl) {
-    nameEl.textContent = user.displayName?.split(" ")[0] || user.email?.split("@")[0] || user.phoneNumber || "Utilisateur";
+    nameEl.textContent = currentUserProfile?.username ? `@${currentUserProfile.username}` : (currentUserProfile?.prenom || user.displayName?.split(" ")[0] || user.email?.split("@")[0] || user.phoneNumber || "Utilisateur");
   }
   updateFirebaseBadge("connected");
   updateRoleBadge(currentUserRoles);
@@ -3570,10 +3577,13 @@ function renderLectureSeuleProfilePage() {
 
       <!-- Détails du Profil -->
       <div class="panel" style="margin-bottom: 22px; border-radius: 12px; padding: 22px; background: #ffffff; border: 1px solid #e2e8f0;">
-        <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 16px;">
+        <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
           <h3 style="margin: 0; color: #092e70; font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
             <span>👤</span> Informations de mon compte
           </h3>
+          <button onclick="openProfile()" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: #092e70; color: #ffffff; border: none; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer;">
+            <span>✏️</span> Modifier mon profil
+          </button>
         </div>
 
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px;">
@@ -3583,13 +3593,18 @@ function renderLectureSeuleProfilePage() {
           </div>
 
           <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
-            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Identifiant principal</div>
+            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Nom de profil (Identifiant)</div>
+            <div style="color: #0f172a; font-weight: 700; font-size: 14px; word-break: break-all;">@${esc(profile.username || (email !== "—" ? email.split('@')[0] : 'profil'))}</div>
+          </div>
+
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
+            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Identifiant E-mail</div>
             <div style="color: #0f172a; font-weight: 700; font-size: 14px; word-break: break-all;">${esc(email !== "—" ? email : telephone)}</div>
           </div>
 
           <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
-            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Rôles système</div>
-            <div style="color: #3730a3; font-weight: 700; font-size: 14px;">["lecture_seule"]</div>
+            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Rôles système (Verrouillé)</div>
+            <div style="color: #3730a3; font-weight: 700; font-size: 14px;">🔒 ["lecture_seule"]</div>
           </div>
 
           <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
@@ -3695,66 +3710,329 @@ function renderLectureSeuleProfilePage() {
 }
 
 function openProfile() {
-  const admin = localStorage.getItem("LAPERLE_ADMIN") || "Castima";
-  const company = localStorage.getItem("LAPERLE_COMPANY") || "LAPERLE TOUR HT";
-  const email = currentUser?.email || localStorage.getItem("LAPERLE_EMAIL") || "laperletourht@gmail.com";
+  const profile = currentUserProfile || {};
+  const user = currentUser || {};
+  const email = profile.email || user.email || localStorage.getItem("LAPERLE_EMAIL") || "laperletourht@gmail.com";
+  const username = profile.username || (email ? email.split('@')[0] : '');
+  const nom = profile.nom || (profile.name ? profile.name.split(' ').slice(1).join(' ') : '');
+  const prenom = profile.prenom || (profile.name ? profile.name.split(' ')[0] : '');
+  const phone = profile.telephone || profile.phone || user.phoneNumber || '';
+  const photo = profile.photoURL || user.photoURL || '';
+  const roles = normalizeRoles(currentUserRoles.length ? currentUserRoles : (profile.roles || profile.role || ['lecture_seule']));
+  const isAdmin = roles.includes('admin') || isSuperAdminEmail(email);
   const isAuth = !!currentUser;
-  const isReadOnlyOnly = !hasBusinessRole(currentUserRoles);
+  const initialLetter = (profile.nom || profile.name || user.displayName || email || 'U').charAt(0).toUpperCase();
 
-  if (isReadOnlyOnly) {
-    document.getElementById("modal").innerHTML = `
-      <div class="modal-head">
-        <div>
-          <h2>Mon Profil Utilisateur</h2>
-          <small>LAPERLE TOUR HT</small>
-        </div>
-        <button class="close" onclick="closeModal()">×</button>
-      </div>
-      <div class="info"><b>Nom</b><br>${esc(currentUserProfile?.nom || currentUserProfile?.name || currentUser?.displayName || admin)}</div>
-      <div class="info" style="margin-top:8px"><b>Email</b><br>${esc(email)}</div>
-      <div class="info" style="margin-top:8px"><b>Statut</b><br><span style="color:#166534;font-weight:700">✅ Compte Actif</span></div>
-      <div class="info" style="margin-top:8px"><b>Rôle attribué</b><br><span class="user-role-badge lecture_seule">Lecture Seule</span> <small style="color:#64748b;display:block;margin-top:2px;">(En attente d'habilitation)</small></div>
-      <div class="info" style="margin-top:8px;border-left:4px solid #25d366">
-        <b>💬 Contacter l'Administration LAPERLE</b><br>
-        <a href="https://wa.me/50944408687?text=Bonjour%20LAPERLE%20TOUR%20HT%2C%20je%20souhaite%20demander%20l%27activation%20de%20mes%20habilitations." target="_blank" rel="noopener noreferrer" style="color:#15803d;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:4px;margin-top:4px;">
-          WhatsApp : +509 4440 8687
-        </a>
-      </div>
-      <div class="form-actions" style="margin-top:14px;flex-wrap:wrap">
-        <button class="secondary" style="color:#b42318;border-color:#fca5a5" onclick="closeModal();logoutUser()">🚪 Se déconnecter</button>
-        <button class="primary" onclick="closeModal()">Fermer</button>
-      </div>
-    `;
-    document.getElementById("modalBackdrop").classList.add("open");
-    return;
-  }
+  const modalEl = document.getElementById("modal");
+  if (!modalEl) return;
 
-  document.getElementById("modal").innerHTML = `
+  modalEl.innerHTML = `
     <div class="modal-head">
       <div>
-        <h2>Mon Profil & Session</h2>
-        <small>Centre de Contrôle LAPERLE TOUR HT</small>
+        <h2>Mon Profil Utilisateur</h2>
+        <small>Centre de Contrôle LAPERLE TOUR HT • Paramètres personnels</small>
       </div>
       <button class="close" onclick="closeModal()">×</button>
     </div>
-    <div class="info"><b>Utilisateur connecté</b><br>${esc(currentUserProfile?.nom || currentUserProfile?.name || currentUser?.displayName || admin)}</div>
-    ${currentUserProfile?.username ? `<div class="info" style="margin-top:8px"><b>Nom de profil (Identifiant de connexion)</b><br><code>@${esc(currentUserProfile.username)}</code></div>` : ""}
-    <div class="info" style="margin-top:8px"><b>Email</b><br>${esc(email)}</div>
-    <div class="info" style="margin-top:8px"><b>Rôles attribués</b><br>${currentUserRoles.map(r => `<span class="user-role-badge ${r}" style="margin-right:4px">${ROLE_LABELS[r] || r}</span>`).join("")}</div>
-    <div class="info" style="margin-top:8px;border-left:4px solid #f7941d">
-      <b>🔥 Base de données Google Cloud Firestore</b><br>
-      ${isAuth ? `<span style="color:#187a43;font-weight:700">Connecté en direct :</span> ${esc(currentUser.email)}<br><small style="color:#64748b">Toutes les opérations sont enregistrées et synchronisées en direct.</small>` : `<span style="color:#64748b">Mode local. Connectez-vous avec Google pour activer la synchronisation permanente.</span>`}
-    </div>
-    <div class="form-actions" style="margin-top:14px;flex-wrap:wrap">
-      <button class="secondary" onclick="closeModal();openFirebaseModal()">🔥 Statut Firestore</button>
-      ${isAuth ? `<button class="secondary" style="color:#b42318;border-color:#fca5a5" onclick="logoutUser()">Se déconnecter</button>` : `<button class="primary green" onclick="loginWithGoogle()">🔑 Connexion Google</button>`}
-      ${(currentUserRoles.includes("admin") || currentUserRoles.includes("secretaire")) ? `<button class="secondary" onclick="closeModal();go('utilisateurs')">🛡️ Gérer les Rôles & Accès</button>` : ""}
-      ${(currentUserRoles.includes("admin") || currentUserRoles.includes("direction")) ? `<button class="secondary" onclick="closeModal();go('settings')">⚙️ Paramètres</button>` : ""}
-      <button class="primary" onclick="closeModal()">Fermer</button>
+
+    <div class="profile-modal-container">
+      <!-- En-tête profil avec aperçu photo -->
+      <div class="profile-card-header">
+        <div class="profile-avatar-wrap" id="profileModalAvatarPreview">
+          ${photo ? `<img src="${esc(photo)}" alt="Avatar" id="profilePreviewImg">` : `<span id="profilePreviewLetter">${esc(initialLetter)}</span>`}
+        </div>
+        <div class="profile-header-info">
+          <div class="profile-header-name" id="profileHeaderDisplayName">${esc(profile.name || `${prenom} ${nom}`.trim() || user.displayName || 'Utilisateur')}</div>
+          <div class="profile-header-handle" id="profileHeaderHandle">@${esc(username || 'profil')}</div>
+          <div class="profile-header-email">✉️ ${esc(email)}</div>
+        </div>
+      </div>
+
+      <!-- Formulaire d'édition de profil -->
+      <form id="profileEditForm" style="display:flex;flex-direction:column;gap:12px;">
+        <!-- 1. Nom de profil (Username) -->
+        <div class="field">
+          <label for="profEditUsername">
+            <b>Nom de profil (Identifiant @username) :</b>
+            <span style="font-size:11px;color:#092e70;font-weight:600;margin-left:6px;">Connexion sans ressaisir l'e-mail</span>
+          </label>
+          <input type="text" id="profEditUsername" name="username" value="${esc(username)}" placeholder="Ex: castima, jean_dupont" required style="font-family:monospace;font-weight:700;">
+          <small style="color:#64748b;font-size:11px;">Lettres, chiffres, tirets et underscores autorisés.</small>
+        </div>
+
+        <!-- 2. Prénom & Nom -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="field">
+            <label for="profEditPrenom"><b>Prénom :</b></label>
+            <input type="text" id="profEditPrenom" name="prenom" value="${esc(prenom)}" placeholder="Prénom">
+          </div>
+          <div class="field">
+            <label for="profEditNom"><b>Nom de famille :</b></label>
+            <input type="text" id="profEditNom" name="nom" value="${esc(nom)}" placeholder="Nom">
+          </div>
+        </div>
+
+        <!-- 3. Photo de profil -->
+        <div class="field">
+          <label for="profEditPhoto">
+            <b>Photo de profil :</b>
+            <span style="font-size:11px;color:#64748b;margin-left:6px;">Lien web ou fichier image</span>
+          </label>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="profEditPhoto" name="photoURL" value="${esc(photo)}" placeholder="https://... ou collez un lien" style="flex:1;">
+            <button type="button" class="secondary" id="profUploadBtn" style="white-space:nowrap;padding:7px 12px;font-size:12px;">📷 Choisir un fichier</button>
+            <input type="file" id="profFileInput" accept="image/*" style="display:none;">
+          </div>
+          <div style="margin-top:6px;">
+            <small style="color:#64748b;font-size:11px;">Avatars rapides suggérés :</small>
+            <div class="profile-avatar-presets">
+              <button type="button" class="profile-avatar-preset-btn" data-url="logo-laperle.jpg" title="Logo Laperle"><img src="logo-laperle.jpg" alt="Logo"></button>
+              <button type="button" class="profile-avatar-preset-btn" data-url="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80" title="Avatar 1"><img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80" alt="Av1"></button>
+              <button type="button" class="profile-avatar-preset-btn" data-url="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80" title="Avatar 2"><img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80" alt="Av2"></button>
+              <button type="button" class="profile-avatar-preset-btn" data-url="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80" title="Avatar 3"><img src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80" alt="Av3"></button>
+              <button type="button" class="profile-avatar-preset-btn" data-url="" title="Supprimer la photo" style="font-size:13px;color:#b42318;">❌</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. Téléphone / WhatsApp -->
+        <div class="field">
+          <label for="profEditPhone"><b>Téléphone / WhatsApp :</b></label>
+          <input type="tel" id="profEditPhone" name="telephone" value="${esc(phone)}" placeholder="+509 4440 8687">
+        </div>
+
+        <!-- 5. Changement de mot de passe -->
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;">
+          <div style="font-weight:700;font-size:13px;color:#092e70;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+            <span>🔑</span> Modifier mon mot de passe
+            <small style="color:#64748b;font-weight:normal;margin-left:auto;">(Laisser vide pour ne pas modifier)</small>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div class="field">
+              <label for="profEditNewPass" style="font-size:11px;">Nouveau mot de passe :</label>
+              <input type="password" id="profEditNewPass" name="newPassword" minlength="4" maxlength="8" placeholder="4 à 8 car. alphanum.">
+            </div>
+            <div class="field">
+              <label for="profEditNewPassConfirm" style="font-size:11px;">Confirmer le mot de passe :</label>
+              <input type="password" id="profEditNewPassConfirm" name="newPasswordConfirm" minlength="4" maxlength="8" placeholder="Retapez le mot de passe">
+            </div>
+          </div>
+          <small style="color:#64748b;font-size:11px;display:block;margin-top:4px;">Doit comporter entre 4 et 8 caractères alphanumériques (chiffres ou lettres).</small>
+        </div>
+
+        <!-- 6. RÔLES ET HABILITATIONS : STRICTEMENT VERROUILLÉ ("sauf lacces aux roles") -->
+        <div class="profile-role-lock-box">
+          <div class="profile-role-lock-title">
+            <span>🛡️ Rôles & Habilitations attribués :</span>
+            <span class="profile-role-lock-badge">🔒 Accès Verrouillé</span>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+            ${roles.map(r => `<span class="user-role-badge ${r}">${ROLE_LABELS[r] || r}</span>`).join('')}
+          </div>
+          <div class="profile-role-lock-hint">
+            ⚠️ <b>Règle de sécurité LAPERLE TOUR HT :</b> Les rôles et permissions sont strictement attribués par l'Administration. Aucun utilisateur ne peut modifier ses propres habilitations système.
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="form-actions" style="margin-top:10px;flex-wrap:wrap;gap:8px;">
+          <button type="submit" class="primary" id="profSubmitBtn" style="padding:10px 20px;">
+            <span>💾 Enregistrer les modifications</span>
+          </button>
+          <button type="button" class="secondary" onclick="closeModal()">Fermer</button>
+          ${isAdmin ? `<button type="button" class="secondary" onclick="closeModal();go('utilisateurs')">🛡️ Administration Utilisateurs</button>` : ''}
+          ${isAdmin ? `<button type="button" class="secondary" style="color:#b45309;border-color:#fde68a;background:#fffbeb;" onclick="triggerResetUsersFromProfile()">🔄 Réinitialiser Base Users (Admin26)</button>` : ''}
+          <button type="button" class="secondary" style="color:#b42318;border-color:#fca5a5;margin-left:auto;" onclick="closeModal();logoutUser()">🚪 Déconnexion</button>
+        </div>
+      </form>
     </div>
   `;
+
   document.getElementById("modalBackdrop").classList.add("open");
+
+  // Interaction : mise à jour en direct de l'aperçu avatar
+  const photoInput = document.getElementById("profEditPhoto");
+  const avatarPreview = document.getElementById("profileModalAvatarPreview");
+  const handlePreview = document.getElementById("profileHeaderHandle");
+  const usernameInput = document.getElementById("profEditUsername");
+
+  function updateAvatarPreview(url) {
+    if (!avatarPreview) return;
+    if (url && url.trim()) {
+      avatarPreview.innerHTML = `<img src="${esc(url.trim())}" alt="Avatar">`;
+    } else {
+      avatarPreview.innerHTML = `<span>${esc(initialLetter)}</span>`;
+    }
+  }
+
+  if (photoInput) {
+    photoInput.addEventListener("input", (e) => {
+      updateAvatarPreview(e.target.value);
+    });
+  }
+
+  if (usernameInput && handlePreview) {
+    usernameInput.addEventListener("input", (e) => {
+      const clean = e.target.value.trim().toLowerCase();
+      handlePreview.textContent = `@${clean || 'profil'}`;
+    });
+  }
+
+  // Clic sur les suggestions d'avatars
+  document.querySelectorAll(".profile-avatar-preset-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const url = btn.getAttribute("data-url");
+      if (photoInput) {
+        photoInput.value = url;
+        updateAvatarPreview(url);
+      }
+    });
+  });
+
+  // Téléversement d'image depuis le disque local
+  const fileInput = document.getElementById("profFileInput");
+  const uploadBtn = document.getElementById("profUploadBtn");
+  if (uploadBtn && fileInput) {
+    uploadBtn.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", (e) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        if (!file.type.startsWith('image/')) {
+          showToast("Veuillez sélectionner un fichier image valide (JPG, PNG, WebP).");
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = (re) => {
+          const dataUrl = re.target.result;
+          if (photoInput) photoInput.value = dataUrl;
+          updateAvatarPreview(dataUrl);
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+  }
+
+  // Soumission du formulaire d'édition
+  const form = document.getElementById("profileEditForm");
+  if (form) {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const submitBtn = document.getElementById("profSubmitBtn");
+
+      const newUsername = (document.getElementById("profEditUsername")?.value || "").trim().toLowerCase();
+      const newPrenom = (document.getElementById("profEditPrenom")?.value || "").trim();
+      const newNom = (document.getElementById("profEditNom")?.value || "").trim();
+      const newPhoto = (document.getElementById("profEditPhoto")?.value || "").trim();
+      const newPhone = (document.getElementById("profEditPhone")?.value || "").trim();
+      const newPass = (document.getElementById("profEditNewPass")?.value || "").trim();
+      const newPassConfirm = (document.getElementById("profEditNewPassConfirm")?.value || "").trim();
+
+      // Validation mot de passe si renseigné
+      if (newPass) {
+        if (newPass.length < 4 || newPass.length > 8) {
+          showToast("Le mot de passe doit comporter entre 4 et 8 caractères alphanumériques.");
+          return;
+        }
+        if (!/^[a-zA-Z0-9]+$/.test(newPass)) {
+          showToast("Le mot de passe doit comporter uniquement des chiffres et des lettres.");
+          return;
+        }
+        if (newPass !== newPassConfirm) {
+          showToast("La confirmation du mot de passe ne correspond pas.");
+          return;
+        }
+      }
+
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<span>⏳ Enregistrement...</span>`;
+      }
+
+      try {
+        const payload = {
+          id: profile.id || user.uid,
+          uid: profile.uid || user.uid,
+          email: profile.email || user.email || email,
+          username: newUsername,
+          prenom: newPrenom,
+          nom: newNom,
+          name: newPrenom && newNom ? `${newPrenom} ${newNom}` : (newNom || newPrenom || profile.name),
+          telephone: newPhone,
+          phone: newPhone,
+          photoURL: newPhoto,
+          ...(newPass ? { newPassword: newPass, newPasswordConfirm: newPassConfirm } : {})
+        };
+
+        const result = await updateUserProfile(payload);
+
+        // Mettre à jour l'état local du profil
+        const updatedProf = result.profile || result.user || {};
+        currentUserProfile = {
+          ...currentUserProfile,
+          ...payload,
+          ...updatedProf,
+          // Rôles strictement inchangés
+          role: currentUserProfile?.role || 'lecture_seule',
+          roles: currentUserProfile?.roles || ['lecture_seule']
+        };
+
+        if (currentUser) {
+          currentUser.displayName = currentUserProfile.name || currentUser.displayName;
+          currentUser.photoURL = currentUserProfile.photoURL;
+        }
+
+        saveUserSession(currentUser, currentUserProfile);
+
+        // Mettre à jour l'en-tête de l'application immédiatement
+        const headerAvatar = document.getElementById("headerAvatar");
+        const headerName = document.getElementById("headerUserName");
+        if (headerAvatar) {
+          if (newPhoto) {
+            headerAvatar.innerHTML = `<img src="${esc(newPhoto)}" class="user-avatar-img" alt="Avatar">`;
+          } else {
+            headerAvatar.textContent = (newNom || newPrenom || user.displayName || 'U').charAt(0).toUpperCase();
+          }
+        }
+        if (headerName) {
+          headerName.textContent = newUsername ? `@${newUsername}` : (newPrenom || newNom || "Utilisateur");
+        }
+
+        showToast("✅ Votre profil a été mis à jour avec succès !");
+        closeModal();
+
+        // Si l'utilisateur est sur la page profil, rafraîchir la vue
+        if (current === "profile" || !hasBusinessRole(currentUserRoles)) {
+          renderLectureSeuleProfilePage();
+        } else {
+          render();
+        }
+      } catch (err) {
+        console.error("Erreur mise à jour profil:", err);
+        showToast("Erreur: " + (err.message || "Impossible d'enregistrer le profil."));
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = `<span>💾 Enregistrer les modifications</span>`;
+        }
+      }
+    });
+  }
 }
+window.openProfile = openProfile;
+
+window.triggerResetUsersFromProfile = async function() {
+  if (!confirm("⚠️ Voulez-vous vraiment réinitialiser la base de données des utilisateurs ?\nTous les comptes administrateurs seront réinitialisés avec le mot de passe : Admin26.")) {
+    return;
+  }
+  try {
+    showToast("Réinitialisation de la base utilisateurs en cours...");
+    await resetUsersDatabase();
+    showToast("✅ Base réinitialisée ! Tous les administrateurs se connectent avec le mot de passe : Admin26.");
+    closeModal();
+    setTimeout(() => location.reload(), 1200);
+  } catch (err) {
+    showToast("Erreur réinitialisation: " + (err.message || err));
+  }
+};
 
 function showToast(msg) {
   const t = document.getElementById("toast");

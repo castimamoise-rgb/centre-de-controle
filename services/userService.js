@@ -367,3 +367,141 @@ export function subscribeAllUsers(callback) {
   });
 }
 
+/**
+ * Met à jour le profil personnel de l'utilisateur (nom de profil, mot de passe, photo, contact)
+ * RÈGLE STRICTE LAPERLE :
+ * - Tous les utilisateurs ont accès à modifier leur profil personnel (username, password, photoURL, nom, prénom, téléphone)
+ * - SAUF L'ACCÈS AUX RÔLES (roles et role restent strictement inchangés et protégés)
+ */
+export async function updateUserProfile(profileUpdates) {
+  const { id, uid, email, username, nom, prenom, name, telephone, phone, photoURL, newPassword, newPasswordConfirm } = profileUpdates || {};
+  const targetId = id || uid || email || auth.currentUser?.uid || auth.currentUser?.email;
+
+  if (!targetId) {
+    throw new Error("Identifiant utilisateur manquant pour la mise à jour du profil.");
+  }
+
+  // 1. Appel vers l'API serveur sécurisée (qui applique la protection stricte sur les rôles)
+  let serverData = null;
+  try {
+    const res = await fetch('/api/auth/profile/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: targetId,
+        uid: uid || targetId,
+        email: email,
+        username,
+        nom,
+        prenom,
+        name,
+        telephone: telephone || phone,
+        phone: phone || telephone,
+        photoURL,
+        newPassword,
+        newPasswordConfirm
+      })
+    });
+    const result = await res.json();
+    if (!res.ok) {
+      throw new Error(result.error || "Erreur lors de la mise à jour du profil.");
+    }
+    serverData = result;
+  } catch (err) {
+    if (err.message && !err.message.includes('fetch')) {
+      throw err;
+    }
+    console.warn("Serveur indisponible, application locale du profil:", err?.message);
+  }
+
+  const updatedProfile = serverData?.profile || serverData?.user || {};
+  const now = new Date().toISOString();
+
+  // 2. Hash du mot de passe pour Firestore si nouveau mot de passe
+  let passHash = undefined;
+  if (newPassword) {
+    try {
+      if (typeof crypto !== 'undefined' && crypto.subtle) {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(newPassword + "_laperle_salt_2026");
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        passHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      }
+    } catch (e) {}
+  }
+
+  // 3. Mise à jour de Firestore si connecté
+  if (auth.currentUser) {
+    try {
+      const fsDocId = String(uid || id || auth.currentUser.uid);
+      const fsUpdates = {
+        updatedAt: now,
+        updatedBy: auth.currentUser.email || 'self'
+      };
+      if (username) fsUpdates.username = String(username).trim().toLowerCase();
+      if (nom) fsUpdates.nom = String(nom).trim();
+      if (prenom) fsUpdates.prenom = String(prenom).trim();
+      if (name || (nom && prenom)) fsUpdates.name = name || `${nom} ${prenom}`.trim();
+      if (telephone || phone) {
+        fsUpdates.telephone = telephone || phone;
+        fsUpdates.phone = phone || telephone;
+      }
+      if (photoURL !== undefined) fsUpdates.photoURL = photoURL;
+      if (passHash) fsUpdates.passwordHash = passHash;
+
+      // Note: rôles délibérément exclus pour respecter les règles de sécurité
+      await setDoc(doc(db, COLLECTION_NAME, fsDocId), fsUpdates, { merge: true });
+    } catch (fsErr) {
+      console.warn("Firestore updateUserProfile non bloquant:", fsErr?.message);
+    }
+  }
+
+  // 4. Mise à jour des sessions et caches locaux
+  for (const storageKey of ["LAPERLE_CENTRE_CONTROL_V3", "CENTRE_LAPERLE_DATA_V3"]) {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.utilisateurs) {
+          const idx = parsed.utilisateurs.findIndex(u => u.id === targetId || u.uid === targetId || (email && u.email === email));
+          if (idx >= 0) {
+            const currentObj = parsed.utilisateurs[idx];
+            parsed.utilisateurs[idx] = {
+              ...currentObj,
+              ...(username ? { username } : {}),
+              ...(nom ? { nom } : {}),
+              ...(prenom ? { prenom } : {}),
+              ...(name ? { name } : {}),
+              ...(telephone ? { telephone, phone: telephone } : {}),
+              ...(photoURL !== undefined ? { photoURL } : {}),
+              ...(passHash ? { passwordHash: passHash } : {}),
+              // Préservation stricte des rôles
+              role: currentObj.role,
+              roles: currentObj.roles,
+              updatedAt: now
+            };
+            localStorage.setItem(storageKey, JSON.stringify(parsed));
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  return serverData || { success: true, profile: updatedProfile };
+}
+
+/**
+ * Réinitialise la base de données des utilisateurs
+ * Tous les administrateurs se connectent avec le mot de passe Admin26
+ */
+export async function resetUsersDatabase() {
+  const res = await fetch('/api/auth/reset-users', { method: 'POST' });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Erreur réinitialisation utilisateurs.");
+  }
+  return data;
+}
+
+

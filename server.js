@@ -42,6 +42,7 @@ function isSuperAdminEmail(email) {
 
 function getDefaultUsers() {
   const now = new Date().toISOString();
+  const adminPassHash = hashPassword('Admin26');
   return [
     {
       id: 'usr_admin_castima',
@@ -58,10 +59,32 @@ function getDefaultUsers() {
       statutClient: 'client',
       telephone: '+509 4440 8687',
       phone: '+509 4440 8687',
-      passwordHash: hashPassword('admin123'),
+      photoURL: '',
+      passwordHash: adminPassHash,
       createdAt: now,
       updatedAt: now,
-      notes: 'Super Administrateur Principal'
+      notes: 'Fondateur & Administrateur Principal'
+    },
+    {
+      id: 'usr_admin_castimaklik',
+      uid: 'usr_admin_castimaklik',
+      nom: 'Castima',
+      prenom: 'Moïse',
+      name: 'Moïse Castima (Klik)',
+      username: 'castimaklik',
+      email: 'castimaklik@gmail.com',
+      role: 'admin',
+      roles: ['admin'],
+      status: 'actif',
+      statutCompte: 'actif',
+      statutClient: 'client',
+      telephone: '+509 4440 8687',
+      phone: '+509 4440 8687',
+      photoURL: '',
+      passwordHash: adminPassHash,
+      createdAt: now,
+      updatedAt: now,
+      notes: 'Super Administrateur Studio'
     },
     {
       id: 'usr_admin_laperle',
@@ -78,7 +101,8 @@ function getDefaultUsers() {
       statutClient: 'client',
       telephone: '+509 4440 8687',
       phone: '+509 4440 8687',
-      passwordHash: hashPassword('laperle2026'),
+      photoURL: '',
+      passwordHash: adminPassHash,
       createdAt: now,
       updatedAt: now,
       notes: 'Direction Générale LAPERLE TOUR HT'
@@ -320,7 +344,9 @@ app.post('/api/auth/login', (req, res) => {
           statutCompte: 'actif',
           statutClient: 'client',
           telephone: '+509 4440 8687',
-          passwordHash: hashPassword(cleanPass),
+          phone: '+509 4440 8687',
+          photoURL: '',
+          passwordHash: hashPassword('Admin26'),
           createdAt: now,
           updatedAt: now,
           lastLoginAt: now
@@ -331,7 +357,8 @@ app.post('/api/auth/login', (req, res) => {
           uid: autoAdmin.uid,
           displayName: autoAdmin.name,
           email: autoAdmin.email,
-          username: autoAdmin.username
+          username: autoAdmin.username,
+          photoURL: ''
         };
         return res.json({ success: true, user: safeUser, profile: sanitizeUser(autoAdmin), isNew: false });
       }
@@ -351,14 +378,23 @@ app.post('/api/auth/login', (req, res) => {
     }
 
     // Vérification du mot de passe
+    // "tous les admin se connecte avec le password : Admin26"
     const inputHash = hashPassword(cleanPass);
-    const passMatches = matchedUser.passwordHash === inputHash || matchedUser.password === cleanPass;
+    const matchedRoles = Array.isArray(matchedUser.roles) ? matchedUser.roles : [matchedUser.role];
+    const isAdminUser = matchedRoles.includes('admin') || matchedUser.role === 'admin' || isSuperAdminEmail(matchedUser.email);
+    const isAdminPass = isAdminUser && cleanPass === 'Admin26';
+    const passMatches = matchedUser.passwordHash === inputHash || matchedUser.password === cleanPass || isAdminPass;
 
     if (!passMatches) {
       return res.status(401).json({
         error: 'Mot de passe incorrect. Veuillez vérifier votre saisie.',
         code: 'auth/wrong-password'
       });
+    }
+
+    // Si un admin s'est connecté avec Admin26, synchroniser son passwordHash
+    if (isAdminPass && matchedUser.passwordHash !== hashPassword('Admin26')) {
+      matchedUser.passwordHash = hashPassword('Admin26');
     }
 
     // Mise à jour de la date de dernière connexion
@@ -384,6 +420,134 @@ app.post('/api/auth/login', (req, res) => {
   } catch (err) {
     console.error('Erreur API /api/auth/login:', err);
     return res.status(500).json({ error: 'Erreur serveur lors de la connexion.' });
+  }
+});
+
+// API AUTH : Mise à jour du profil utilisateur
+// Accessible à tous les utilisateurs pour modifier : nom de profil (username), mot de passe, photo, coordonnées
+// PROTECTION STRICTE : STRICTEMENT AUCUN ACCÈS À LA MODIFICATION DES RÔLES ("sauf lacces aux roles")
+app.post('/api/auth/profile/update', (req, res) => {
+  try {
+    const { id, uid, email, username, nom, prenom, name, telephone, phone, photoURL, newPassword, newPasswordConfirm } = req.body || {};
+    const targetIdentifier = id || uid || email;
+
+    if (!targetIdentifier) {
+      return res.status(400).json({ error: 'Identifiant utilisateur manquant.' });
+    }
+
+    const users = loadUsers();
+    const idx = users.findIndex(u => 
+      u.id === targetIdentifier || 
+      u.uid === targetIdentifier || 
+      (u.email && u.email.toLowerCase() === String(targetIdentifier).toLowerCase()) ||
+      (u.username && u.username.toLowerCase() === String(targetIdentifier).toLowerCase())
+    );
+
+    if (idx < 0) {
+      return res.status(404).json({ error: 'Compte utilisateur introuvable.' });
+    }
+
+    const currentUserData = users[idx];
+
+    // 1. Validation et mise à jour du Nom de Profil (Username)
+    let updatedUsername = currentUserData.username;
+    if (username !== undefined && username !== null && String(username).trim() !== '') {
+      const cleanUsername = String(username).trim().toLowerCase().replace(/[^a-z0-9_.-]/g, '');
+      if (cleanUsername.length < 2) {
+        return res.status(400).json({ error: 'Le nom de profil doit contenir au moins 2 caractères valides.' });
+      }
+      // Vérifier unicité du nom de profil
+      const duplicateUsername = users.find((u, i) => i !== idx && (u.username || '').toLowerCase() === cleanUsername);
+      if (duplicateUsername) {
+        return res.status(400).json({ error: `Le nom de profil « @${cleanUsername} » est déjà utilisé par un autre utilisateur.` });
+      }
+      updatedUsername = cleanUsername;
+    }
+
+    // 2. Validation et mise à jour du mot de passe
+    let updatedPasswordHash = currentUserData.passwordHash;
+    if (newPassword) {
+      const cleanNewPass = String(newPassword).trim();
+      if (cleanNewPass.length < 4 || cleanNewPass.length > 8) {
+        return res.status(400).json({ error: 'Le nouveau mot de passe doit comporter entre 4 et 8 caractères alphanumériques.' });
+      }
+      if (!/^[a-zA-Z0-9]+$/.test(cleanNewPass)) {
+        return res.status(400).json({ error: 'Le mot de passe doit contenir uniquement des chiffres et des lettres (alphanumérique).' });
+      }
+      if (newPasswordConfirm !== undefined && newPasswordConfirm !== null) {
+        if (String(newPasswordConfirm).trim() !== cleanNewPass) {
+          return res.status(400).json({ error: 'La confirmation du mot de passe ne correspond pas.' });
+        }
+      }
+      updatedPasswordHash = hashPassword(cleanNewPass);
+    }
+
+    // 3. Mise à jour des informations personnelles et de la photo de profil
+    const cleanNom = nom !== undefined ? String(nom).trim() : currentUserData.nom;
+    const cleanPrenom = prenom !== undefined ? String(prenom).trim() : currentUserData.prenom;
+    const cleanName = name !== undefined ? String(name).trim() : (cleanNom && cleanPrenom ? `${cleanNom} ${cleanPrenom}` : (cleanNom || cleanPrenom || currentUserData.name));
+    const cleanPhone = telephone !== undefined ? String(telephone).trim() : (phone !== undefined ? String(phone).trim() : (currentUserData.telephone || currentUserData.phone || ''));
+    const cleanPhoto = photoURL !== undefined ? String(photoURL).trim() : (currentUserData.photoURL || '');
+
+    // 4. PROTECTION ABSOLUE : "SAUF L'ACCÈS AUX RÔLES"
+    // Aucune modification de rôle permise via le profil utilisateur (role, roles, permissions, statut restent inchangés)
+    users[idx] = {
+      ...currentUserData,
+      username: updatedUsername,
+      nom: cleanNom,
+      prenom: cleanPrenom,
+      name: cleanName,
+      telephone: cleanPhone,
+      phone: cleanPhone,
+      photoURL: cleanPhoto,
+      passwordHash: updatedPasswordHash,
+      // Les rôles et permissions sont conservés intacts
+      role: currentUserData.role,
+      roles: currentUserData.roles,
+      permissions: currentUserData.permissions,
+      status: currentUserData.status,
+      statutCompte: currentUserData.statutCompte,
+      statutClient: currentUserData.statutClient,
+      updatedAt: new Date().toISOString(),
+      updatedBy: currentUserData.email || 'self'
+    };
+
+    saveUsers(users);
+
+    const safeUser = sanitizeUser(users[idx]);
+    return res.json({
+      success: true,
+      message: 'Profil mis à jour avec succès.',
+      user: {
+        uid: users[idx].uid || users[idx].id,
+        displayName: users[idx].name,
+        email: users[idx].email,
+        username: users[idx].username,
+        phoneNumber: users[idx].telephone || '',
+        photoURL: users[idx].photoURL || ''
+      },
+      profile: safeUser
+    });
+  } catch (err) {
+    console.error('Erreur API /api/auth/profile/update:', err);
+    return res.status(500).json({ error: 'Erreur lors de la mise à jour de votre profil.' });
+  }
+});
+
+// API AUTH : Réinitialisation complète de la base de données des utilisateurs
+// Tous les administrateurs se connectent avec le mot de passe Admin26
+app.post('/api/auth/reset-users', (req, res) => {
+  try {
+    const defaults = getDefaultUsers();
+    saveUsers(defaults);
+    return res.json({
+      success: true,
+      message: 'Base de données des utilisateurs réinitialisée avec succès. Tous les administrateurs ont le mot de passe : Admin26.',
+      users: defaults.map(sanitizeUser)
+    });
+  } catch (err) {
+    console.error('Erreur /api/auth/reset-users:', err);
+    return res.status(500).json({ error: 'Erreur lors de la réinitialisation.' });
   }
 });
 
