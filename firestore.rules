@@ -538,7 +538,7 @@ service cloud.firestore {
     match /utilisateurs/{utilisateurId} {
       // ADMIN & SECRETAIRE can list all users; non-admin can only GET their own profile
       allow list: if isAdmin() || isSecretaire();
-      allow get: if isVerified() && (isAdmin() || isSecretaire() || request.auth.uid == utilisateurId);
+      allow get: if isSignedIn() && (isAdmin() || isSecretaire() || request.auth.uid == utilisateurId);
 
       // Initial self-registration (MUST be role 'lecture_seule', statutCompte 'actif', statutClient 'prospect', unless super admin)
       // Or creation by ADMIN (any role) or SECRETAIRE (strictly non-admin roles)
@@ -560,9 +560,9 @@ service cloud.firestore {
               (!('role' in incoming()) || incoming().role.lower() == "admin")
             )) ||
             (!isSuperAdminEmail() && (
-              (!('roles' in incoming()) || incoming().roles == ["lecture_seule"]) &&
-              (!('role' in incoming()) || incoming().role.lower() == "lecture_seule") &&
-              (!('statutClient' in incoming()) || incoming().statutClient in ["prospect", "Prospect"])
+              (!('roles' in incoming()) || incoming().roles == ["lecture_seule"] || incoming().roles == ["client"]) &&
+              (!('role' in incoming()) || incoming().role.lower() in ["lecture_seule", "client"]) &&
+              (!('statutClient' in incoming()) || incoming().statutClient in ["prospect", "Prospect", "client", "Client"])
             ))
           ) &&
           (!('status' in incoming()) || incoming().status in ["actif", "Actif"]) &&

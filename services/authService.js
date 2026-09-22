@@ -152,7 +152,7 @@ export async function hashPassword(password) {
  * - Password (4 à 8 caractères alphanumériques / chiffres)
  * - Password Confirmation
  */
-export async function signUpWithEmailAndPasswordMethod({ nom, prenom, email, password, passwordConfirm }) {
+export async function signUpWithEmailAndPasswordMethod({ nom, prenom, email, password, passwordConfirm, username, telephone }) {
   if (!nom || !String(nom).trim()) {
     throw new Error("Veuillez renseigner votre nom.");
   }
@@ -183,17 +183,42 @@ export async function signUpWithEmailAndPasswordMethod({ nom, prenom, email, pas
   const cleanPrenom = String(prenom).trim();
   const fullName = `${cleanNom} ${cleanPrenom}`;
 
-  // Vérifier si un compte existe déjà dans le système
-  const existing = await getUserProfileByIdentifier(cleanEmail);
-  if (existing) {
-    throw new Error(`Un compte existe déjà pour « ${cleanEmail} ». Veuillez basculer sur « Pour Se Connecter » pour accéder à votre espace.`);
+  // 1. Enregistrement dans la base de données partagée du serveur
+  let serverResult = null;
+  try {
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nom: cleanNom,
+        prenom: cleanPrenom,
+        email: cleanEmail,
+        password: cleanPass,
+        passwordConfirm: cleanPass,
+        username,
+        telephone
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const err = new Error(data.error || "Erreur lors de la création du compte.");
+      err.code = data.code || 'auth/registration-failed';
+      throw err;
+    }
+    serverResult = data;
+  } catch (apiErr) {
+    // Si l'erreur provient de la validation de l'API, la relancer
+    if (apiErr.code || (apiErr.message && !apiErr.message.includes('fetch'))) {
+      throw apiErr;
+    }
+    console.warn("API serveur /api/auth/register non disponible, bascule locale/Firebase:", apiErr?.message);
   }
 
   const isSuperAdmin = isSuperAdminEmail(cleanEmail) || isSuperAdminIdentifier(cleanEmail);
   const now = new Date().toISOString();
   const passHash = await hashPassword(cleanPass);
 
-  // Création Firebase Auth native (adaptation mot de passe si < 6 caractères car contrainte Firebase SDK)
+  // 2. Synchronisation Firebase Authentication si disponible
   let firebaseUser = null;
   const firebaseAuthPass = cleanPass.length < 6 ? `lp_${cleanPass}_auth` : cleanPass;
   try {
@@ -212,27 +237,28 @@ export async function signUpWithEmailAndPasswordMethod({ nom, prenom, email, pas
     }
   }
 
-  const uid = firebaseUser?.uid || `usr_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-  const initialRoles = isSuperAdmin ? [ROLES.ADMIN] : [ROLES.LECTURE_SEULE];
-  const initialRole = isSuperAdmin ? ROLES.ADMIN : ROLES.LECTURE_SEULE;
+  const uid = serverResult?.user?.uid || firebaseUser?.uid || `usr_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+  const initialRoles = isSuperAdmin ? [ROLES.ADMIN] : [ROLES.CLIENT];
+  const initialRole = isSuperAdmin ? ROLES.ADMIN : ROLES.CLIENT;
 
-  const newProfile = {
+  const newProfile = serverResult?.profile || {
     id: uid,
     uid: uid,
     nom: cleanNom,
     prenom: cleanPrenom,
     name: fullName,
+    username: `${cleanPrenom.toLowerCase()}_${cleanNom.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
     email: cleanEmail,
     photoURL: '',
     roles: initialRoles,
     role: initialRole,
     status: 'actif',
     statutCompte: 'actif',
-    statutClient: isSuperAdmin ? 'client' : 'prospect',
-    telephone: '',
-    phone: '',
+    statutClient: 'client',
+    telephone: telephone || '',
+    phone: telephone || '',
     passwordHash: passHash,
-    notes: isSuperAdmin ? 'Administrateur Principal LAPERLE TOUR HT' : 'Compte Inscription LAPERLE TOUR HT',
+    notes: isSuperAdmin ? 'Administrateur Principal LAPERLE TOUR HT' : 'Client inscrit sur le site LAPERLE TOUR HT',
     permissions: {},
     createdAt: now,
     updatedAt: now,
@@ -241,18 +267,37 @@ export async function signUpWithEmailAndPasswordMethod({ nom, prenom, email, pas
     updatedBy: cleanEmail || uid
   };
 
+  // 3. Sauvegarde dans Firestore si Firebase Auth est connecté
   try {
     const userDocRef = doc(db, USERS_COLLECTION, uid);
-    await setDoc(userDocRef, newProfile);
+    await setDoc(userDocRef, newProfile, { merge: true });
   } catch (fsErr) {
     console.warn("setDoc profil Firestore:", fsErr?.message);
   }
 
-  const resolvedUserObj = {
+  // 4. Mise à jour de la liste locale
+  try {
+    const localKey = "LAPERLE_CENTRE_CONTROL_V3";
+    const rawData = localStorage.getItem(localKey);
+    if (rawData) {
+      const parsed = JSON.parse(rawData);
+      if (!parsed.utilisateurs) parsed.utilisateurs = [];
+      const idx = parsed.utilisateurs.findIndex(u => u.email === cleanEmail || u.id === uid);
+      if (idx >= 0) {
+        parsed.utilisateurs[idx] = newProfile;
+      } else {
+        parsed.utilisateurs.push(newProfile);
+      }
+      localStorage.setItem(localKey, JSON.stringify(parsed));
+    }
+  } catch (e) {}
+
+  const resolvedUserObj = serverResult?.user || {
     uid: uid,
     displayName: fullName,
     email: cleanEmail,
-    phoneNumber: '',
+    username: newProfile.username,
+    phoneNumber: newProfile.telephone || '',
     photoURL: ''
   };
 
@@ -261,50 +306,119 @@ export async function signUpWithEmailAndPasswordMethod({ nom, prenom, email, pas
 }
 
 /**
- * CONNEXION CONFORME AU WIREFRAME "POUR SE CONNECTER" :
- * - Email
- * - Password
+ * CONNEXION CONFORME :
+ * - Identifiant : Email OU Nom de profil / Nom complet
+ * - Mot de passe
  */
-export async function signInWithEmailAndPasswordMethod(email, password) {
-  if (!email || !String(email).includes('@')) {
-    throw new Error("Veuillez saisir votre adresse e-mail.");
+export async function signInWithEmailAndPasswordMethod(identifier, password) {
+  if (!identifier || !String(identifier).trim()) {
+    throw new Error("Veuillez saisir votre adresse e-mail ou votre nom de profil.");
   }
   if (!password) {
     throw new Error("Veuillez saisir votre mot de passe.");
   }
 
-  const cleanEmail = String(email).trim().toLowerCase();
+  const cleanId = String(identifier).trim();
   const cleanPass = String(password).trim();
-  const isSuperAdmin = isSuperAdminEmail(cleanEmail) || isSuperAdminIdentifier(cleanEmail);
+  const isEmail = cleanId.includes('@');
+  const cleanEmail = isEmail ? cleanId.toLowerCase() : '';
+  const isSuperAdmin = isSuperAdminEmail(cleanId) || isSuperAdminIdentifier(cleanId);
 
-  // RÈGLE STRICTE LAPERLE : Vérifier l'inscription préalable si non Super Admin
-  const existing = await getUserProfileByIdentifier(cleanEmail);
+  // 1. TENTATIVE VIA LA BASE DE DONNÉES PARTAGÉE DU SERVEUR
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier: cleanId, password: cleanPass })
+    });
+    const data = await res.json();
+
+    if (res.ok && data.success) {
+      const { user, profile } = data;
+
+      // Connexion optionnelle Firebase Auth pour les règles de sécurité Firestore
+      const targetEmail = user.email || cleanEmail;
+      if (targetEmail) {
+        const firebaseAuthPass = cleanPass.length < 6 ? `lp_${cleanPass}_auth` : cleanPass;
+        try {
+          await signInWithEmailAndPassword(auth, targetEmail, firebaseAuthPass);
+        } catch (e) {
+          // Ignoré si provider email non activé dans Firebase
+        }
+      }
+
+      // Synchronisation dans le cache local
+      try {
+        const localKey = "LAPERLE_CENTRE_CONTROL_V3";
+        const raw = localStorage.getItem(localKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (!parsed.utilisateurs) parsed.utilisateurs = [];
+          const idx = parsed.utilisateurs.findIndex(u => u.email === profile.email || u.id === profile.id);
+          if (idx >= 0) parsed.utilisateurs[idx] = profile;
+          else parsed.utilisateurs.push(profile);
+          localStorage.setItem(localKey, JSON.stringify(parsed));
+        }
+      } catch (e) {}
+
+      saveUserSession(user, profile);
+      return { user, profile, isNew: false };
+    }
+
+    if (res.status === 404 || data.code === 'auth/user-not-registered') {
+      const notRegErr = new Error(data.error || `Le compte « ${cleanId} » n'est pas encore inscrit sur LAPERLE TOUR HT. Veuillez d'abord créer votre compte via l'onglet « Pour S'inscrire » avant de vous connecter.`);
+      notRegErr.code = 'auth/user-not-registered';
+      throw notRegErr;
+    }
+
+    if (res.status === 401 || data.code === 'auth/wrong-password') {
+      const pwdErr = new Error(data.error || "Mot de passe incorrect. Veuillez vérifier votre saisie.");
+      pwdErr.code = 'auth/wrong-password';
+      throw pwdErr;
+    }
+
+    if (res.status === 403 || data.code === 'auth/user-disabled') {
+      const disErr = new Error(data.error || "Ce compte a été désactivé ou suspendu par l'administration LAPERLE TOUR HT.");
+      disErr.code = 'auth/user-disabled';
+      throw disErr;
+    }
+  } catch (apiErr) {
+    if (apiErr.code) throw apiErr;
+    console.warn("Connexion serveur API indisponible, vérification locale:", apiErr?.message);
+  }
+
+  // 2. RECHERCHE DANS LE STOCKAGE LOCAL (FALLBACK EN CAS D'OFFLINE)
+  const existing = await getUserProfileByIdentifier(cleanId);
   if (!existing && !isSuperAdmin) {
-    const notRegErr = new Error(`Le compte « ${cleanEmail} » n'est pas encore inscrit sur LAPERLE TOUR HT. Veuillez d'abord créer votre compte via l'onglet « Pour S'inscrire » avant de vous connecter.`);
+    const notRegErr = new Error(`Le compte « ${cleanId} » n'est pas encore inscrit sur LAPERLE TOUR HT. Veuillez d'abord créer votre compte via l'onglet « Pour S'inscrire » avant de vous connecter.`);
     notRegErr.code = 'auth/user-not-registered';
     throw notRegErr;
   }
 
-  // Vérification de sécurité du mot de passe
+  // Vérification de sécurité du mot de passe en mode local
   if (existing && existing.passwordHash) {
     const inputHash = await hashPassword(cleanPass);
-    if (existing.passwordHash !== inputHash) {
-      throw new Error("Mot de passe incorrect. Veuillez vérifier votre saisie.");
+    if (existing.passwordHash !== inputHash && existing.password !== cleanPass) {
+      const pwdErr = new Error("Mot de passe incorrect. Veuillez vérifier votre saisie.");
+      pwdErr.code = 'auth/wrong-password';
+      throw pwdErr;
     }
   }
 
-  // Tentative Firebase Auth native
-  const firebaseAuthPass = cleanPass.length < 6 ? `lp_${cleanPass}_auth` : cleanPass;
-  let firebaseUser = null;
-  try {
-    const cred = await signInWithEmailAndPassword(auth, cleanEmail, firebaseAuthPass);
-    firebaseUser = cred.user;
-  } catch (authErr) {
-    console.warn("signInWithEmailAndPassword warning:", authErr?.code || authErr?.message);
-  }
+  // Tentative Firebase Auth native si email disponible
+  if (isEmail) {
+    const firebaseAuthPass = cleanPass.length < 6 ? `lp_${cleanPass}_auth` : cleanPass;
+    let firebaseUser = null;
+    try {
+      const cred = await signInWithEmailAndPassword(auth, cleanEmail, firebaseAuthPass);
+      firebaseUser = cred.user;
+    } catch (authErr) {
+      console.warn("signInWithEmailAndPassword warning:", authErr?.code || authErr?.message);
+    }
 
-  if (firebaseUser) {
-    return await processAuthenticatedUser(firebaseUser, cleanEmail, '', 'login');
+    if (firebaseUser) {
+      return await processAuthenticatedUser(firebaseUser, cleanEmail, '', 'login');
+    }
   }
 
   // Authentification réussie via le profil vérifié
@@ -318,8 +432,9 @@ export async function signInWithEmailAndPasswordMethod(email, password) {
 
     const resolvedUserObj = {
       uid: existing.uid || existing.id,
-      displayName: existing.name || existing.nom || cleanEmail.split('@')[0],
+      displayName: existing.name || existing.nom || (existing.username || (existing.email ? existing.email.split('@')[0] : 'Utilisateur')),
       email: existing.email || cleanEmail,
+      username: existing.username || '',
       phoneNumber: existing.telephone || existing.phone || '',
       photoURL: existing.photoURL || ''
     };
@@ -329,10 +444,10 @@ export async function signInWithEmailAndPasswordMethod(email, password) {
   }
 
   if (isSuperAdmin) {
-    return await directEmailSignInFallback(cleanEmail, "Administrateur Laperle", 'login');
+    return await directEmailSignInFallback(cleanEmail || 'castimamoise@gmail.com', "Administrateur Laperle", 'login');
   }
 
-  throw new Error("Impossible d'établir la connexion. Veuillez vérifier votre e-mail et mot de passe.");
+  throw new Error("Impossible d'établir la connexion. Veuillez vérifier votre identifiant et votre mot de passe.");
 }
 
 /**
@@ -542,10 +657,20 @@ export async function verifyFirebasePhoneCode(code, customName = '') {
 export async function getUserProfileByIdentifier(identifier) {
   if (!identifier) return null;
   const cleanId = String(identifier).trim();
+  const cleanLower = cleanId.toLowerCase();
   const isEmail = cleanId.includes('@');
-  const cleanEmail = cleanId.toLowerCase();
+  const cleanEmail = isEmail ? cleanLower : '';
 
-  // 1. Recherche par e-mail dans Firestore
+  // 1. Recherche via l'API partagée du serveur
+  try {
+    const res = await fetch(`/api/auth/user/${encodeURIComponent(cleanId)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.user) return data.user;
+    }
+  } catch (e) {}
+
+  // 2. Recherche par e-mail dans Firestore
   if (isEmail) {
     try {
       const q = query(collection(db, USERS_COLLECTION), where('email', '==', cleanEmail));
@@ -558,47 +683,59 @@ export async function getUserProfileByIdentifier(identifier) {
       console.warn("Recherche email Firestore:", e?.message);
     }
   } else {
-    // 2. Recherche par numéro de téléphone dans Firestore
-    const digits = cleanId.replace(/\D/g, '');
+    // Recherche par username ou nom ou téléphone dans Firestore
     try {
-      const q = query(collection(db, USERS_COLLECTION), where('telephone', '==', cleanId));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        const d = snap.docs[0];
+      const qUser = query(collection(db, USERS_COLLECTION), where('username', '==', cleanLower));
+      const snapUser = await getDocs(qUser);
+      if (!snapUser.empty) {
+        const d = snapUser.docs[0];
         return { ...d.data(), id: d.id, uid: d.data().uid || d.id };
       }
 
+      const digits = cleanId.replace(/\D/g, '');
       const allUsersSnap = await getDocs(collection(db, USERS_COLLECTION));
       for (const d of allUsersSnap.docs) {
         const u = d.data();
-        const userPhoneDigits = String(u.telephone || u.phone || '').replace(/\D/g, '');
-        if (userPhoneDigits && (userPhoneDigits === digits || userPhoneDigits.endsWith(digits) || digits.endsWith(userPhoneDigits))) {
+        if ((u.username && u.username.toLowerCase() === cleanLower) ||
+            (u.name && u.name.toLowerCase() === cleanLower) ||
+            (u.nom && u.nom.toLowerCase() === cleanLower)) {
           return { ...u, id: d.id, uid: u.uid || d.id };
+        }
+        if (digits.length >= 8) {
+          const userPhoneDigits = String(u.telephone || u.phone || '').replace(/\D/g, '');
+          if (userPhoneDigits && (userPhoneDigits === digits || userPhoneDigits.endsWith(digits) || digits.endsWith(userPhoneDigits))) {
+            return { ...u, id: d.id, uid: u.uid || d.id };
+          }
         }
       }
     } catch (e) {
-      console.warn("Recherche téléphone Firestore:", e?.message);
+      console.warn("Recherche profil Firestore:", e?.message);
     }
   }
 
-  // 3. Fallback stockage local (données de l'application)
-  try {
-    const rawData = localStorage.getItem("CENTRE_LAPERLE_DATA_V3");
-    if (rawData) {
-      const parsed = JSON.parse(rawData);
-      const localUsers = parsed.utilisateurs || [];
-      const match = localUsers.find(u => {
-        if (isEmail && u.email && u.email.toLowerCase() === cleanEmail) return true;
-        if (!isEmail) {
-          const uDigits = String(u.telephone || u.phone || '').replace(/\D/g, '');
-          const inDigits = cleanId.replace(/\D/g, '');
-          if (uDigits && inDigits && (uDigits === inDigits || uDigits.endsWith(inDigits) || inDigits.endsWith(uDigits))) return true;
-        }
-        return false;
-      });
-      if (match) return match;
-    }
-  } catch (e) {}
+  // 3. Fallback stockage local (LAPERLE_CENTRE_CONTROL_V3 ou CENTRE_LAPERLE_DATA_V3)
+  for (const storageKey of ["LAPERLE_CENTRE_CONTROL_V3", "CENTRE_LAPERLE_DATA_V3"]) {
+    try {
+      const rawData = localStorage.getItem(storageKey);
+      if (rawData) {
+        const parsed = JSON.parse(rawData);
+        const localUsers = parsed.utilisateurs || [];
+        const match = localUsers.find(u => {
+          if (isEmail && u.email && u.email.toLowerCase() === cleanEmail) return true;
+          if (!isEmail) {
+            if (u.username && u.username.toLowerCase() === cleanLower) return true;
+            if (u.name && u.name.toLowerCase() === cleanLower) return true;
+            if (u.nom && u.nom.toLowerCase() === cleanLower) return true;
+            const uDigits = String(u.telephone || u.phone || '').replace(/\D/g, '');
+            const inDigits = cleanId.replace(/\D/g, '');
+            if (uDigits && inDigits && (uDigits === inDigits || uDigits.endsWith(inDigits) || inDigits.endsWith(uDigits))) return true;
+          }
+          return false;
+        });
+        if (match) return match;
+      }
+    } catch (e) {}
+  }
 
   return null;
 }
@@ -1049,6 +1186,15 @@ export function formatAuthError(error) {
   }
   if (code === 'auth/cancelled-popup-request' || code === 'auth/popup-blocked') {
     return "La fenêtre d'authentification a été bloquée. Veuillez autoriser les fenêtres pop-up.";
+  }
+  if (code === 'auth/user-not-registered') {
+    return msg || "Le compte n'est pas encore inscrit sur LAPERLE TOUR HT. Veuillez d'abord créer votre compte via l'onglet « Pour S'inscrire ».";
+  }
+  if (code === 'auth/wrong-password') {
+    return "Mot de passe incorrect. Veuillez vérifier votre saisie.";
+  }
+  if (code === 'auth/email-already-in-use') {
+    return msg || "Un compte existe déjà pour cette adresse e-mail. Veuillez basculer sur l'onglet « Pour Se Connecter ».";
   }
   if (code === 'auth/network-request-failed') {
     return "Erreur réseau. Veuillez vérifier votre connexion Internet.";

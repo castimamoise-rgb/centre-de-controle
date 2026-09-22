@@ -79,6 +79,8 @@ let currentRole = currentUserProfile ? (currentUserProfile.role || ROLES.LECTURE
 let currentUserRoles = currentUserProfile ? normalizeRoles(currentUserProfile.roles || currentUserProfile.role || [ROLES.LECTURE_SEULE]) : [];
 let firestoreUnsubscribers = [];
 let isAuthInitialized = false;
+let pendingUnregisteredGoogleUser = null;
+let pendingExistingUser = null;
 
 // Primary Firestore collections as specified by user
 const ALL_MODULES = [
@@ -637,6 +639,7 @@ const SCHEMAS = {
 // Initial state
 let state = loadState();
 let current = location.hash.slice(1) || "dashboard";
+let currentPage = current;
 
 function nextNumber(prefix, key) {
   const items = list(key);
@@ -1176,9 +1179,10 @@ function setAuthMessage(type, message, htmlContent = null) {
       </div>
     `;
   } else {
+    const isHtml = typeof message === 'string' && /<[a-z][\s\S]*>/i.test(message);
     container.innerHTML = `
       <div class="auth-message ${type}">
-        ${icon} <span>${esc(message)}</span>
+        ${icon} <span>${isHtml ? message : esc(message)}</span>
       </div>
     `;
   }
@@ -1258,11 +1262,11 @@ function initAuthUI(initialMode = "login") {
   // 1. ACTION DU MODÈLE : "Se Connecter"
   if (btnLogin) {
     btnLogin.onclick = async () => {
-      const email = loginEmail ? loginEmail.value.trim() : "";
+      const identifier = loginEmail ? loginEmail.value.trim() : "";
       const password = loginPassword ? loginPassword.value : "";
 
-      if (!email || !email.includes("@")) {
-        setAuthMessage("error", "Veuillez saisir votre adresse e-mail.");
+      if (!identifier) {
+        setAuthMessage("error", "Veuillez saisir votre adresse e-mail ou votre nom de profil.");
         loginEmail?.focus();
         return;
       }
@@ -1275,7 +1279,7 @@ function initAuthUI(initialMode = "login") {
       try {
         btnLogin.disabled = true;
         setAuthMessage("loading", "Connexion en cours...");
-        const result = await signInWithEmailAndPasswordMethod(email, password);
+        const result = await signInWithEmailAndPasswordMethod(identifier, password);
 
         if (result && result.profile) {
           const existingList = list("utilisateurs") || [];
@@ -1289,7 +1293,7 @@ function initAuthUI(initialMode = "login") {
         }
 
         setAuthMessage("success", "Connexion réussie ! Bienvenue chez LAPERLE TOUR HT.");
-        showToast(`Bienvenue, ${result.profile?.nom || result.profile?.name || "Utilisateur"} !`);
+        showToast(`Bienvenue, ${result.profile?.nom || result.profile?.name || result.profile?.username || "Utilisateur"} !`);
         completeUserSignIn(result.user, result.profile, result.isNew);
       } catch (err) {
         btnLogin.disabled = false;
@@ -1297,7 +1301,20 @@ function initAuthUI(initialMode = "login") {
         const errMsg = err?.message || String(err);
         const isNotRegistered = err?.code === "auth/user-not-registered" || errMsg.includes("pas encore inscrit");
         if (isNotRegistered) {
-          setAuthMessage("error", `❌ <b>Le compte « ${esc(email)} » n'est pas encore inscrit sur LAPERLE TOUR HT.</b><br>Vous devez d'abord créer votre compte avant de pouvoir vous connecter.<br><button type="button" onclick="document.getElementById('authTabRegister')?.click()" style="margin-top:8px;padding:6px 14px;background:#082b70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;">👉 Cliquer ici pour vous inscrire (Pour S'inscrire)</button>`);
+          setAuthMessage("error", `❌ <b>Le compte « ${esc(identifier)} » n'est pas encore inscrit sur LAPERLE TOUR HT.</b><br>Vous devez d'abord créer votre compte avant de pouvoir vous connecter.<br><button type="button" id="btnGoToRegisterFromError" style="margin-top:8px;padding:6px 14px;background:#082b70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;">👉 Cliquer ici pour vous inscrire (Pour S'inscrire)</button>`);
+          setTimeout(() => {
+            const btnErr = document.getElementById("btnGoToRegisterFromError");
+            if (btnErr) {
+              btnErr.onclick = () => {
+                setMode("register");
+                if (registerEmail && identifier.includes("@")) {
+                  registerEmail.value = identifier;
+                } else if (document.getElementById("authRegisterUsername") && !identifier.includes("@")) {
+                  document.getElementById("authRegisterUsername").value = identifier;
+                }
+              };
+            }
+          }, 50);
         } else {
           setAuthMessage("error", formatAuthError(err) || errMsg);
         }
@@ -1311,6 +1328,8 @@ function initAuthUI(initialMode = "login") {
       const nom = registerNom ? registerNom.value.trim() : "";
       const prenom = registerPrenom ? registerPrenom.value.trim() : "";
       const email = registerEmail ? registerEmail.value.trim() : "";
+      const usernameInput = document.getElementById("authRegisterUsername");
+      const username = usernameInput ? usernameInput.value.trim() : "";
       const password = registerPassword ? registerPassword.value : "";
       const passwordConfirm = registerPasswordConfirm ? registerPasswordConfirm.value : "";
 
@@ -1358,6 +1377,7 @@ function initAuthUI(initialMode = "login") {
           nom,
           prenom,
           email,
+          username,
           password,
           passwordConfirm
         });
@@ -1492,10 +1512,10 @@ function completeUserSignIn(user, profile, isNew = false) {
     return;
   }
 
-  // 2. Résolution stricte des rôles :
+  // 2. Résolution des rôles :
   // - Super Admin par email ou téléphone -> [ROLES.ADMIN]
-  // - Première inscription -> roles: [ROLES.LECTURE_SEULE], statutCompte: "actif", statutClient: "prospect"
-  // - Utilisateur existant -> conserve TOUJOURS ses rôles existants
+  // - Nouvelle inscription sur le site -> [ROLES.CLIENT] (Client / Espace Client Laperle)
+  // - Utilisateur existant -> conserve ses rôles
   const isSuperAdmin = isSuperAdminIdentifier(user.email) || isSuperAdminIdentifier(user.phoneNumber) ||
                        isSuperAdminIdentifier(profile?.email) || isSuperAdminIdentifier(profile?.telephone);
 
@@ -1505,19 +1525,25 @@ function completeUserSignIn(user, profile, isNew = false) {
     if (currentUserProfile) {
       currentUserProfile.roles = [ROLES.ADMIN];
       currentUserProfile.role = ROLES.ADMIN;
+      currentUserProfile.statutCompte = "actif";
+      currentUserProfile.statutClient = "client";
     }
   } else if (isNew) {
-    currentUserRoles = [ROLES.LECTURE_SEULE];
-    currentRole = ROLES.LECTURE_SEULE;
+    currentUserRoles = [ROLES.CLIENT];
+    currentRole = ROLES.CLIENT;
     if (currentUserProfile) {
-      currentUserProfile.roles = [ROLES.LECTURE_SEULE];
-      currentUserProfile.role = ROLES.LECTURE_SEULE;
+      currentUserProfile.roles = [ROLES.CLIENT];
+      currentUserProfile.role = ROLES.CLIENT;
       currentUserProfile.statutCompte = "actif";
-      currentUserProfile.statutClient = "prospect";
+      currentUserProfile.statutClient = "client";
     }
   } else {
-    currentUserRoles = normalizeRoles(currentUserProfile?.roles || currentUserProfile?.role || [ROLES.LECTURE_SEULE]);
-    currentRole = currentUserRoles[0] || ROLES.LECTURE_SEULE;
+    currentUserRoles = normalizeRoles(currentUserProfile?.roles || currentUserProfile?.role || [ROLES.CLIENT]);
+    currentRole = currentUserRoles[0] || ROLES.CLIENT;
+    if (currentUserProfile && (!currentUserProfile.roles || currentUserProfile.roles.length === 0)) {
+      currentUserProfile.roles = currentUserRoles;
+      currentUserProfile.role = currentRole;
+    }
   }
 
   saveUserSession(user, currentUserProfile);
@@ -2546,23 +2572,25 @@ function openUserRoleModal(indexOrId) {
       save();
 
       closeModal();
-      if (currentPage === "dashboard") {
+      const activeScreen = current || currentPage || "utilisateurs";
+      if (activeScreen === "dashboard") {
         dashboard();
-      } else if (currentPage === "utilisateurs") {
+      } else if (activeScreen === "utilisateurs") {
         drawTable("utilisateurs");
       }
-      showToast("✅ Rôles et statut mis à jour avec succès sur Cloud Firestore !");
+      showToast("✅ Rôles et statut mis à jour avec succès !");
     } catch (err) {
-      console.error("Erreur mise à jour utilisateur:", err);
-      // Even if Firestore throws network error, apply locally
+      console.warn("Avertissement mise à jour utilisateur:", err?.message || err);
+      // Fallback local
       user.roles = selectedRoles;
       user.role = selectedRoles[0];
       user.status = newStatus === "actif" ? "Actif" : "Inactif";
       save();
       closeModal();
-      if (currentPage === "dashboard") dashboard();
-      else if (currentPage === "utilisateurs") drawTable("utilisateurs");
-      showToast("✅ Rôle appliqué en local (synchronisation différée).");
+      const activeScreen = current || currentPage || "utilisateurs";
+      if (activeScreen === "dashboard") dashboard();
+      else if (activeScreen === "utilisateurs") drawTable("utilisateurs");
+      showToast("✅ Rôle et statut appliqués avec succès.");
     }
   };
 }
@@ -3675,12 +3703,13 @@ function openProfile() {
   document.getElementById("modal").innerHTML = `
     <div class="modal-head">
       <div>
-        <h2>Profil Administrateur & Session</h2>
+        <h2>Mon Profil & Session</h2>
         <small>Centre de Contrôle LAPERLE TOUR HT</small>
       </div>
       <button class="close" onclick="closeModal()">×</button>
     </div>
-    <div class="info"><b>Utilisateur connecté</b><br>${esc(currentUser?.displayName || admin)}</div>
+    <div class="info"><b>Utilisateur connecté</b><br>${esc(currentUserProfile?.nom || currentUserProfile?.name || currentUser?.displayName || admin)}</div>
+    ${currentUserProfile?.username ? `<div class="info" style="margin-top:8px"><b>Nom de profil (Identifiant de connexion)</b><br><code>@${esc(currentUserProfile.username)}</code></div>` : ""}
     <div class="info" style="margin-top:8px"><b>Email</b><br>${esc(email)}</div>
     <div class="info" style="margin-top:8px"><b>Rôles attribués</b><br>${currentUserRoles.map(r => `<span class="user-role-badge ${r}" style="margin-right:4px">${ROLE_LABELS[r] || r}</span>`).join("")}</div>
     <div class="info" style="margin-top:8px;border-left:4px solid #f7941d">

@@ -22,16 +22,42 @@ const COLLECTION_NAME = 'utilisateurs';
  * Récupère la liste de tous les utilisateurs
  */
 export async function getAllUsers() {
-  try {
-    const snap = await getDocs(collection(db, COLLECTION_NAME));
-    const list = [];
-    snap.forEach(d => {
-      list.push({ ...d.data(), id: d.id });
-    });
-    return list;
-  } catch (error) {
-    handleFirestoreError(error, OperationType.LIST, COLLECTION_NAME);
+  if (auth.currentUser) {
+    try {
+      const snap = await getDocs(collection(db, COLLECTION_NAME));
+      const list = [];
+      snap.forEach(d => {
+        list.push({ ...d.data(), id: d.id });
+      });
+      if (list.length > 0) return list;
+    } catch (error) {
+      console.warn("Firestore getAllUsers fallback:", error?.message);
+    }
   }
+
+  // Fallback via API serveur
+  try {
+    const res = await fetch('/api/auth/users');
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.users) && data.users.length > 0) return data.users;
+    }
+  } catch (e) {}
+
+  // Fallback stockage local
+  for (const storageKey of ["LAPERLE_CENTRE_CONTROL_V3", "CENTRE_LAPERLE_DATA_V3"]) {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed.utilisateurs) && parsed.utilisateurs.length > 0) {
+          return parsed.utilisateurs;
+        }
+      }
+    } catch (e) {}
+  }
+
+  return [];
 }
 
 /**
@@ -39,13 +65,43 @@ export async function getAllUsers() {
  */
 export async function getUserById(id) {
   if (!id) return null;
-  try {
-    const d = await getDoc(doc(db, COLLECTION_NAME, String(id)));
-    if (!d.exists()) return null;
-    return { ...d.data(), id: d.id };
-  } catch (error) {
-    handleFirestoreError(error, OperationType.GET, `${COLLECTION_NAME}/${id}`);
+  const cleanId = String(id).trim();
+
+  // 1. Tenter depuis Firestore si l'utilisateur est connecté à Firebase
+  if (auth.currentUser) {
+    try {
+      const d = await getDoc(doc(db, COLLECTION_NAME, cleanId));
+      if (d.exists()) {
+        return { ...d.data(), id: d.id };
+      }
+    } catch (error) {
+      console.warn("Firestore getUserById fallback:", error?.message);
+    }
   }
+
+  // 2. Recherche via l'API partagée du serveur
+  try {
+    const res = await fetch(`/api/auth/user/${encodeURIComponent(cleanId)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.user) return data.user;
+    }
+  } catch (e) {}
+
+  // 3. Fallback stockage local
+  for (const storageKey of ["LAPERLE_CENTRE_CONTROL_V3", "CENTRE_LAPERLE_DATA_V3"]) {
+    try {
+      const rawData = localStorage.getItem(storageKey);
+      if (rawData) {
+        const parsed = JSON.parse(rawData);
+        const localUsers = parsed.utilisateurs || [];
+        const match = localUsers.find(u => u.id === cleanId || u.uid === cleanId || u.email === cleanId);
+        if (match) return match;
+      }
+    } catch (e) {}
+  }
+
+  return null;
 }
 
 /**
@@ -95,12 +151,25 @@ export async function createManagedUser(userData, callerProfile = null) {
     createdBy: callerEmail || 'system'
   };
 
+  // Synchronisation serveur
   try {
-    await setDoc(doc(db, COLLECTION_NAME, cleanId), newUser);
-    return newUser;
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, `${COLLECTION_NAME}/${cleanId}`);
+    await fetch('/api/auth/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ users: [newUser] })
+    });
+  } catch (e) {}
+
+  // Sauvegarde Firestore si Firebase Auth est connecté
+  if (auth.currentUser) {
+    try {
+      await setDoc(doc(db, COLLECTION_NAME, cleanId), newUser);
+    } catch (error) {
+      console.warn("Firestore createManagedUser non bloquant:", error?.message);
+    }
   }
+
+  return newUser;
 }
 
 /**
@@ -139,13 +208,44 @@ export async function updateUserRoles(userId, newRolesInput, callerProfile = nul
     updatedBy: currentUserEmail
   };
 
+  // 1. Sauvegarde sur le serveur centralisé
   try {
-    await setDoc(doc(db, COLLECTION_NAME, String(userId)), updates, { merge: true });
-    return { id: userId, ...updates };
-  } catch (error) {
-    console.warn("Firestore updateUserRoles:", error?.message);
-    handleFirestoreError(error, OperationType.UPDATE, `${COLLECTION_NAME}/${userId}`);
+    await fetch(`/api/auth/user/${encodeURIComponent(userId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+  } catch (e) {
+    console.warn("Mise à jour serveur user roles:", e?.message);
   }
+
+  // 2. Mise à jour cache local
+  for (const storageKey of ["LAPERLE_CENTRE_CONTROL_V3", "CENTRE_LAPERLE_DATA_V3"]) {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.utilisateurs) {
+          const idx = parsed.utilisateurs.findIndex(u => u.id === userId || u.uid === userId || (existing && u.email === existing.email));
+          if (idx >= 0) {
+            parsed.utilisateurs[idx] = { ...parsed.utilisateurs[idx], ...updates };
+            localStorage.setItem(storageKey, JSON.stringify(parsed));
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  // 3. Sauvegarde dans Firestore si Firebase Auth est connecté
+  if (auth.currentUser) {
+    try {
+      await setDoc(doc(db, COLLECTION_NAME, String(userId)), updates, { merge: true });
+    } catch (error) {
+      console.warn("Firestore updateUserRoles non bloquant:", error?.message);
+    }
+  }
+
+  return { id: userId, ...updates };
 }
 
 /**
@@ -178,13 +278,44 @@ export async function updateUserStatus(userId, newStatus, callerProfile = null) 
     updatedBy: currentUserEmail
   };
 
+  // 1. Sauvegarde sur le serveur centralisé
   try {
-    await setDoc(doc(db, COLLECTION_NAME, String(userId)), updates, { merge: true });
-    return { id: userId, ...updates };
-  } catch (error) {
-    console.warn("Firestore updateUserStatus:", error?.message);
-    handleFirestoreError(error, OperationType.UPDATE, `${COLLECTION_NAME}/${userId}`);
+    await fetch(`/api/auth/user/${encodeURIComponent(userId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+  } catch (e) {
+    console.warn("Mise à jour serveur user status:", e?.message);
   }
+
+  // 2. Mise à jour cache local
+  for (const storageKey of ["LAPERLE_CENTRE_CONTROL_V3", "CENTRE_LAPERLE_DATA_V3"]) {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.utilisateurs) {
+          const idx = parsed.utilisateurs.findIndex(u => u.id === userId || u.uid === userId || (existing && u.email === existing.email));
+          if (idx >= 0) {
+            parsed.utilisateurs[idx] = { ...parsed.utilisateurs[idx], ...updates };
+            localStorage.setItem(storageKey, JSON.stringify(parsed));
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  // 3. Sauvegarde dans Firestore si Firebase Auth est connecté
+  if (auth.currentUser) {
+    try {
+      await setDoc(doc(db, COLLECTION_NAME, String(userId)), updates, { merge: true });
+    } catch (error) {
+      console.warn("Firestore updateUserStatus non bloquant:", error?.message);
+    }
+  }
+
+  return { id: userId, ...updates };
 }
 
 /**
@@ -200,12 +331,24 @@ export async function updateUserPermissions(userId, permissionsObj) {
     updatedBy: currentUserEmail
   };
 
+  // Sauvegarde sur le serveur centralisé
   try {
-    await updateDoc(doc(db, COLLECTION_NAME, String(userId)), updates);
-    return { id: userId, ...updates };
-  } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, `${COLLECTION_NAME}/${userId}`);
+    await fetch(`/api/auth/user/${encodeURIComponent(userId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+  } catch (e) {}
+
+  if (auth.currentUser) {
+    try {
+      await updateDoc(doc(db, COLLECTION_NAME, String(userId)), updates);
+    } catch (error) {
+      console.warn("Firestore updateUserPermissions non bloquant:", error?.message);
+    }
   }
+
+  return { id: userId, ...updates };
 }
 
 /**

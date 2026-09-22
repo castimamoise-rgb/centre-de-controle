@@ -94,15 +94,15 @@
           <div class="auth-form-top">
             <div class="auth-login-kicker">ESPACE SÉCURISÉ</div>
             <h2 class="auth-login-heading">Pour Se Connecter</h2>
-            <p class="auth-login-sub">Saisissez votre e-mail et votre mot de passe pour accéder</p>
+            <p class="auth-login-sub">Saisissez votre e-mail ou votre nom de profil et votre mot de passe</p>
           </div>
 
-          <!-- Champ Email -->
+          <!-- Champ Email ou Nom de profil -->
           <div class="auth-field">
-            <label for="authLoginEmail">Email :</label>
+            <label for="authLoginEmail">Email ou Nom de profil :</label>
             <div class="auth-input-icon-wrap">
-              <span class="auth-icon-prefix">✉️</span>
-              <input type="email" id="authLoginEmail" placeholder="nom@exemple.com" autocomplete="username" required>
+              <span class="auth-icon-prefix">👤</span>
+              <input type="text" id="authLoginEmail" placeholder="votre.email@domaine.com ou nom de profil" autocomplete="username" required>
             </div>
           </div>
 
@@ -177,6 +177,21 @@
             <div class="auth-input-icon-wrap">
               <span class="auth-icon-prefix">✉️</span>
               <input type="email" id="authRegisterEmail" placeholder="nom@exemple.com" autocomplete="email" required>
+            </div>
+          </div>
+
+          <!-- Nom de profil / Username (optionnel) -->
+          <div class="auth-field">
+            <label for="authRegisterUsername">
+              Nom de profil :
+              <span class="auth-label-badge" style="background:#f1f5f9;color:#475569;border-color:#cbd5e1">Connexion par pseudo</span>
+            </label>
+            <div class="auth-input-icon-wrap">
+              <span class="auth-icon-prefix">🏷️</span>
+              <input type="text" id="authRegisterUsername" placeholder="Ex: jean_dupont (généré automatiquement sinon)" autocomplete="nickname">
+            </div>
+            <div class="auth-field-hint">
+              Ce nom de profil vous permettra aussi de vous reconnecter sans avoir à taper votre email.
             </div>
           </div>
 

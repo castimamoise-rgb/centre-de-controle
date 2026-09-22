@@ -56,27 +56,77 @@ export async function createOrUpdateUser(userObj) {
 }
 
 export async function getUtilisateurs(includeArchived = false) {
-  try {
-    const q = includeArchived 
-      ? collection(db, COLLECTION_NAME)
-      : query(collection(db, COLLECTION_NAME), where('archived', '==', false));
-    const snap = await getDocs(q);
-    const list = [];
-    snap.forEach(d => list.push({ ...d.data(), id: d.id }));
-    return list;
-  } catch (error) {
-    handleFirestoreError(error, OperationType.LIST, COLLECTION_NAME);
+  if (auth.currentUser) {
+    try {
+      const q = includeArchived 
+        ? collection(db, COLLECTION_NAME)
+        : query(collection(db, COLLECTION_NAME), where('archived', '==', false));
+      const snap = await getDocs(q);
+      const list = [];
+      snap.forEach(d => list.push({ ...d.data(), id: d.id }));
+      if (list.length > 0) return list;
+    } catch (error) {
+      console.warn("Firestore getUtilisateurs fallback:", error?.message);
+    }
   }
+
+  // Fallback serveur
+  try {
+    const res = await fetch('/api/auth/users');
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.users)) {
+        return includeArchived ? data.users : data.users.filter(u => !u.archived && u.status !== 'Archivé');
+      }
+    }
+  } catch (e) {}
+
+  // Fallback local
+  try {
+    const raw = localStorage.getItem("LAPERLE_CENTRE_CONTROL_V3");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed.utilisateurs)) {
+        return includeArchived ? parsed.utilisateurs : parsed.utilisateurs.filter(u => !u.archived && u.status !== 'Archivé');
+      }
+    }
+  } catch (e) {}
+
+  return [];
 }
 
 export async function getUtilisateur(id) {
-  try {
-    const d = await getDoc(doc(db, COLLECTION_NAME, id));
-    if (!d.exists()) return null;
-    return { ...d.data(), id: d.id };
-  } catch (error) {
-    handleFirestoreError(error, OperationType.GET, `${COLLECTION_NAME}/${id}`);
+  if (!id) return null;
+  const cleanId = String(id).trim();
+
+  if (auth.currentUser) {
+    try {
+      const d = await getDoc(doc(db, COLLECTION_NAME, cleanId));
+      if (d.exists()) return { ...d.data(), id: d.id };
+    } catch (error) {
+      console.warn("Firestore getUtilisateur fallback:", error?.message);
+    }
   }
+
+  try {
+    const res = await fetch(`/api/auth/user/${encodeURIComponent(cleanId)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.user) return data.user;
+    }
+  } catch (e) {}
+
+  try {
+    const raw = localStorage.getItem("LAPERLE_CENTRE_CONTROL_V3");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const list = parsed.utilisateurs || [];
+      const match = list.find(u => u.id === cleanId || u.uid === cleanId || u.email === cleanId);
+      if (match) return match;
+    }
+  } catch (e) {}
+
+  return null;
 }
 
 export async function updateUtilisateur(id, updates) {
@@ -86,12 +136,41 @@ export async function updateUtilisateur(id, updates) {
     updatedBy: currentUserEmail,
     updatedAt: new Date().toISOString()
   };
+
+  // Serveur
   try {
-    await updateDoc(doc(db, COLLECTION_NAME, id), payload);
-    return { id, ...payload };
-  } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, `${COLLECTION_NAME}/${id}`);
+    await fetch(`/api/auth/user/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+  } catch (e) {}
+
+  // Local
+  try {
+    const raw = localStorage.getItem("LAPERLE_CENTRE_CONTROL_V3");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.utilisateurs) {
+        const idx = parsed.utilisateurs.findIndex(u => u.id === id || u.uid === id);
+        if (idx >= 0) {
+          parsed.utilisateurs[idx] = { ...parsed.utilisateurs[idx], ...payload };
+          localStorage.setItem("LAPERLE_CENTRE_CONTROL_V3", JSON.stringify(parsed));
+        }
+      }
+    }
+  } catch (e) {}
+
+  // Firestore
+  if (auth.currentUser) {
+    try {
+      await setDoc(doc(db, COLLECTION_NAME, id), payload, { merge: true });
+    } catch (error) {
+      console.warn("Firestore updateUtilisateur non bloquant:", error?.message);
+    }
   }
+
+  return { id, ...payload };
 }
 
 export async function deleteUtilisateur(id) {
