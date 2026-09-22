@@ -48,7 +48,10 @@ import {
   sendFirebasePhoneVerification, verifyFirebasePhoneCode,
   sendVerificationCode, generateVerificationCode, getPendingVerification, verifyCode,
   authenticateWithPhoneOrEmail, registerOrSignInUser, upgradeProfileToClient, directEmailSignInFallback,
-  saveUserSession, getUserSession, clearUserSession
+  signUpWithEmailAndPasswordMethod, signInWithEmailAndPasswordMethod,
+  saveUserSession, getUserSession, clearUserSession,
+  saveLogoutInfo, getLogoutInfo, clearLogoutInfo,
+  isExplicitlyLoggedOut, setExplicitLogout, clearExplicitLogout
 } from './services/index.js';
 
 const DBKEY = "LAPERLE_CENTRE_CONTROL_V3";
@@ -68,8 +71,8 @@ const DEFAULT_USER = {
   statutClient: "client"
 };
 
-// Restaurer la session utilisateur sauvegardée ou demander l'authentification
-const initialSavedSession = getUserSession();
+// Restaurer la session utilisateur sauvegardée ou afficher la page de reconnexion si déconnecté
+const initialSavedSession = isExplicitlyLoggedOut() ? null : getUserSession();
 let currentUser = (initialSavedSession && initialSavedSession.user) ? initialSavedSession.user : null;
 let currentUserProfile = (initialSavedSession && initialSavedSession.profile) ? initialSavedSession.profile : null;
 let currentRole = currentUserProfile ? (currentUserProfile.role || ROLES.LECTURE_SEULE) : null;
@@ -266,9 +269,47 @@ async function loginWithGoogle() {
 
 async function logoutUser() {
   try {
+    // 1. ENREGISTREMENT SYSTÉMATIQUE DES INFORMATIONS AVANT LA DÉCONNEXION
+    try {
+      // a) Sauvegarde de l'état local global de l'application
+      save();
+
+      // b) Enregistrement des informations de session de l'utilisateur
+      const userEmail = currentUser?.email || currentUserProfile?.email || "";
+      const userName = currentUserProfile?.nom 
+        ? ((currentUserProfile.prenom ? currentUserProfile.prenom + " " : "") + currentUserProfile.nom)
+        : (currentUser?.displayName || currentUserProfile?.name || "");
+      const userPhone = currentUserProfile?.telephone || currentUserProfile?.phone || currentUser?.phoneNumber || "";
+      const userRoles = currentUserRoles || currentUserProfile?.roles || [];
+      const userUid = currentUser?.uid || currentUserProfile?.id || "";
+
+      if (userEmail || userUid) {
+        saveLogoutInfo({
+          email: userEmail,
+          name: userName,
+          phone: userPhone,
+          roles: userRoles,
+          uid: userUid,
+          lastActivePage: current || "dashboard",
+          lastLogoutAt: new Date().toISOString()
+        });
+      }
+
+      // c) Sauvegarde / mise à jour sur Firestore si connecté
+      if (db && auth.currentUser && userUid) {
+        try {
+          await updateUserLastLogin(userUid);
+        } catch (e) {}
+      }
+    } catch (saveErr) {
+      console.warn("Avertissement sauvegarde pré-déconnexion:", saveErr);
+    }
+
+    // 2. Clôture de session et déconnexion
     isAuthProcessing = false;
     pendingUnregisteredGoogleUser = null;
     pendingExistingUser = null;
+    setExplicitLogout();
     clearUserSession();
     try { await authLogout(); } catch (e) {}
     closeModal();
@@ -278,12 +319,22 @@ async function logoutUser() {
     currentRole = null;
     firestoreUnsubscribers.forEach(unsub => { try { unsub(); } catch (e) {} });
     firestoreUnsubscribers = [];
+
+    // Réinitialisation propre de l'URL pour ne pas rester sur un fragment métier
+    if (location.hash && location.hash !== "#login") {
+      try {
+        history.replaceState(null, "", window.location.pathname);
+      } catch (e) {
+        location.hash = "";
+      }
+    }
+
     const authContainer = document.getElementById("authContainer");
     const appContainer = document.getElementById("app");
     if (authContainer) authContainer.style.display = "flex";
     if (appContainer) appContainer.style.display = "none";
     renderAuthPage("unauthenticated");
-    showToast("Déconnexion effectuée avec succès.");
+    showToast("✅ Données sauvegardées et déconnexion effectuée avec succès.");
   } catch (err) {
     console.error("Erreur déconnexion:", err);
     renderAuthPage("unauthenticated");
@@ -1142,83 +1193,91 @@ function initAuthUI(initialMode = "login") {
 
   const tabLogin = document.getElementById("authTabLogin");
   const tabRegister = document.getElementById("authTabRegister");
-  const nameField = document.getElementById("authNameField");
-  const inputName = document.getElementById("authInputName");
-  const inputId = document.getElementById("authInputIdentifier");
-  const labelId = document.getElementById("authIdentifierLabel");
-  const hintId = document.getElementById("authIdentifierHint");
-  const btnSendCode = document.getElementById("authBtnSendCode");
-  const btnGoogle = document.getElementById("authBtnGoogle");
+  const viewLogin = document.getElementById("authViewLogin");
+  const viewRegister = document.getElementById("authViewRegister");
+  const switchToRegister = document.getElementById("authSwitchToRegister");
+  const switchToLogin = document.getElementById("authSwitchToLogin");
 
-  const stepId = document.getElementById("authStepIdentifier");
-  const stepEmailSent = document.getElementById("authStepEmailSent");
-  const emailSentDesc = document.getElementById("authEmailSentDesc");
-  const btnEmailBack = document.getElementById("authBtnEmailBack");
-  const btnEmailResend = document.getElementById("authBtnEmailResend");
+  // Champs Vue Connexion ("Pour Se Connecter" selon le modèle)
+  const loginEmail = document.getElementById("authLoginEmail");
+  const loginPassword = document.getElementById("authLoginPassword");
+  const toggleLoginPwd = document.getElementById("authToggleLoginPassword");
+  const btnLogin = document.getElementById("authBtnLogin");
+  const btnGoogleLogin = document.getElementById("authBtnGoogleLogin");
 
-  const stepConfirmEmail = document.getElementById("authStepConfirmEmail");
-  const inputConfirmEmail = document.getElementById("authInputConfirmEmail");
-  const btnSubmitConfirmEmail = document.getElementById("authBtnSubmitConfirmEmail");
+  // Champs Vue Inscription ("Pour S'inscrire" selon le modèle)
+  const registerNom = document.getElementById("authRegisterNom");
+  const registerPrenom = document.getElementById("authRegisterPrenom");
+  const registerEmail = document.getElementById("authRegisterEmail");
+  const registerPassword = document.getElementById("authRegisterPassword");
+  const registerPasswordConfirm = document.getElementById("authRegisterPasswordConfirm");
+  const toggleRegisterPwd = document.getElementById("authToggleRegisterPassword");
+  const toggleRegisterConfirm = document.getElementById("authToggleRegisterConfirm");
+  const btnRegister = document.getElementById("authBtnRegister");
+  const btnGoogleRegister = document.getElementById("authBtnGoogleRegister");
 
-  const stepCode = document.getElementById("authStepCode");
-  const inputCode = document.getElementById("authInputCode");
-  const btnVerify = document.getElementById("authBtnVerifyCode");
-  const btnBack = document.getElementById("authBtnBack");
-  const btnResend = document.getElementById("authBtnResend");
-  const codeTarget = document.getElementById("authCodeTarget");
-  const codeDesc = document.getElementById("authCodeDesc");
-
-  const firebaseConfigNotice = document.getElementById("authFirebaseConfigNotice");
-  const btnDirectBypass = document.getElementById("authBtnDirectBypass");
-
+  // Bascule dynamique entre "Pour Se Connecter" et "Pour S'inscrire"
   function setMode(mode) {
     currentAuthMode = mode;
-    if (firebaseConfigNotice) firebaseConfigNotice.style.display = "none";
     if (tabLogin) tabLogin.classList.toggle("active", mode === "login");
     if (tabRegister) tabRegister.classList.toggle("active", mode === "register");
-    if (nameField) nameField.style.display = mode === "register" ? "block" : "none";
-    if (labelId) {
-      labelId.textContent = mode === "register"
-        ? "Adresse e-mail ou numéro de téléphone"
-        : "Adresse e-mail ou téléphone enregistré";
-    }
-    if (hintId) {
-      hintId.textContent = mode === "register"
-        ? "Votre compte et vos coordonnées sont enregistrés dans Firebase Cloud et conservés pour vos prochaines connexions."
-        : "Un lien de connexion direct vous sera envoyé par Firebase. Seuls les comptes déjà inscrits peuvent se connecter.";
-    }
-    if (btnSendCode) {
-      btnSendCode.innerHTML = mode === "register"
-        ? `<span>📝</span> <span>Créer et enregistrer mon compte</span>`
-        : `<span>✉️</span> <span>Se connecter (Vérifier et continuer)</span>`;
-    }
-    if (btnGoogle) {
-      const googleSpan = btnGoogle.querySelector("span:not(.google-icon)");
-      if (googleSpan) {
-        googleSpan.textContent = mode === "register"
-          ? "S'inscrire avec Google"
-          : "Continuer avec Google (Accès direct)";
-      }
-    }
-    setAuthMessage('idle', '');
+    if (viewLogin) viewLogin.style.display = mode === "login" ? "block" : "none";
+    if (viewRegister) viewRegister.style.display = mode === "register" ? "block" : "none";
+    setAuthMessage("idle", "");
   }
 
   setMode(initialMode);
 
+  // Restitution automatique du dernier email mémorisé lors de la déconnexion
+  try {
+    const lastInfo = getLogoutInfo();
+    if (lastInfo && lastInfo.email && loginEmail && !loginEmail.value) {
+      loginEmail.value = lastInfo.email;
+    }
+  } catch (e) {}
+
   if (tabLogin) tabLogin.onclick = () => setMode("login");
   if (tabRegister) tabRegister.onclick = () => setMode("register");
+  if (switchToRegister) switchToRegister.onclick = () => setMode("register");
+  if (switchToLogin) switchToLogin.onclick = () => setMode("login");
 
-  // Connexion rapide avec Google (Accès direct)
-  if (btnGoogle) {
-    btnGoogle.onclick = async () => {
+  // Affichage / Masquage du mot de passe
+  function setupPasswordToggle(button, input) {
+    if (!button || !input) return;
+    button.onclick = (e) => {
+      e.preventDefault();
+      const isPassword = input.type === "password";
+      input.type = isPassword ? "text" : "password";
+      button.textContent = isPassword ? "🙈" : "👁️";
+    };
+  }
+  setupPasswordToggle(toggleLoginPwd, loginPassword);
+  setupPasswordToggle(toggleRegisterPwd, registerPassword);
+  setupPasswordToggle(toggleRegisterConfirm, registerPasswordConfirm);
+
+  // 1. ACTION DU MODÈLE : "Se Connecter"
+  if (btnLogin) {
+    btnLogin.onclick = async () => {
+      const email = loginEmail ? loginEmail.value.trim() : "";
+      const password = loginPassword ? loginPassword.value : "";
+
+      if (!email || !email.includes("@")) {
+        setAuthMessage("error", "Veuillez saisir votre adresse e-mail.");
+        loginEmail?.focus();
+        return;
+      }
+      if (!password) {
+        setAuthMessage("error", "Veuillez saisir votre mot de passe.");
+        loginPassword?.focus();
+        return;
+      }
+
       try {
-        btnGoogle.disabled = true;
-        setAuthMessage("loading", currentAuthMode === "register"
-          ? "Inscription avec Google en cours..."
-          : "Connexion sécurisée avec Google en cours...");
-        const result = await authLoginGoogle(currentAuthMode);
+        btnLogin.disabled = true;
+        setAuthMessage("loading", "Connexion en cours...");
+        const result = await signInWithEmailAndPasswordMethod(email, password);
 
-        if (result.profile) {
+        if (result && result.profile) {
           const existingList = list("utilisateurs") || [];
           const idx = existingList.findIndex(u => (u.id === result.profile.id || u.email === result.profile.email));
           if (idx >= 0) {
@@ -1229,366 +1288,197 @@ function initAuthUI(initialMode = "login") {
           save();
         }
 
-        setAuthMessage("success", currentAuthMode === "register"
-          ? "Inscription Google réussie ! Bienvenue chez LAPERLE TOUR HT."
-          : "Connexion Google réussie !");
+        setAuthMessage("success", "Connexion réussie ! Bienvenue chez LAPERLE TOUR HT.");
+        showToast(`Bienvenue, ${result.profile?.nom || result.profile?.name || "Utilisateur"} !`);
         completeUserSignIn(result.user, result.profile, result.isNew);
       } catch (err) {
-        console.warn("Firebase Google auth exception:", err?.code || err?.message);
-        const errCode = err?.code || "";
+        btnLogin.disabled = false;
+        console.warn("Erreur connexion login:", err);
         const errMsg = err?.message || String(err);
-
-        // RÈGLE STRICTE LAPERLE : Si le compte n'est pas encore inscrit, interdiction de se connecter
-        const isNotRegistered = (errCode === 'auth/user-not-registered') ||
-                                (errMsg && (errMsg.includes('pas encore inscrit') || errMsg.includes('user-not-registered')));
+        const isNotRegistered = err?.code === "auth/user-not-registered" || errMsg.includes("pas encore inscrit");
         if (isNotRegistered) {
-          btnGoogle.disabled = false;
-          setAuthMessage("error", `❌ <b>Ce compte n'est pas encore inscrit sur LAPERLE TOUR HT.</b><br>Vous devez d'abord créer votre compte avant de pouvoir vous connecter.<br><button type="button" onclick="document.getElementById('authTabRegister')?.click()" style="margin-top:8px;padding:6px 14px;background:#082b70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;">👉 Cliquer ici pour vous inscrire</button>`);
-          return;
+          setAuthMessage("error", `❌ <b>Le compte « ${esc(email)} » n'est pas encore inscrit sur LAPERLE TOUR HT.</b><br>Vous devez d'abord créer votre compte avant de pouvoir vous connecter.<br><button type="button" onclick="document.getElementById('authTabRegister')?.click()" style="margin-top:8px;padding:6px 14px;background:#082b70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;">👉 Cliquer ici pour vous inscrire (Pour S'inscrire)</button>`);
+        } else {
+          setAuthMessage("error", formatAuthError(err) || errMsg);
         }
-
-        // Si le domaine ou la méthode Google est restreinte par Firebase dans cet environnement,
-        // basculer sur l'accès direct en vérifiant d'abord l'inscription en mode connexion
-        if (
-          errCode === 'auth/unauthorized-domain' ||
-          errCode === 'auth/operation-not-allowed' ||
-          errCode === 'auth/popup-blocked' ||
-          errCode === 'auth/cancelled-popup-request' ||
-          errMsg.includes('unauthorized-domain') ||
-          errMsg.includes('operation-not-allowed') ||
-          errMsg.includes('popup')
-        ) {
-          try {
-            const targetEmail = (inputId && inputId.value.trim() && inputId.value.includes('@'))
-              ? inputId.value.trim().toLowerCase()
-              : "castimaklik@gmail.com";
-            const targetName = (inputName && inputName.value.trim())
-              ? inputName.value.trim()
-              : (targetEmail === "castimaklik@gmail.com" ? "Administrateur Laperle" : targetEmail.split('@')[0]);
-
-            // En mode connexion, vérifier que le compte est déjà inscrit
-            if (currentAuthMode === "login" && !isSuperAdminEmail(targetEmail) && !isSuperAdminIdentifier(targetEmail)) {
-              const existing = await getUserProfileByIdentifier(targetEmail);
-              if (!existing) {
-                btnGoogle.disabled = false;
-                setAuthMessage("error", `❌ <b>Le compte « ${esc(targetEmail)} » n'est pas encore inscrit.</b><br>Veuillez d'abord créer votre compte via l'onglet <b>« Inscription »</b> avant de vous connecter.<br><button type="button" onclick="document.getElementById('authTabRegister')?.click()" style="margin-top:8px;padding:6px 14px;background:#082b70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;">👉 Cliquer ici pour vous inscrire</button>`);
-                return;
-              }
-            }
-
-            setAuthMessage("loading", `Connexion avec ${targetEmail}...`);
-            const res = await directEmailSignInFallback(targetEmail, targetName, currentAuthMode);
-            setAuthMessage("success", "Connexion réussie ! Bienvenue chez LAPERLE TOUR HT.");
-            completeUserSignIn(res.user, res.profile, res.isNew);
-            return;
-          } catch (fallbackErr) {
-            btnGoogle.disabled = false;
-            setAuthMessage("error", formatAuthError(fallbackErr) || "Impossible d'établir la connexion.");
-            return;
-          }
-        }
-
-        btnGoogle.disabled = false;
-        setAuthMessage("error", `Échec connexion Google — Code: ${errCode} | Message: ${errMsg}`);
       }
     };
   }
 
-  // Étape 1 : Inscription directe ou Envoi du lien d'authentification Firebase
-  if (btnSendCode) {
-    btnSendCode.onclick = async () => {
-      const identifier = inputId ? inputId.value.trim() : "";
-      const name = inputName ? inputName.value.trim() : "";
+  // 2. ACTION DU MODÈLE : "S'inscrire"
+  if (btnRegister) {
+    btnRegister.onclick = async () => {
+      const nom = registerNom ? registerNom.value.trim() : "";
+      const prenom = registerPrenom ? registerPrenom.value.trim() : "";
+      const email = registerEmail ? registerEmail.value.trim() : "";
+      const password = registerPassword ? registerPassword.value : "";
+      const passwordConfirm = registerPasswordConfirm ? registerPasswordConfirm.value : "";
 
-      if (!identifier) {
-        setAuthMessage("error", "Veuillez saisir votre adresse e-mail ou numéro de téléphone.");
+      if (!nom) {
+        setAuthMessage("error", "Veuillez renseigner votre nom.");
+        registerNom?.focus();
+        return;
+      }
+      if (!prenom) {
+        setAuthMessage("error", "Veuillez renseigner votre prénom.");
+        registerPrenom?.focus();
+        return;
+      }
+      if (!email || !email.includes("@")) {
+        setAuthMessage("error", "Veuillez saisir une adresse e-mail valide.");
+        registerEmail?.focus();
+        return;
+      }
+      if (!password) {
+        setAuthMessage("error", "Veuillez saisir un mot de passe.");
+        registerPassword?.focus();
+        return;
+      }
+      if (password.length < 4 || password.length > 8) {
+        setAuthMessage("error", "Le mot de passe doit comporter entre 4 et 8 caractères.");
+        registerPassword?.focus();
+        return;
+      }
+      if (!/^[a-zA-Z0-9]+$/.test(password)) {
+        setAuthMessage("error", "Le mot de passe doit être composé uniquement de chiffres ou de lettres (alphanumérique).");
+        registerPassword?.focus();
+        return;
+      }
+      if (password !== passwordConfirm) {
+        setAuthMessage("error", "La confirmation ne correspond pas au mot de passe saisi.");
+        registerPasswordConfirm?.focus();
         return;
       }
 
-      // RÈGLE STRICTE LAPERLE : Si le compte n'est pas inscrit, il ne peut pas se connecter
-      if (currentAuthMode === "login") {
-        const isSuperAdmin = isSuperAdminEmail(identifier) || isSuperAdminIdentifier(identifier);
-        if (!isSuperAdmin) {
-          setAuthMessage("loading", "Vérification de l'inscription du compte...");
-          const existing = await getUserProfileByIdentifier(identifier);
-          if (!existing) {
-            btnSendCode.disabled = false;
-            setAuthMessage("error", `❌ <b>Le compte « ${esc(identifier)} » n'est pas encore inscrit sur LAPERLE TOUR HT.</b><br>Vous devez d'abord créer votre compte pour pouvoir vous connecter.<br><button type="button" onclick="document.getElementById('authTabRegister')?.click()" style="margin-top:8px;padding:6px 14px;background:#082b70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;">👉 Cliquer ici pour créer votre compte (Inscription)</button>`);
-            return;
-          }
-        }
-      }
+      try {
+        btnRegister.disabled = true;
+        setAuthMessage("loading", "Création de votre compte LAPERLE TOUR HT en cours...");
 
-      if (currentAuthMode === "register" && !name) {
-        setAuthMessage("error", "Veuillez indiquer votre nom et prénom pour la création de votre compte.");
-        return;
-      }
+        const result = await signUpWithEmailAndPasswordMethod({
+          nom,
+          prenom,
+          email,
+          password,
+          passwordConfirm
+        });
 
-      // Traitement direct de l'inscription : enregistrement immédiat du compte dans Firebase et session
-      if (currentAuthMode === "register") {
-        try {
-          btnSendCode.disabled = true;
-
-          // Si le compte existe déjà lors d'une tentative d'inscription, connecter l'utilisateur
-          const alreadyExisting = await getUserProfileByIdentifier(identifier);
-          if (alreadyExisting) {
-            setAuthMessage("info", `ℹ️ Un compte existe déjà pour <b>${esc(identifier)}</b>.<br>Connexion en cours à votre compte...`);
-            completeUserSignIn(alreadyExisting, alreadyExisting, false);
-            showToast(`Bienvenue à nouveau, ${alreadyExisting.nom || alreadyExisting.name || 'Utilisateur'} !`);
-            return;
-          }
-
-          setAuthMessage("loading", `Création et enregistrement de votre compte pour ${identifier}...`);
-          const res = await registerOrSignInUser(identifier, name, 'register');
-          
-          // Mettre à jour la collection locale d'utilisateurs
+        if (result && result.profile) {
           const existingList = list("utilisateurs") || [];
-          const idx = existingList.findIndex(u => (u.id === res.profile.id || u.email === res.profile.email));
+          const idx = existingList.findIndex(u => (u.id === result.profile.id || u.email === result.profile.email));
           if (idx >= 0) {
-            existingList[idx] = res.profile;
+            existingList[idx] = result.profile;
           } else {
-            existingList.push(res.profile);
+            existingList.push(result.profile);
           }
           save();
-
-          setAuthMessage("success", "✅ Compte enregistré avec succès dans Firebase Cloud !");
-          completeUserSignIn(res.user, res.profile, res.isNew);
-          showToast("🎉 Bienvenue chez LAPERLE TOUR HT ! Votre compte a été enregistré avec succès.");
-          return;
-        } catch (regErr) {
-          btnSendCode.disabled = false;
-          setAuthMessage("error", formatAuthError(regErr) || "Impossible d'enregistrer le compte.");
-          return;
-        }
-      }
-
-      const isEmail = identifier.includes('@');
-
-      try {
-        btnSendCode.disabled = true;
-
-        if (isEmail) {
-          // Parcours E-mail : Envoi du lien d'authentification Firebase natif
-          setAuthMessage("loading", "Envoi du lien d'authentification Firebase par e-mail...");
-          await sendFirebaseEmailLink(identifier, name, currentAuthMode);
-
-          if (stepId) stepId.style.display = "none";
-          if (stepEmailSent) stepEmailSent.style.display = "block";
-          if (stepCode) stepCode.style.display = "none";
-          if (stepConfirmEmail) stepConfirmEmail.style.display = "none";
-
-          if (emailSentDesc) {
-            emailSentDesc.innerHTML = `Un lien sécurisé sans mot de passe vient d'être expédié à votre adresse (<b>${identifier}</b>) par Firebase.<br><br>👉 <b>Ouvrez votre messagerie et cliquez sur le lien</b> pour vous connecter instantanément à votre compte LAPERLE.`;
-          }
-          setAuthMessage("success", `Lien de connexion Firebase envoyé avec succès à ${identifier} !`);
-        } else {
-          // Parcours Téléphone : Envoi du code SMS via Firebase Phone Auth
-          setAuthMessage("loading", "Envoi du code de vérification SMS par Firebase...");
-          await sendFirebasePhoneVerification(identifier, 'authBtnSendCode', name, currentAuthMode);
-
-          if (stepId) stepId.style.display = "none";
-          if (stepEmailSent) stepEmailSent.style.display = "none";
-          if (stepCode) stepCode.style.display = "block";
-          if (stepConfirmEmail) stepConfirmEmail.style.display = "none";
-
-          if (codeTarget) codeTarget.textContent = `Vérification SMS pour : ${identifier}`;
-          if (codeDesc) {
-            codeDesc.textContent = `Un code de vérification SMS à 6 chiffres a été expédié par Firebase au ${identifier}. Veuillez le saisir ci-dessous.`;
-          }
-          setAuthMessage("success", `Code SMS envoyé au ${identifier}.`);
-          if (inputCode) {
-            inputCode.value = "";
-            inputCode.focus();
-          }
-        }
-      } catch (err) {
-        console.warn("Erreur envoi auth Firebase:", err?.code || err?.message);
-        const errCode = err?.code || "";
-        const errMsg = err?.message || String(err);
-
-        // Si non inscrit, bloquer net
-        if (errCode === 'auth/user-not-registered' || errMsg.includes('pas encore inscrit') || errMsg.includes('user-not-registered')) {
-          setAuthMessage("error", `❌ <b>Le compte « ${esc(identifier)} » n'est pas encore inscrit sur LAPERLE TOUR HT.</b><br>Vous ne pouvez pas vous connecter sans être préalablement inscrit.<br><button type="button" onclick="document.getElementById('authTabRegister')?.click()" style="margin-top:8px;padding:6px 14px;background:#082b70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;">👉 Cliquer ici pour vous inscrire</button>`);
-          btnSendCode.disabled = false;
-          return;
         }
 
-        const isNotAllowedOrDomain = (err?.code === 'auth/operation-not-allowed') ||
-                                    (err?.code === 'auth/unauthorized-domain') ||
-                                    (err?.message && (err.message.includes('auth/operation-not-allowed') || err.message.includes('auth/unauthorized-domain')));
-        if (isNotAllowedOrDomain && isEmail) {
-          // Accès direct sans blocage ni message d'erreur
-          try {
-            setAuthMessage("loading", `Connexion en cours avec ${identifier}...`);
-            const res = await directEmailSignInFallback(identifier, name, currentAuthMode);
-            setAuthMessage("success", "Connexion réussie ! Bienvenue chez LAPERLE TOUR HT.");
-            completeUserSignIn(res.user, res.profile, res.isNew);
-            return;
-          } catch (bypassErr) {
-            setAuthMessage("error", formatAuthError(bypassErr) || "Impossible de finaliser la connexion.");
-          }
-        } else {
-          setAuthMessage("error", formatAuthError(err) || "Impossible d'envoyer l'authentification.");
-        }
-      } finally {
-        btnSendCode.disabled = false;
-      }
-    };
-  }
-
-  // Connexion de secours directe avec l'adresse e-mail
-  if (btnDirectBypass) {
-    btnDirectBypass.onclick = async () => {
-      const identifier = inputId ? inputId.value.trim() : "";
-      const name = inputName ? inputName.value.trim() : "";
-      if (!identifier || !identifier.includes('@')) {
-        setAuthMessage("error", "Veuillez saisir une adresse e-mail valide.");
-        return;
-      }
-
-      // RÈGLE STRICTE LAPERLE : Vérifier l'inscription avant connexion de secours
-      if (currentAuthMode === "login") {
-        const isSuperAdmin = isSuperAdminEmail(identifier) || isSuperAdminIdentifier(identifier);
-        if (!isSuperAdmin) {
-          const existing = await getUserProfileByIdentifier(identifier);
-          if (!existing) {
-            setAuthMessage("error", `❌ <b>Le compte « ${esc(identifier)} » n'est pas encore inscrit.</b><br>Veuillez d'abord vous inscrire via l'onglet « Inscription ».<br><button type="button" onclick="document.getElementById('authTabRegister')?.click()" style="margin-top:8px;padding:6px 14px;background:#082b70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;">👉 Aller à l'inscription</button>`);
-            return;
-          }
-        }
-      }
-
-      try {
-        btnDirectBypass.disabled = true;
-        setAuthMessage("loading", "Connexion en cours...");
-        const result = await authenticateWithPhoneOrEmail(identifier, "BYPASS", name, currentAuthMode);
-        setAuthMessage("success", "Connexion réussie ! Bienvenue chez LAPERLE TOUR HT.");
+        setAuthMessage("success", "✅ Compte créé avec succès ! Bienvenue chez LAPERLE TOUR HT.");
+        showToast(`🎉 Bienvenue chez LAPERLE TOUR HT, ${nom} ${prenom} !`);
         completeUserSignIn(result.user, result.profile, result.isNew);
       } catch (err) {
-        btnDirectBypass.disabled = false;
-        setAuthMessage("error", formatAuthError(err) || "Impossible d'établir la connexion.");
+        btnRegister.disabled = false;
+        console.warn("Erreur inscription register:", err);
+        setAuthMessage("error", formatAuthError(err) || err?.message || "Erreur lors de la création du compte.");
       }
     };
   }
 
-  // Retour depuis l'écran e-mail
-  if (btnEmailBack) {
-    btnEmailBack.onclick = () => {
-      if (stepId) stepId.style.display = "block";
-      if (stepEmailSent) stepEmailSent.style.display = "none";
-      if (stepConfirmEmail) stepConfirmEmail.style.display = "none";
-      if (stepCode) stepCode.style.display = "none";
-      setAuthMessage("idle", "");
-    };
-  }
+  // 3. ACTION DU MODÈLE : Boutons Google (Connexion & Inscription)
+  async function handleGoogleAuth(mode) {
+    const activeBtn = mode === "register" ? btnGoogleRegister : btnGoogleLogin;
+    try {
+      if (activeBtn) activeBtn.disabled = true;
+      setAuthMessage("loading", mode === "register"
+        ? "Inscription avec votre profil Google en cours..."
+        : "Connexion sécurisée avec Google...");
 
-  // Renvoi du lien e-mail
-  if (btnEmailResend) {
-    btnEmailResend.onclick = async () => {
-      const identifier = inputId ? inputId.value.trim() : "";
-      const name = inputName ? inputName.value.trim() : "";
-      if (!identifier) return;
-      try {
-        btnEmailResend.disabled = true;
-        setAuthMessage("loading", "Renvoi du lien d'authentification Firebase...");
-        await sendFirebaseEmailLink(identifier, name, currentAuthMode);
-        setAuthMessage("success", `Nouveau lien de connexion Firebase envoyé à ${identifier} !`);
-      } catch (err) {
-        setAuthMessage("error", formatAuthError(err) || "Erreur lors du renvoi du lien.");
-      } finally {
-        btnEmailResend.disabled = false;
-      }
-    };
-  }
+      const result = await authLoginGoogle(mode);
 
-  // Confirmation d'adresse e-mail si lien ouvert sur un autre appareil / onglet
-  if (btnSubmitConfirmEmail) {
-    btnSubmitConfirmEmail.onclick = async () => {
-      const email = inputConfirmEmail ? inputConfirmEmail.value.trim() : "";
-      if (!email || !email.includes('@')) {
-        setAuthMessage("error", "Veuillez entrer une adresse e-mail valide.");
-        return;
-      }
-      try {
-        btnSubmitConfirmEmail.disabled = true;
-        setAuthMessage("loading", "Finalisation de la connexion sécurisée...");
-        const result = await completeEmailLinkSignIn(email);
-        if (result && result.user) {
-          setAuthMessage("success", "Authentification réussie !");
-          completeUserSignIn(result.user, result.profile, result.isNew);
+      if (result && result.profile) {
+        const existingList = list("utilisateurs") || [];
+        const idx = existingList.findIndex(u => (u.id === result.profile.id || u.email === result.profile.email));
+        if (idx >= 0) {
+          existingList[idx] = result.profile;
+        } else {
+          existingList.push(result.profile);
         }
-      } catch (err) {
-        btnSubmitConfirmEmail.disabled = false;
-        setAuthMessage("error", formatAuthError(err) || "Impossible de finaliser la connexion.");
+        save();
       }
-    };
-  }
 
-  // Retour depuis l'écran code SMS
-  if (btnBack) {
-    btnBack.onclick = () => {
-      if (stepId) stepId.style.display = "block";
-      if (stepCode) stepCode.style.display = "none";
-      if (stepEmailSent) stepEmailSent.style.display = "none";
-      setAuthMessage("idle", "");
-    };
-  }
+      setAuthMessage("success", "Authentification Google réussie !");
+      completeUserSignIn(result.user, result.profile, result.isNew);
+    } catch (err) {
+      if (activeBtn) activeBtn.disabled = false;
+      console.warn("Firebase Google auth exception:", err?.code || err?.message);
+      const errCode = err?.code || "";
+      const errMsg = err?.message || String(err);
 
-  // Renvoi du code SMS
-  if (btnResend) {
-    btnResend.onclick = async () => {
-      const identifier = inputId ? inputId.value.trim() : "";
-      const name = inputName ? inputName.value.trim() : "";
-      if (!identifier) return;
-      try {
-        btnResend.disabled = true;
-        setAuthMessage("loading", "Envoi d'un nouveau code SMS...");
-        await sendFirebasePhoneVerification(identifier, 'authBtnSendCode', name);
-        setAuthMessage("success", "Nouveau code SMS expédié par Firebase !");
-      } catch (err) {
-        setAuthMessage("error", formatAuthError(err) || "Erreur lors du renvoi du SMS.");
-      } finally {
-        btnResend.disabled = false;
-      }
-    };
-  }
-
-  // Vérification du code SMS (Téléphone)
-  if (btnVerify) {
-    btnVerify.onclick = async () => {
-      const code = inputCode ? inputCode.value.trim() : "";
-      const name = inputName ? inputName.value.trim() : "";
-
-      if (!code || code.length < 6) {
-        setAuthMessage("error", "Veuillez saisir les 6 chiffres du code SMS.");
+      const isNotRegistered = (errCode === "auth/user-not-registered") ||
+                              (errMsg && (errMsg.includes("pas encore inscrit") || errMsg.includes("user-not-registered")));
+      if (isNotRegistered) {
+        setAuthMessage("error", `❌ <b>Ce compte n'est pas encore inscrit sur LAPERLE TOUR HT.</b><br>Vous devez d'abord créer votre compte avant de pouvoir vous connecter.<br><button type="button" onclick="document.getElementById('authTabRegister')?.click()" style="margin-top:8px;padding:6px 14px;background:#082b70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;">👉 Cliquer ici pour vous inscrire</button>`);
         return;
       }
 
-      try {
-        btnVerify.disabled = true;
-        btnVerify.innerHTML = `<span class="auth-spinner"></span> Validation SMS...`;
-        setAuthMessage("loading", "Vérification du code SMS Firebase...");
+      if (
+        errCode === "auth/unauthorized-domain" ||
+        errCode === "auth/operation-not-allowed" ||
+        errCode === "auth/popup-blocked" ||
+        errCode === "auth/cancelled-popup-request" ||
+        errMsg.includes("unauthorized-domain") ||
+        errMsg.includes("operation-not-allowed") ||
+        errMsg.includes("popup")
+      ) {
+        try {
+          const fallbackEmail = mode === "register" && registerEmail?.value.trim()
+            ? registerEmail.value.trim().toLowerCase()
+            : (loginEmail?.value.trim().toLowerCase() || "castimaklik@gmail.com");
+          const fallbackName = mode === "register" && registerNom?.value.trim()
+            ? `${registerNom.value.trim()} ${registerPrenom?.value.trim() || ""}`
+            : (fallbackEmail === "castimaklik@gmail.com" ? "Administrateur Laperle" : fallbackEmail.split("@")[0]);
 
-        const result = await verifyFirebasePhoneCode(code, name);
+          if (mode === "login" && !isSuperAdminEmail(fallbackEmail) && !isSuperAdminIdentifier(fallbackEmail)) {
+            const existing = await getUserProfileByIdentifier(fallbackEmail);
+            if (!existing) {
+              setAuthMessage("error", `❌ <b>Le compte « ${esc(fallbackEmail)} » n'est pas encore inscrit.</b><br>Veuillez d'abord créer votre compte via l'onglet <b>« Pour S'inscrire »</b> avant de vous connecter.<br><button type="button" onclick="document.getElementById('authTabRegister')?.click()" style="margin-top:8px;padding:6px 14px;background:#082b70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;">👉 Cliquer ici pour vous inscrire</button>`);
+              return;
+            }
+          }
 
-        setAuthMessage("success", "Authentification réussie ! Bienvenue chez LAPERLE TOUR HT.");
-        btnVerify.innerHTML = `<span>✅</span> <span>Accès accordé</span>`;
-
-        setTimeout(() => {
-          btnVerify.disabled = false;
-          btnVerify.innerHTML = `<span>✅</span> <span>Vérifier le code SMS et accéder</span>`;
-          completeUserSignIn(result.user, result.profile, result.isNew);
-        }, 400);
-      } catch (err) {
-        btnVerify.disabled = false;
-        btnVerify.innerHTML = `<span>✅</span> <span>Vérifier le code SMS et accéder</span>`;
-        setAuthMessage("error", formatAuthError(err) || "Code SMS incorrect ou expiré.");
+          setAuthMessage("loading", `Connexion avec ${fallbackEmail}...`);
+          const res = await directEmailSignInFallback(fallbackEmail, fallbackName, mode);
+          setAuthMessage("success", "Connexion réussie ! Bienvenue chez LAPERLE TOUR HT.");
+          completeUserSignIn(res.user, res.profile, res.isNew);
+          return;
+        } catch (fbErr) {
+          setAuthMessage("error", formatAuthError(fbErr) || "Impossible d'établir la connexion.");
+          return;
+        }
       }
-    };
+
+      setAuthMessage("error", `Échec connexion Google — ${errMsg}`);
+    }
   }
+
+  if (btnGoogleLogin) btnGoogleLogin.onclick = () => handleGoogleAuth("login");
+  if (btnGoogleRegister) btnGoogleRegister.onclick = () => handleGoogleAuth("register");
+
+  // Touche Entrée pour soumettre le formulaire
+  [loginEmail, loginPassword].forEach(input => {
+    input?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") btnLogin?.click();
+    });
+  });
+  [registerNom, registerPrenom, registerEmail, registerPassword, registerPasswordConfirm].forEach(input => {
+    input?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") btnRegister?.click();
+    });
+  });
 }
 
 function completeUserSignIn(user, profile, isNew = false) {
+  clearExplicitLogout();
   currentUser = user;
   currentUserProfile = profile;
 
@@ -1719,10 +1609,26 @@ function renderAuthPage(state = "unauthenticated") {
   initAuthUI("login");
 }
 
-// Optional authentication listener (restaure la session si existante)
+// Écouteur d'authentification Firebase : ne reconnecte JAMAIS si l'utilisateur s'est déconnecté
 try {
   onAuthStateChanged(auth, async (user) => {
     if (isAuthProcessing) return;
+
+    // Si l'utilisateur est déconnecté ou n'a pas de session sauvegardée active,
+    // on interdit formellement toute reconnexion automatique lors du rafraîchissement.
+    // La page de reconnexion doit rester accessible et affichée.
+    if (isExplicitlyLoggedOut() || !getUserSession()) {
+      if (user) {
+        try { await signOut(auth); } catch (e) {}
+      }
+      currentUser = null;
+      currentUserProfile = null;
+      currentUserRoles = [];
+      currentRole = null;
+      renderAuthPage("unauthenticated");
+      return;
+    }
+
     if (user && !currentUser) {
       try {
         const profile = await getUserProfile(user.uid, user.email);
@@ -1740,8 +1646,19 @@ try {
   }).catch(() => {});
 } catch (e) {}
 
-// Initialisation de la session utilisateur au démarrage
+// Initialisation de la session utilisateur au démarrage ou après rafraîchissement (F5)
 async function initSessionAtStartup() {
+  // 0. Si l'utilisateur s'est explicitement déconnecté, la page de reconnexion reste active
+  if (isExplicitlyLoggedOut()) {
+    currentUser = null;
+    currentUserProfile = null;
+    currentUserRoles = [];
+    currentRole = null;
+    try { await signOut(auth); } catch (e) {}
+    renderAuthPage("unauthenticated");
+    return;
+  }
+
   // 1. Détection automatique du lien de connexion sans mot de passe Firebase
   if (checkIsSignInWithEmailLink(window.location.href)) {
     renderAuthPage("unauthenticated");

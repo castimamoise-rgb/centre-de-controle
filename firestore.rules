@@ -663,7 +663,8 @@ service cloud.firestore {
 
     // 17. Healthcheck test collection
     match /test/{testId} {
-      allow read, write: if isAdmin();
+      allow get: if testId == 'connection';
+      allow write: if isAdmin();
     }
   }
 }

@@ -8,6 +8,15 @@
 <meta property="og:title" content="Centre de Contrôle Laperle">
 <meta property="og:description" content="Système de gestion et centre de contrôle opérationnel pour LAPERLE TOUR HT (Transport, Tourisme, Véhicules, Proformas, Factures).">
 <link rel="stylesheet" href="styles.css">
+<script type="importmap">
+{
+  "imports": {
+    "firebase/app": "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js",
+    "firebase/auth": "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js",
+    "firebase/firestore": "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js"
+  }
+}
+</script>
 </head>
 <body>
 <div id="authContainer" class="auth-page" style="display:flex;">
@@ -69,147 +78,160 @@
       </div>
     </div>
 
-    <!-- VOLET DROIT : Formulaire de Connexion & Authentification (USER LOGIN) -->
+    <!-- VOLET DROIT : Formulaire selon Modèle Wireframe LAPERLE TOUR HT -->
     <div class="auth-form-side">
       <div class="auth-form-inner">
-        <!-- En-tête du formulaire façon "USER LOGIN" épuré -->
-        <div class="auth-form-top">
-          <div class="auth-login-kicker">ESPACE SÉCURISÉ</div>
-          <h2 class="auth-login-heading">CONNEXION UTILISATEUR</h2>
-          <p class="auth-login-sub">Identifiez-vous pour accéder à votre espace de travail</p>
-        </div>
-
-        <!-- Onglets Connexion / Inscription -->
+        <!-- Onglets en haut pour basculer facilement entre les deux modes du modèle -->
         <div class="auth-tabs" id="authTabs">
-          <button class="auth-tab active" id="authTabLogin" type="button">Connexion</button>
-          <button class="auth-tab" id="authTabRegister" type="button">Inscription</button>
+          <button class="auth-tab active" id="authTabLogin" type="button">Pour Se Connecter</button>
+          <button class="auth-tab" id="authTabRegister" type="button">Pour S'inscrire</button>
         </div>
 
         <div id="authMessageContainer" style="display:none;"></div>
 
-        <!-- Étape 1 : Saisie de l'identifiant (E-mail ou Téléphone) -->
-        <div id="authStepIdentifier">
-          <div class="auth-field" id="authNameField" style="display:none;">
-            <label for="authInputName">Nom et Prénom</label>
-            <div class="auth-input-icon-wrap">
-              <span class="auth-icon-prefix">👤</span>
-              <input type="text" id="authInputName" placeholder="Ex: Jean-Baptiste Moïse" autocomplete="name">
-            </div>
+        <!-- VUE 1 : POUR SE CONNECTER (Modèle Dessin Haut) -->
+        <div id="authViewLogin" style="display:block;">
+          <div class="auth-form-top">
+            <div class="auth-login-kicker">ESPACE SÉCURISÉ</div>
+            <h2 class="auth-login-heading">Pour Se Connecter</h2>
+            <p class="auth-login-sub">Saisissez votre e-mail et votre mot de passe pour accéder</p>
           </div>
 
+          <!-- Champ Email -->
           <div class="auth-field">
-            <label for="authInputIdentifier" id="authIdentifierLabel">E-mail ou Numéro de téléphone</label>
+            <label for="authLoginEmail">Email :</label>
             <div class="auth-input-icon-wrap">
               <span class="auth-icon-prefix">✉️</span>
-              <input type="text" id="authInputIdentifier" placeholder="Ex: castimaklik@gmail.com ou +509 4440 8687" autocomplete="username">
-            </div>
-            <div class="auth-field-hint" id="authIdentifierHint">
-              Un lien de connexion direct et sécurisé vous sera envoyé par Firebase à votre adresse e-mail.
+              <input type="email" id="authLoginEmail" placeholder="nom@exemple.com" autocomplete="username" required>
             </div>
           </div>
 
-          <button class="auth-btn-primary" id="authBtnSendCode" type="button">
-            <span>✉️</span> <span>Envoyer le lien de connexion Firebase</span>
+          <!-- Champ Password -->
+          <div class="auth-field">
+            <label for="authLoginPassword">Password :</label>
+            <div class="auth-input-icon-wrap">
+              <span class="auth-icon-prefix">🔒</span>
+              <input type="password" id="authLoginPassword" class="has-pwd-toggle" placeholder="Votre mot de passe" autocomplete="current-password" required>
+              <button type="button" class="auth-pwd-toggle" id="authToggleLoginPassword" title="Afficher/Masquer le mot de passe" aria-label="Afficher le mot de passe">👁️</button>
+            </div>
+          </div>
+
+          <!-- Bouton Se Connecter -->
+          <button class="auth-btn-primary" id="authBtnLogin" type="button">
+            <span>Se Connecter</span>
           </button>
 
-          <!-- Séparateur "OU" avec ligne continue et option Google conservée -->
+          <!-- Séparateur "OU" (du modèle) -->
           <div class="auth-sep-wrap">
             <div class="auth-sep-line"></div>
-            <span class="auth-sep-text">OU</span>
+            <span class="auth-sep-text">ou</span>
             <div class="auth-sep-line"></div>
           </div>
 
-          <button class="google-signin-btn" id="authBtnGoogle" type="button">
+          <!-- Bouton Google (du modèle) -->
+          <button class="google-signin-btn" id="authBtnGoogleLogin" type="button">
             <svg class="google-icon" viewBox="0 0 24 24">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
               <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
               <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
               <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
             </svg>
-            <span>Continuer avec Google (Accès direct)</span>
+            <span>Google</span>
           </button>
-        </div>
 
-        <!-- Étape 2A : Lien de Connexion Firebase envoyé par e-mail -->
-        <div id="authStepEmailSent" style="display:none;">
-          <div class="auth-instruction-banner" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:20px;margin:16px 0;text-align:center;">
-            <div style="font-size:36px;margin-bottom:8px;">✉️</div>
-            <div style="font-size:16px;font-weight:700;color:#166534;margin-bottom:8px;" id="authEmailSentTitle">
-              Lien de connexion Firebase envoyé !
-            </div>
-            <div style="font-size:13px;color:#334155;line-height:1.6;" id="authEmailSentDesc">
-              Un lien sécurisé sans mot de passe vient d'être expédié à votre adresse e-mail par Firebase.<br><br>
-              👉 <b>Ouvrez votre boîte e-mail et cliquez sur le lien</b> pour vous connecter instantanément au Centre de Contrôle Laperle.
-            </div>
-          </div>
-
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px;font-size:12px;color:#64748b;line-height:1.5;margin-bottom:16px;text-align:center;">
-            🛡️ Firebase vérifie automatiquement votre identité lorsque vous cliquez sur le lien. Aucun mot de passe ni code n'est requis.
-          </div>
-
-          <div style="display:flex;gap:10px;margin-top:10px;">
-            <button class="auth-btn-secondary" id="authBtnEmailBack" type="button" style="flex:1;">
-              ← Modifier l'adresse
-            </button>
-            <button class="auth-btn-secondary" id="authBtnEmailResend" type="button" style="flex:1;">
-              🔄 Renvoyer le lien
-            </button>
+          <div class="auth-switch-prompt">
+            Pas encore de compte ?
+            <button type="button" class="auth-switch-btn" id="authSwitchToRegister">Pour S'inscrire</button>
           </div>
         </div>
 
-        <!-- Étape 2B : Confirmation d'adresse e-mail lors de l'ouverture du lien sur un autre appareil -->
-        <div id="authStepConfirmEmail" style="display:none;">
-          <div class="auth-instruction-banner" style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;padding:16px;margin:16px 0;text-align:center;">
-            <div style="font-size:30px;margin-bottom:6px;">🔐</div>
-            <div style="font-size:15px;font-weight:700;color:#0369a1;margin-bottom:6px;">
-              Confirmation de votre e-mail
+        <!-- VUE 2 : POUR S'INSCRIRE (Modèle Dessin Bas) -->
+        <div id="authViewRegister" style="display:none;">
+          <div class="auth-form-top">
+            <div class="auth-login-kicker">NOUVEAU COMPTE</div>
+            <h2 class="auth-login-heading">Pour S'inscrire</h2>
+            <p class="auth-login-sub">Renseignez vos informations pour créer votre profil Laperle</p>
+          </div>
+
+          <!-- Nom et Prénom sur la même ligne (selon le modèle) -->
+          <div class="auth-row-2col">
+            <div class="auth-field">
+              <label for="authRegisterNom">Nom :</label>
+              <div class="auth-input-icon-wrap">
+                <span class="auth-icon-prefix">👤</span>
+                <input type="text" id="authRegisterNom" placeholder="Nom" autocomplete="family-name" required>
+              </div>
             </div>
-            <div style="font-size:12px;color:#334155;line-height:1.5;">
-              Pour finaliser la connexion sécurisée avec votre lien Firebase, veuillez confirmer votre adresse e-mail :
+            <div class="auth-field">
+              <label for="authRegisterPrenom">Prénom :</label>
+              <div class="auth-input-icon-wrap">
+                <span class="auth-icon-prefix">👤</span>
+                <input type="text" id="authRegisterPrenom" placeholder="Prénom" autocomplete="given-name" required>
+              </div>
             </div>
           </div>
 
+          <!-- Email -->
           <div class="auth-field">
-            <label for="authInputConfirmEmail">Votre adresse e-mail</label>
+            <label for="authRegisterEmail">Email :</label>
             <div class="auth-input-icon-wrap">
               <span class="auth-icon-prefix">✉️</span>
-              <input type="email" id="authInputConfirmEmail" placeholder="votre-email@domaine.com">
+              <input type="email" id="authRegisterEmail" placeholder="nom@exemple.com" autocomplete="email" required>
             </div>
           </div>
 
-          <button class="auth-btn-primary" id="authBtnSubmitConfirmEmail" type="button">
-            <span>🚀</span> <span>Finaliser ma connexion</span>
-          </button>
-        </div>
-
-        <!-- Étape 2C : Vérification SMS par Téléphone (Firebase Phone Authentication) -->
-        <div id="authStepCode" style="display:none;">
-          <div class="auth-instruction-banner" id="authInstructionBanner" style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;padding:16px;margin:16px 0;text-align:center;">
-            <div style="font-size:28px;margin-bottom:6px;">📲</div>
-            <div style="font-size:14px;font-weight:700;color:#0369a1;margin-bottom:6px;" id="authCodeTarget">
-              Code SMS envoyé par Firebase
-            </div>
-            <div style="font-size:12px;color:#334155;line-height:1.5;" id="authCodeDesc">
-              Un code de vérification SMS à 6 chiffres vient d'être envoyé par Firebase sur votre téléphone. Veuillez le saisir ci-dessous :
-            </div>
-          </div>
-
+          <!-- Password : 4 - 8 chiffre/Alphanumérique (exactement comme écrit sur le modèle) -->
           <div class="auth-field">
-            <label for="authInputCode">Code de confirmation SMS (6 chiffres)</label>
-            <input type="text" id="authInputCode" maxlength="6" placeholder="Ex: 123456" autocomplete="one-time-code" style="letter-spacing:4px;font-size:22px;text-align:center;font-weight:700;">
+            <label for="authRegisterPassword">
+              Password :
+              <span class="auth-label-badge">4 - 8 chiffre / Alphanumérique</span>
+            </label>
+            <div class="auth-input-icon-wrap">
+              <span class="auth-icon-prefix">🔒</span>
+              <input type="password" id="authRegisterPassword" class="has-pwd-toggle" minlength="4" maxlength="8" placeholder="4 à 8 chiffres ou lettres" autocomplete="new-password" required>
+              <button type="button" class="auth-pwd-toggle" id="authToggleRegisterPassword" title="Afficher/Masquer le mot de passe" aria-label="Afficher le mot de passe">👁️</button>
+            </div>
+            <div class="auth-field-hint">
+              Le mot de passe doit comporter entre 4 et 8 caractères alphanumériques (chiffres ou lettres).
+            </div>
           </div>
 
-          <button class="auth-btn-primary" id="authBtnVerifyCode" type="button">
-            <span>✅</span> <span>Vérifier le code SMS et accéder</span>
+          <!-- Password Confirmation -->
+          <div class="auth-field">
+            <label for="authRegisterPasswordConfirm">Password Confirmation :</label>
+            <div class="auth-input-icon-wrap">
+              <span class="auth-icon-prefix">🔑</span>
+              <input type="password" id="authRegisterPasswordConfirm" class="has-pwd-toggle" minlength="4" maxlength="8" placeholder="Confirmez votre mot de passe" autocomplete="new-password" required>
+              <button type="button" class="auth-pwd-toggle" id="authToggleRegisterConfirm" title="Afficher/Masquer le mot de passe" aria-label="Afficher le mot de passe">👁️</button>
+            </div>
+          </div>
+
+          <!-- Bouton S'inscrire -->
+          <button class="auth-btn-primary" id="authBtnRegister" type="button">
+            <span>S'inscrire</span>
           </button>
 
-          <div style="display:flex;gap:10px;margin-top:10px;">
-            <button class="auth-btn-secondary" id="authBtnBack" type="button" style="flex:1;">
-              ← Modifier le numéro
-            </button>
-            <button class="auth-btn-secondary" id="authBtnResend" type="button" style="flex:1;">
-              🔄 Renvoyer le SMS
-            </button>
+          <!-- Séparateur "OU" (du modèle) -->
+          <div class="auth-sep-wrap">
+            <div class="auth-sep-line"></div>
+            <span class="auth-sep-text">ou</span>
+            <div class="auth-sep-line"></div>
+          </div>
+
+          <!-- Bouton Google Profil (du modèle) -->
+          <button class="google-signin-btn" id="authBtnGoogleRegister" type="button">
+            <svg class="google-icon" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+            </svg>
+            <span>Google Profil</span>
+          </button>
+
+          <div class="auth-switch-prompt">
+            Déjà inscrit ?
+            <button type="button" class="auth-switch-btn" id="authSwitchToLogin">Pour Se Connecter</button>
           </div>
         </div>
 
@@ -278,15 +300,6 @@
   <div class="modal" id="modal"></div>
 </div>
 <div class="toast" id="toast"></div>
-<script type="importmap">
-{
-  "imports": {
-    "firebase/app": "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js",
-    "firebase/auth": "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js",
-    "firebase/firestore": "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js"
-  }
-}
-</script>
 <script type="module" src="app.js"></script>
 </body>
 </html>

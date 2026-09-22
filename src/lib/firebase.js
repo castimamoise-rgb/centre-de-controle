@@ -8,11 +8,15 @@ import {
   sendSignInLinkToEmail,
   isSignInWithEmailLink,
   signInWithEmailLink,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
   RecaptchaVerifier,
   signInWithPhoneNumber
 } from 'firebase/auth';
 import { 
   getFirestore, 
+  initializeFirestore,
   doc, 
   getDoc, 
   getDocs, 
@@ -32,6 +36,9 @@ export {
   sendSignInLinkToEmail,
   isSignInWithEmailLink,
   signInWithEmailLink,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
   RecaptchaVerifier,
   signInWithPhoneNumber,
   signInWithPopup,
@@ -66,6 +73,11 @@ export const firebaseConfig = {
 };
 
 export const app = initializeApp(firebaseConfig);
+try {
+  initializeFirestore(app, { experimentalAutoDetectLongPolling: true }, firebaseConfig.firestoreDatabaseId);
+} catch (e) {
+  // If already initialized, getFirestore will return the existing instance
+}
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();

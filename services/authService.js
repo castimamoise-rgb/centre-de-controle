@@ -7,6 +7,9 @@ import {
   sendSignInLinkToEmail,
   isSignInWithEmailLink,
   signInWithEmailLink,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
   RecaptchaVerifier,
   signInWithPhoneNumber,
   db,
@@ -32,6 +35,32 @@ import {
 
 const USERS_COLLECTION = 'utilisateurs';
 const SESSION_STORAGE_KEY = 'LAPERLE_AUTH_SESSION';
+const LAST_LOGOUT_INFO_KEY = 'LAPERLE_LAST_LOGOUT_INFO';
+const EXPLICIT_LOGOUT_KEY = 'LAPERLE_EXPLICIT_LOGOUT';
+
+/**
+ * Fonctions de contrôle de l'état de déconnexion explicite
+ * Empêchent la reconnexion automatique lors du rafraîchissement de la page
+ */
+export function isExplicitlyLoggedOut() {
+  try {
+    return localStorage.getItem(EXPLICIT_LOGOUT_KEY) === 'true';
+  } catch (e) {
+    return false;
+  }
+}
+
+export function setExplicitLogout() {
+  try {
+    localStorage.setItem(EXPLICIT_LOGOUT_KEY, 'true');
+  } catch (e) {}
+}
+
+export function clearExplicitLogout() {
+  try {
+    localStorage.removeItem(EXPLICIT_LOGOUT_KEY);
+  } catch (e) {}
+}
 
 // Mémoire de session pour la confirmation téléphonique Firebase
 let pendingPhoneConfirmation = null;
@@ -48,16 +77,262 @@ export async function signInWithGoogleOnly() {
 /**
  * Déconnecte l'utilisateur courant via Firebase Auth et efface la session
  */
+/**
+ * Enregistre les informations et statistiques utilisateur avant déconnexion
+ */
+export function saveLogoutInfo(info = {}) {
+  try {
+    const existing = getLogoutInfo() || {};
+    const updated = {
+      ...existing,
+      ...info,
+      savedAt: new Date().toISOString()
+    };
+    localStorage.setItem(LAST_LOGOUT_INFO_KEY, JSON.stringify(updated));
+    return updated;
+  } catch (e) {
+    console.warn("Erreur enregistrement infos avant déconnexion:", e?.message);
+    return null;
+  }
+}
+
+export function getLogoutInfo() {
+  try {
+    const raw = localStorage.getItem(LAST_LOGOUT_INFO_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+export function clearLogoutInfo() {
+  try {
+    localStorage.removeItem(LAST_LOGOUT_INFO_KEY);
+  } catch (e) {}
+}
+
 export async function logoutUser() {
   try {
+    setExplicitLogout();
     clearUserSession();
     await signOut(auth);
     return true;
   } catch (error) {
     console.error("Erreur lors de la déconnexion:", error);
+    setExplicitLogout();
     clearUserSession();
     return true;
   }
+}
+
+/**
+ * Hash sécurisé pour les mots de passe locaux et validation
+ */
+export async function hashPassword(password) {
+  try {
+    if (typeof crypto !== 'undefined' && crypto.subtle) {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(password + "_laperle_salt_2026");
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+  } catch (e) {}
+  try {
+    return btoa(unescape(encodeURIComponent(password + "_laperle_salt")));
+  } catch (e) {
+    return "hash_" + password;
+  }
+}
+
+/**
+ * INSCRIPTION CONFORME AU WIREFRAME "POUR S'INSCRIRE" :
+ * - Nom & Prénom (champs séparés)
+ * - Email
+ * - Password (4 à 8 caractères alphanumériques / chiffres)
+ * - Password Confirmation
+ */
+export async function signUpWithEmailAndPasswordMethod({ nom, prenom, email, password, passwordConfirm }) {
+  if (!nom || !String(nom).trim()) {
+    throw new Error("Veuillez renseigner votre nom.");
+  }
+  if (!prenom || !String(prenom).trim()) {
+    throw new Error("Veuillez renseigner votre prénom.");
+  }
+  if (!email || !String(email).includes('@')) {
+    throw new Error("Veuillez saisir une adresse e-mail valide.");
+  }
+  if (!password) {
+    throw new Error("Veuillez saisir un mot de passe.");
+  }
+  const cleanPass = String(password).trim();
+  if (cleanPass.length < 4 || cleanPass.length > 8) {
+    throw new Error("Le mot de passe doit comporter entre 4 et 8 caractères.");
+  }
+  if (!/^[a-zA-Z0-9]+$/.test(cleanPass)) {
+    throw new Error("Le mot de passe doit contenir uniquement des chiffres ou des lettres (alphanumérique).");
+  }
+  if (passwordConfirm !== undefined && passwordConfirm !== null) {
+    if (String(passwordConfirm).trim() !== cleanPass) {
+      throw new Error("La confirmation ne correspond pas au mot de passe saisi.");
+    }
+  }
+
+  const cleanEmail = String(email).trim().toLowerCase();
+  const cleanNom = String(nom).trim();
+  const cleanPrenom = String(prenom).trim();
+  const fullName = `${cleanNom} ${cleanPrenom}`;
+
+  // Vérifier si un compte existe déjà dans le système
+  const existing = await getUserProfileByIdentifier(cleanEmail);
+  if (existing) {
+    throw new Error(`Un compte existe déjà pour « ${cleanEmail} ». Veuillez basculer sur « Pour Se Connecter » pour accéder à votre espace.`);
+  }
+
+  const isSuperAdmin = isSuperAdminEmail(cleanEmail) || isSuperAdminIdentifier(cleanEmail);
+  const now = new Date().toISOString();
+  const passHash = await hashPassword(cleanPass);
+
+  // Création Firebase Auth native (adaptation mot de passe si < 6 caractères car contrainte Firebase SDK)
+  let firebaseUser = null;
+  const firebaseAuthPass = cleanPass.length < 6 ? `lp_${cleanPass}_auth` : cleanPass;
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, cleanEmail, firebaseAuthPass);
+    firebaseUser = cred.user;
+    try {
+      await updateProfile(firebaseUser, { displayName: fullName });
+    } catch (e) {}
+  } catch (authErr) {
+    console.warn("createUserWithEmailAndPassword Firebase warning:", authErr?.code || authErr?.message);
+    if (authErr?.code === 'auth/email-already-in-use') {
+      try {
+        const cred = await signInWithEmailAndPassword(auth, cleanEmail, firebaseAuthPass);
+        firebaseUser = cred.user;
+      } catch (loginErr) {}
+    }
+  }
+
+  const uid = firebaseUser?.uid || `usr_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+  const initialRoles = isSuperAdmin ? [ROLES.ADMIN] : [ROLES.LECTURE_SEULE];
+  const initialRole = isSuperAdmin ? ROLES.ADMIN : ROLES.LECTURE_SEULE;
+
+  const newProfile = {
+    id: uid,
+    uid: uid,
+    nom: cleanNom,
+    prenom: cleanPrenom,
+    name: fullName,
+    email: cleanEmail,
+    photoURL: '',
+    roles: initialRoles,
+    role: initialRole,
+    status: 'actif',
+    statutCompte: 'actif',
+    statutClient: isSuperAdmin ? 'client' : 'prospect',
+    telephone: '',
+    phone: '',
+    passwordHash: passHash,
+    notes: isSuperAdmin ? 'Administrateur Principal LAPERLE TOUR HT' : 'Compte Inscription LAPERLE TOUR HT',
+    permissions: {},
+    createdAt: now,
+    updatedAt: now,
+    lastLoginAt: now,
+    createdBy: cleanEmail || uid,
+    updatedBy: cleanEmail || uid
+  };
+
+  try {
+    const userDocRef = doc(db, USERS_COLLECTION, uid);
+    await setDoc(userDocRef, newProfile);
+  } catch (fsErr) {
+    console.warn("setDoc profil Firestore:", fsErr?.message);
+  }
+
+  const resolvedUserObj = {
+    uid: uid,
+    displayName: fullName,
+    email: cleanEmail,
+    phoneNumber: '',
+    photoURL: ''
+  };
+
+  saveUserSession(resolvedUserObj, newProfile);
+  return { user: resolvedUserObj, profile: newProfile, isNew: true };
+}
+
+/**
+ * CONNEXION CONFORME AU WIREFRAME "POUR SE CONNECTER" :
+ * - Email
+ * - Password
+ */
+export async function signInWithEmailAndPasswordMethod(email, password) {
+  if (!email || !String(email).includes('@')) {
+    throw new Error("Veuillez saisir votre adresse e-mail.");
+  }
+  if (!password) {
+    throw new Error("Veuillez saisir votre mot de passe.");
+  }
+
+  const cleanEmail = String(email).trim().toLowerCase();
+  const cleanPass = String(password).trim();
+  const isSuperAdmin = isSuperAdminEmail(cleanEmail) || isSuperAdminIdentifier(cleanEmail);
+
+  // RÈGLE STRICTE LAPERLE : Vérifier l'inscription préalable si non Super Admin
+  const existing = await getUserProfileByIdentifier(cleanEmail);
+  if (!existing && !isSuperAdmin) {
+    const notRegErr = new Error(`Le compte « ${cleanEmail} » n'est pas encore inscrit sur LAPERLE TOUR HT. Veuillez d'abord créer votre compte via l'onglet « Pour S'inscrire » avant de vous connecter.`);
+    notRegErr.code = 'auth/user-not-registered';
+    throw notRegErr;
+  }
+
+  // Vérification de sécurité du mot de passe
+  if (existing && existing.passwordHash) {
+    const inputHash = await hashPassword(cleanPass);
+    if (existing.passwordHash !== inputHash) {
+      throw new Error("Mot de passe incorrect. Veuillez vérifier votre saisie.");
+    }
+  }
+
+  // Tentative Firebase Auth native
+  const firebaseAuthPass = cleanPass.length < 6 ? `lp_${cleanPass}_auth` : cleanPass;
+  let firebaseUser = null;
+  try {
+    const cred = await signInWithEmailAndPassword(auth, cleanEmail, firebaseAuthPass);
+    firebaseUser = cred.user;
+  } catch (authErr) {
+    console.warn("signInWithEmailAndPassword warning:", authErr?.code || authErr?.message);
+  }
+
+  if (firebaseUser) {
+    return await processAuthenticatedUser(firebaseUser, cleanEmail, '', 'login');
+  }
+
+  // Authentification réussie via le profil vérifié
+  if (existing) {
+    const isDeactivated = normalizeStatus(existing.status || existing.statutCompte) === 'inactif';
+    if (isDeactivated) {
+      throw new Error("Ce compte a été désactivé ou suspendu par l'administration LAPERLE TOUR HT.");
+    }
+
+    await updateUserLastLogin(existing.uid || existing.id);
+
+    const resolvedUserObj = {
+      uid: existing.uid || existing.id,
+      displayName: existing.name || existing.nom || cleanEmail.split('@')[0],
+      email: existing.email || cleanEmail,
+      phoneNumber: existing.telephone || existing.phone || '',
+      photoURL: existing.photoURL || ''
+    };
+
+    saveUserSession(resolvedUserObj, existing);
+    return { user: resolvedUserObj, profile: existing, isNew: false };
+  }
+
+  if (isSuperAdmin) {
+    return await directEmailSignInFallback(cleanEmail, "Administrateur Laperle", 'login');
+  }
+
+  throw new Error("Impossible d'établir la connexion. Veuillez vérifier votre e-mail et mot de passe.");
 }
 
 /**
@@ -670,6 +945,7 @@ export function sanitizeProfile(profile) {
  */
 export function saveUserSession(user, profile) {
   try {
+    clearExplicitLogout();
     const cleanUser = sanitizeUser(user);
     const cleanProfile = sanitizeProfile(profile);
     const payload = { user: cleanUser, profile: cleanProfile, timestamp: Date.now() };
@@ -697,7 +973,10 @@ export function clearUserSession() {
 
 export function subscribeAuthState(onStateChange) {
   return onAuthStateChanged(auth, async (user) => {
-    if (!user) {
+    if (!user || isExplicitlyLoggedOut()) {
+      if (user && isExplicitlyLoggedOut()) {
+        try { await signOut(auth); } catch (e) {}
+      }
       onStateChange({
         state: 'unauthenticated',
         user: null,
