@@ -22,7 +22,7 @@ export function generateFactureNumber(existingList = []) {
   const yyyy = now.getFullYear();
   const mm = String(now.getMonth() + 1).padStart(2, '0');
   const dd = String(now.getDate()).padStart(2, '0');
-  const prefix = `FT-${yyyy}-${mm}-${dd}`;
+  const prefix = `FAC-${yyyy}-${mm}-${dd}`;
   
   let maxSeq = 0;
   existingList.forEach(item => {
