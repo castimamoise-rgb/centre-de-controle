@@ -343,6 +343,7 @@ export async function signInWithEmailAndPasswordMethod(identifier, password) {
   }
 
   clearExplicitLogout();
+  const cleanPass = String(password).trim();
   const cleanId = String(identifier).trim();
   const cleanHandle = cleanId.startsWith('@') ? cleanId.substring(1).trim() : cleanId;
   const isEmail = cleanId.includes('@') && !cleanId.startsWith('@') && cleanId.includes('.');
