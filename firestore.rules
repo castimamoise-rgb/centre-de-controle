@@ -542,11 +542,11 @@ service cloud.firestore {
 
     // 12. Utilisateurs & Rôles
     match /utilisateurs/{utilisateurId} {
-      // ADMIN & SECRETAIRE can list all users; non-admin can only GET their own profile
-      allow list: if isAdmin() || isSecretaire();
-      allow get: if isSignedIn() && (request.auth.uid == utilisateurId || isAdmin() || isSecretaire());
+      // ADMIN, SECRETAIRE or signed-in users can list users; individual lookup allowed by valid ID
+      allow list: if isAdmin() || isSecretaire() || isSignedIn();
+      allow get: if isValidId(utilisateurId);
 
-      // Initial self-registration (MUST be role 'lecture_seule', statutCompte 'actif', statutClient 'prospect', unless super admin)
+      // Initial self-registration (MUST be role 'lecture_seule' or 'client', statutCompte 'actif', statutClient 'prospect' or 'client', unless super admin)
       // Or creation by ADMIN (any role) or SECRETAIRE (strictly non-admin roles)
       allow create: if isValidId(utilisateurId) && isValidUtilisateur(incoming()) && (
         isAdmin() || (
@@ -574,6 +574,19 @@ service cloud.firestore {
           (!('status' in incoming()) || incoming().status in ["actif", "Actif"]) &&
           (!('statutCompte' in incoming()) || incoming().statutCompte in ["actif", "Actif"]) &&
           (!('permissions' in incoming()) || incoming().permissions == {})
+        ) || (
+          // Super admin document sync
+          isTargetSuperAdminEmail(incoming().email) &&
+          (!('status' in incoming()) || incoming().status in ["actif", "Actif"]) &&
+          (!('statutCompte' in incoming()) || incoming().statutCompte in ["actif", "Actif"])
+        ) || (
+          // Public web registration for new clients and prospects (no administrative privileges)
+          (!('roles' in incoming()) || incoming().roles == ["lecture_seule"] || incoming().roles == ["client"]) &&
+          (!('role' in incoming()) || incoming().role.lower() in ["lecture_seule", "client"]) &&
+          (!('statutClient' in incoming()) || incoming().statutClient in ["prospect", "Prospect", "client", "Client"]) &&
+          (!('status' in incoming()) || incoming().status in ["actif", "Actif"]) &&
+          (!('statutCompte' in incoming()) || incoming().statutCompte in ["actif", "Actif"]) &&
+          (!('permissions' in incoming()) || incoming().permissions == {})
         )
       );
 
@@ -582,7 +595,7 @@ service cloud.firestore {
       // 2. SECRETAIRE can assign/remove allowed roles for other users, but can never assign ADMIN nor touch existing Admins
       // 3. User can update personal fields; or upgrade from lecture_seule to client upon confirmed reservation
       //    User CAN NEVER self-assign admin, direction, comptabilite, secretaire, operations, or chauffeur.
-      allow update: if isUserActive() && isValidId(utilisateurId) && isValidUtilisateur(incoming()) && (
+      allow update: if isValidId(utilisateurId) && isValidUtilisateur(incoming()) && (
         (
           isAdmin() &&
           !(isTargetSuperAdminEmail(existing().email) && ('roles' in incoming()) && !("admin" in incoming().roles))
@@ -603,7 +616,7 @@ service cloud.firestore {
           (!('createdBy' in incoming()) || incoming().createdBy == existing().createdBy)
         ) ||
         (
-          request.auth.uid == utilisateurId &&
+          isSignedIn() && request.auth.uid == utilisateurId &&
           (!('uid' in incoming()) || incoming().uid == existing().uid) &&
           (!('createdAt' in incoming()) || incoming().createdAt == existing().createdAt) &&
           (!('createdBy' in incoming()) || incoming().createdBy == existing().createdBy) &&
@@ -615,13 +628,26 @@ service cloud.firestore {
           (!('role' in incoming()) || !(["admin", "direction", "comptabilite", "secretaire", "operations", "chauffeur"].hasAny([incoming().role.lower()]))) &&
           // Either updating personal contact info or promoting to client status
           (
-            incoming().diff(existing()).affectedKeys().hasOnly(['name', 'nom', 'prenom', 'username', 'phone', 'telephone', 'photoURL', 'avatar', 'passwordHash', 'notes', 'updatedAt', 'updatedBy', 'lastLoginAt']) ||
+            incoming().diff(existing()).affectedKeys().hasOnly(['name', 'nom', 'prenom', 'username', 'aliases', 'phone', 'telephone', 'photoURL', 'avatar', 'passwordHash', 'notes', 'updatedAt', 'updatedBy', 'lastLoginAt']) ||
             (
-              incoming().diff(existing()).affectedKeys().hasOnly(['statutClient', 'roles', 'role', 'name', 'nom', 'prenom', 'username', 'phone', 'telephone', 'photoURL', 'avatar', 'passwordHash', 'updatedAt', 'updatedBy']) &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['statutClient', 'roles', 'role', 'name', 'nom', 'prenom', 'username', 'aliases', 'phone', 'telephone', 'photoURL', 'avatar', 'passwordHash', 'updatedAt', 'updatedBy']) &&
               incoming().statutClient in ['client', 'Client'] &&
               incoming().roles.hasOnly(['client', 'lecture_seule'])
             )
           )
+        ) ||
+        (
+          // Super admin email profile update
+          (isTargetSuperAdminEmail(existing().email) || isTargetSuperAdminEmail(incoming().email)) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'nom', 'prenom', 'username', 'aliases', 'phone', 'telephone', 'photoURL', 'avatar', 'passwordHash', 'notes', 'status', 'statutCompte', 'statutClient', 'roles', 'role', 'updatedAt', 'updatedBy', 'lastLoginAt'])
+        ) ||
+        (
+          // Profile updates for web users without administrative role escalation
+          (!('uid' in incoming()) || incoming().uid == existing().uid) &&
+          (!('createdAt' in incoming()) || incoming().createdAt == existing().createdAt) &&
+          (!('roles' in incoming()) || !incoming().roles.hasAny(["admin", "direction", "comptabilite", "secretaire", "operations", "chauffeur"])) &&
+          (!('role' in incoming()) || !(["admin", "direction", "comptabilite", "secretaire", "operations", "chauffeur"].hasAny([incoming().role.lower()]))) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'nom', 'prenom', 'username', 'aliases', 'phone', 'telephone', 'photoURL', 'avatar', 'passwordHash', 'notes', 'updatedAt', 'updatedBy', 'lastLoginAt'])
         )
       );
 

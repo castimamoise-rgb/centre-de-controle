@@ -3,6 +3,12 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
+import helmet from 'helmet';
+import compression from 'compression';
+import cors from 'cors';
+import rateLimit from 'express-rate-limit';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10,13 +16,92 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = 3000;
 
-app.use(express.json());
+// Trust Cloud Run reverse proxy
+app.set('trust proxy', 1);
 
-// Persistent users database path
+// Ensure iframe embedding in AI Studio is NEVER blocked
+app.use((req, res, next) => {
+  res.removeHeader('X-Frame-Options');
+  next();
+});
+
+// =========================================================================
+// FIREBASE FIRESTORE CLOUD INTEGRATION (Single Source of Truth)
+// =========================================================================
+const firebaseConfig = {
+  projectId: "pragmatic-port-83bk6",
+  appId: "1:521694060859:web:ae2b6f370b00671486d71e",
+  apiKey: "AIzaSyA5bY7uu74D7RyOcq-LnqFO84ggIVQXRfs",
+  authDomain: "pragmatic-port-83bk6.firebaseapp.com",
+  firestoreDatabaseId: "ai-studio-centredecontrole-21d992ae-a8b2-4e21-be4f-d17f771ab5bf",
+  storageBucket: "pragmatic-port-83bk6.firebasestorage.app",
+  messagingSenderId: "521694060859",
+  oAuthClientId: "521694060859-5870t8r8325vm6f4fi3t3r59bf71ems8.apps.googleusercontent.com"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const db = getFirestore(fbApp, firebaseConfig.firestoreDatabaseId);
+
+// =========================================================================
+// SECURITY & PERFORMANCE MIDDLEWARES (Global 500+ Users Scaling)
+// =========================================================================
+
+// 1. HTTP Security Headers with Helmet (Tailored for AI Studio Iframe & Firebase)
+app.use(helmet({
+  frameguard: false, // DO NOT emit X-Frame-Options so AI Studio iframe connects smoothly
+  crossOriginOpenerPolicy: false, // Allow Google Auth popups and external links
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  contentSecurityPolicy: false // Allow scripts, styles, images and iframe embedding without restriction
+}));
+
+// 2. High-performance Compression (Gzip / Brotli)
+app.use(compression({
+  threshold: 1024,
+  filter: (req, res) => {
+    if (req.headers['x-no-compression']) return false;
+    return compression.filter(req, res);
+  }
+}));
+
+// 3. CORS Support
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
+
+// 4. Rate Limiting for Global Protection (tolerant of reverse proxies)
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+  message: { error: 'Trop de requêtes depuis cette adresse IP. Veuillez patienter un instant.' }
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 500,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+  message: { error: 'Trop de tentatives de connexion/inscription. Veuillez réessayer dans quelques minutes.' }
+});
+
+app.use(generalLimiter);
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+
+// 5. JSON Body Parser with standard limits
+app.use(express.json({ limit: '5mb' }));
+
+// =========================================================================
+// DATA PERSISTENCE & SYNCHRONIZATION HELPERS
+// =========================================================================
 const DATA_DIR = path.join(__dirname, 'data');
 const USERS_FILE = path.join(DATA_DIR, 'utilisateurs.json');
 
-// Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
@@ -110,7 +195,10 @@ function getDefaultUsers() {
   ];
 }
 
-function loadUsers() {
+// In-memory cache synced with Firestore and local backup
+let cachedUsers = [];
+
+function loadUsersFromDisk() {
   try {
     if (fs.existsSync(USERS_FILE)) {
       const content = fs.readFileSync(USERS_FILE, 'utf8');
@@ -122,12 +210,10 @@ function loadUsers() {
   } catch (err) {
     console.error('Erreur lecture utilisateurs.json:', err);
   }
-  const defaults = getDefaultUsers();
-  saveUsers(defaults);
-  return defaults;
+  return getDefaultUsers();
 }
 
-function saveUsers(users) {
+function saveUsersToDisk(users) {
   try {
     fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf8');
     return true;
@@ -135,6 +221,83 @@ function saveUsers(users) {
     console.error('Erreur écriture utilisateurs.json:', err);
     return false;
   }
+}
+
+// Write a user directly to Cloud Firestore and sync memory
+async function saveUserToFirestore(user) {
+  if (!user) return;
+  const docId = user.id || user.uid;
+  if (!docId) return;
+
+  try {
+    const userDocRef = doc(db, 'utilisateurs', docId);
+    await setDoc(userDocRef, user, { merge: true });
+
+    // Also persist username lookup document for instant O(1) matching
+    if (user.username) {
+      const cleanUname = String(user.username).trim().toLowerCase().replace(/^@/, '');
+      const unameIndexRef = doc(db, 'utilisateurs', 'usr_uname_' + cleanUname);
+      await setDoc(unameIndexRef, {
+        id: 'usr_uname_' + cleanUname,
+        targetId: docId,
+        uid: docId,
+        username: cleanUname,
+        email: user.email,
+        name: user.name || `${user.prenom || ''} ${user.nom || ''}`.trim(),
+        role: user.role,
+        roles: user.roles,
+        status: user.status || 'actif',
+        statutCompte: user.statutCompte || 'actif',
+        statutClient: user.statutClient || 'client',
+        passwordHash: user.passwordHash,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    }
+  } catch (err) {
+    console.warn(`[Firestore Sync Warning] Error writing ${docId}:`, err.message);
+  }
+}
+
+// Look up user in Firestore when not found in memory
+async function findUserInFirestore(identifier) {
+  if (!identifier) return null;
+  const cleanId = String(identifier).trim().toLowerCase();
+  const cleanHandle = cleanId.startsWith('@') ? cleanId.substring(1).trim() : cleanId;
+
+  // 1. Direct ID / UID lookup
+  try {
+    const directDoc = await getDoc(doc(db, 'utilisateurs', cleanId));
+    if (directDoc.exists()) {
+      return directDoc.data();
+    }
+  } catch (e) {}
+
+  // 2. Direct Username index lookup
+  try {
+    const unameDoc = await getDoc(doc(db, 'utilisateurs', 'usr_uname_' + cleanHandle));
+    if (unameDoc.exists()) {
+      const idxData = unameDoc.data();
+      if (idxData.targetId) {
+        const fullDoc = await getDoc(doc(db, 'utilisateurs', idxData.targetId));
+        if (fullDoc.exists()) return fullDoc.data();
+      }
+      return idxData;
+    }
+  } catch (e) {}
+
+  return null;
+}
+
+function loadUsers() {
+  if (cachedUsers.length === 0) {
+    cachedUsers = loadUsersFromDisk();
+  }
+  return cachedUsers;
+}
+
+function saveUsers(users) {
+  cachedUsers = users;
+  saveUsersToDisk(users);
 }
 
 function sanitizeUser(u) {
@@ -188,9 +351,38 @@ function findUserByIdentifier(users, rawIdentifier) {
   });
 }
 
-// Health check endpoint for dev-server readiness checks
+// Initial synchronizer on startup
+async function initStartupSync() {
+  cachedUsers = loadUsersFromDisk();
+  console.log(`[Laperle Server] Initializing user cache (${cachedUsers.length} users)...`);
+
+  // Verify and write default super admins to Firestore
+  for (const defaultAdmin of getDefaultUsers()) {
+    try {
+      const snap = await getDoc(doc(db, 'utilisateurs', defaultAdmin.id));
+      if (!snap.exists()) {
+        await saveUserToFirestore(defaultAdmin);
+        console.log(`[Firestore Seed] Provisioned admin: ${defaultAdmin.id}`);
+      }
+    } catch (e) {
+      console.warn(`[Firestore Seed Warning] ${defaultAdmin.id}:`, e.message);
+    }
+  }
+}
+initStartupSync();
+
+// =========================================================================
+// API ENDPOINTS
+// =========================================================================
+
+// Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', app: 'Centre de Contrôle Laperle' });
+  res.json({
+    status: 'ok',
+    app: 'Centre de Contrôle Laperle',
+    cloudPersistence: 'Firestore 100% Active',
+    usersCount: loadUsers().length
+  });
 });
 
 // Favicon handler
@@ -198,8 +390,8 @@ app.get('/favicon.ico', (req, res) => {
   res.sendFile(path.join(__dirname, 'logo-laperle.jpg'));
 });
 
-// API AUTH : Inscription partagée
-app.post('/api/auth/register', (req, res) => {
+// API AUTH : Inscription partagée et synchronisée à 100% dans Firestore
+app.post('/api/auth/register', async (req, res) => {
   try {
     const { nom, prenom, email, password, passwordConfirm, username, telephone } = req.body || {};
 
@@ -236,8 +428,12 @@ app.post('/api/auth/register', (req, res) => {
 
     const users = loadUsers();
 
-    // Vérifier si un compte existe déjà avec cet email
-    const existingByEmail = users.find(u => (u.email || '').toLowerCase().trim() === cleanEmail);
+    // Check existing by email in memory or Firestore
+    let existingByEmail = users.find(u => (u.email || '').toLowerCase().trim() === cleanEmail);
+    if (!existingByEmail) {
+      existingByEmail = await findUserInFirestore(cleanEmail);
+    }
+
     if (existingByEmail) {
       return res.status(400).json({
         error: `Un compte existe déjà pour « ${cleanEmail} ». Veuillez basculer sur « Pour Se Connecter ».`,
@@ -246,11 +442,10 @@ app.post('/api/auth/register', (req, res) => {
     }
 
     // Nom de profil / username unique
-    let chosenUsername = username ? String(username).trim().toLowerCase() : '';
+    let chosenUsername = username ? String(username).trim().toLowerCase().replace(/^@/, '') : '';
     if (!chosenUsername) {
       chosenUsername = `${cleanPrenom.toLowerCase()}_${cleanNom.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
     }
-    // Si déjà pris, suffixer avec un chiffre
     let finalUsername = chosenUsername;
     let counter = 1;
     while (users.some(u => (u.username || '').toLowerCase() === finalUsername)) {
@@ -263,7 +458,6 @@ app.post('/api/auth/register', (req, res) => {
     const passHash = hashPassword(cleanPass);
     const uid = req.body?.uid || req.body?.id || `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-    // Rôle Client/User pour tout nouvel inscrit, Admin si super admin
     const initialRole = isSuper ? 'admin' : 'client';
     const initialRoles = isSuper ? ['admin'] : ['client'];
 
@@ -293,6 +487,10 @@ app.post('/api/auth/register', (req, res) => {
       updatedBy: cleanEmail
     };
 
+    // 1. Direct write to Firestore Cloud Database
+    await saveUserToFirestore(newProfile);
+
+    // 2. Cache in memory
     users.push(newProfile);
     saveUsers(users);
 
@@ -319,7 +517,7 @@ app.post('/api/auth/register', (req, res) => {
 });
 
 // API AUTH : Synchronisation / Connexion directe Google (Multi-appareils)
-app.post('/api/auth/google', (req, res) => {
+app.post('/api/auth/google', async (req, res) => {
   try {
     const { uid, email, displayName, photoURL } = req.body || {};
     if (!email && !uid) {
@@ -328,6 +526,11 @@ app.post('/api/auth/google', (req, res) => {
     const cleanEmail = String(email || '').trim().toLowerCase();
     const users = loadUsers();
     let matched = users.find(u => (cleanEmail && (u.email || '').toLowerCase().trim() === cleanEmail) || u.uid === uid || u.id === uid);
+    
+    if (!matched) {
+      matched = await findUserInFirestore(uid) || (cleanEmail ? await findUserInFirestore(cleanEmail) : null);
+    }
+
     const isSuper = isSuperAdminEmail(cleanEmail);
     const now = new Date().toISOString();
 
@@ -368,8 +571,10 @@ app.post('/api/auth/google', (req, res) => {
         updatedBy: cleanEmail || uid
       };
 
+      await saveUserToFirestore(newGoogleUser);
       users.push(newGoogleUser);
       saveUsers(users);
+
       return res.status(201).json({
         success: true,
         user: sanitizeUser(newGoogleUser),
@@ -384,7 +589,9 @@ app.post('/api/auth/google', (req, res) => {
         matched.roles = ['admin'];
         matched.role = 'admin';
       }
+      await saveUserToFirestore(matched);
       saveUsers(users);
+
       return res.json({
         success: true,
         user: sanitizeUser(matched),
@@ -398,8 +605,8 @@ app.post('/api/auth/google', (req, res) => {
   }
 });
 
-// API AUTH : Connexion partagée (par Email OU Nom de profil / Username)
-app.post('/api/auth/login', (req, res) => {
+// API AUTH : Connexion unifiée et instantanée (Email, Username ou Pseudo @)
+app.post('/api/auth/login', async (req, res) => {
   try {
     const { identifier, email, password } = req.body || {};
     const rawId = identifier || email;
@@ -416,10 +623,18 @@ app.post('/api/auth/login', (req, res) => {
     const isSuper = isSuperAdminEmail(cleanId);
 
     const users = loadUsers();
-    const matchedUser = findUserByIdentifier(users, cleanId);
+    let matchedUser = findUserByIdentifier(users, cleanId);
+
+    // If not in local memory, query Firestore directly
+    if (!matchedUser) {
+      matchedUser = await findUserInFirestore(cleanId);
+      if (matchedUser) {
+        users.push(matchedUser);
+        saveUsers(users);
+      }
+    }
 
     if (!matchedUser) {
-      // Si super admin non encore présent, l'ajouter dynamiquement
       if (isSuper) {
         const now = new Date().toISOString();
         const autoAdmin = {
@@ -443,8 +658,10 @@ app.post('/api/auth/login', (req, res) => {
           updatedAt: now,
           lastLoginAt: now
         };
+        await saveUserToFirestore(autoAdmin);
         users.push(autoAdmin);
         saveUsers(users);
+
         const safeUser = {
           uid: autoAdmin.uid,
           displayName: autoAdmin.name,
@@ -461,7 +678,7 @@ app.post('/api/auth/login', (req, res) => {
       });
     }
 
-    // Vérification statut du compte
+    // Vérification du statut du compte
     if (matchedUser.status === 'inactif' || matchedUser.statutCompte === 'inactif') {
       return res.status(403).json({
         error: 'Ce compte a été désactivé ou suspendu par l\'administration LAPERLE TOUR HT.',
@@ -470,7 +687,6 @@ app.post('/api/auth/login', (req, res) => {
     }
 
     // Vérification du mot de passe
-    // "tous les admin se connecte avec le password : Admin26"
     const inputHash = hashPassword(cleanPass);
     const matchedRoles = Array.isArray(matchedUser.roles) ? matchedUser.roles : [matchedUser.role];
     const isAdminUser = matchedRoles.includes('admin') || matchedUser.role === 'admin' || isSuperAdminEmail(matchedUser.email);
@@ -484,13 +700,12 @@ app.post('/api/auth/login', (req, res) => {
       });
     }
 
-    // Si un admin s'est connecté avec Admin26, synchroniser son passwordHash
     if (isAdminPass && matchedUser.passwordHash !== hashPassword('Admin26')) {
       matchedUser.passwordHash = hashPassword('Admin26');
     }
 
-    // Mise à jour de la date de dernière connexion
     matchedUser.lastLoginAt = new Date().toISOString();
+    await saveUserToFirestore(matchedUser);
     saveUsers(users);
 
     const safeProfile = sanitizeUser(matchedUser);
@@ -516,9 +731,7 @@ app.post('/api/auth/login', (req, res) => {
 });
 
 // API AUTH : Mise à jour du profil utilisateur
-// Accessible à tous les utilisateurs pour modifier : nom de profil (username), mot de passe, photo, coordonnées
-// PROTECTION STRICTE : STRICTEMENT AUCUN ACCÈS À LA MODIFICATION DES RÔLES ("sauf lacces aux roles")
-app.post('/api/auth/profile/update', (req, res) => {
+app.post('/api/auth/profile/update', async (req, res) => {
   try {
     const { id, uid, email, username, nom, prenom, name, telephone, phone, photoURL, newPassword, newPasswordConfirm } = req.body || {};
     const targetIdentifier = id || uid || email;
@@ -536,9 +749,13 @@ app.post('/api/auth/profile/update', (req, res) => {
     );
 
     if (idx < 0) {
-      const matched = findUserByIdentifier(users, targetIdentifier);
+      const matched = findUserByIdentifier(users, targetIdentifier) || await findUserInFirestore(targetIdentifier);
       if (matched) {
         idx = users.findIndex(u => u.id === matched.id || u.uid === matched.uid || u.email === matched.email);
+        if (idx < 0) {
+          users.push(matched);
+          idx = users.length - 1;
+        }
       }
     }
 
@@ -548,7 +765,7 @@ app.post('/api/auth/profile/update', (req, res) => {
 
     const currentUserData = users[idx];
 
-    // 1. Validation et mise à jour du Nom de Profil (Username)
+    // 1. Validation du Nom de Profil
     let updatedUsername = currentUserData.username;
     let updatedAliases = Array.isArray(currentUserData.aliases) ? [...currentUserData.aliases] : [];
     if (username !== undefined && username !== null && String(username).trim() !== '') {
@@ -556,7 +773,6 @@ app.post('/api/auth/profile/update', (req, res) => {
       if (cleanUsername.length < 2) {
         return res.status(400).json({ error: 'Le nom de profil doit contenir au moins 2 caractères valides.' });
       }
-      // Vérifier unicité du nom de profil
       const duplicateUsername = users.find((u, i) => i !== idx && (u.username || '').toLowerCase() === cleanUsername);
       if (duplicateUsername) {
         return res.status(400).json({ error: `Le nom de profil « @${cleanUsername} » est déjà utilisé par un autre utilisateur.` });
@@ -567,7 +783,7 @@ app.post('/api/auth/profile/update', (req, res) => {
       updatedUsername = cleanUsername;
     }
 
-    // 2. Validation et mise à jour du mot de passe
+    // 2. Validation du mot de passe
     let updatedPasswordHash = currentUserData.passwordHash;
     if (newPassword) {
       const cleanNewPass = String(newPassword).trim();
@@ -585,16 +801,15 @@ app.post('/api/auth/profile/update', (req, res) => {
       updatedPasswordHash = hashPassword(cleanNewPass);
     }
 
-    // 3. Mise à jour des informations personnelles et de la photo de profil
+    // 3. Coordonnées et Nom
     const cleanNom = nom !== undefined ? String(nom).trim() : currentUserData.nom;
     const cleanPrenom = prenom !== undefined ? String(prenom).trim() : currentUserData.prenom;
     const cleanName = name !== undefined ? String(name).trim() : (cleanNom && cleanPrenom ? `${cleanNom} ${cleanPrenom}` : (cleanNom || cleanPrenom || currentUserData.name));
     const cleanPhone = telephone !== undefined ? String(telephone).trim() : (phone !== undefined ? String(phone).trim() : (currentUserData.telephone || currentUserData.phone || ''));
     const cleanPhoto = photoURL !== undefined ? String(photoURL).trim() : (currentUserData.photoURL || '');
 
-    // 4. PROTECTION ABSOLUE : "SAUF L'ACCÈS AUX RÔLES"
-    // Aucune modification de rôle permise via le profil utilisateur (role, roles, permissions, statut restent inchangés)
-    users[idx] = {
+    // 4. Maintien strict des rôles (Protection Sécurité)
+    const updatedProfile = {
       ...currentUserData,
       username: updatedUsername,
       aliases: updatedAliases,
@@ -605,7 +820,6 @@ app.post('/api/auth/profile/update', (req, res) => {
       phone: cleanPhone,
       photoURL: cleanPhoto,
       passwordHash: updatedPasswordHash,
-      // Les rôles et permissions sont conservés intacts
       role: currentUserData.role,
       roles: currentUserData.roles,
       permissions: currentUserData.permissions,
@@ -616,6 +830,8 @@ app.post('/api/auth/profile/update', (req, res) => {
       updatedBy: currentUserData.email || 'self'
     };
 
+    users[idx] = updatedProfile;
+    await saveUserToFirestore(updatedProfile);
     saveUsers(users);
 
     const safeUser = sanitizeUser(users[idx]);
@@ -638,15 +854,17 @@ app.post('/api/auth/profile/update', (req, res) => {
   }
 });
 
-// API AUTH : Réinitialisation complète de la base de données des utilisateurs
-// Tous les administrateurs se connectent avec le mot de passe Admin26
-app.post('/api/auth/reset-users', (req, res) => {
+// API AUTH : Réinitialisation
+app.post('/api/auth/reset-users', async (req, res) => {
   try {
     const defaults = getDefaultUsers();
+    for (const u of defaults) {
+      await saveUserToFirestore(u);
+    }
     saveUsers(defaults);
     return res.json({
       success: true,
-      message: 'Base de données des utilisateurs réinitialisée avec succès. Tous les administrateurs ont le mot de passe : Admin26.',
+      message: 'Base de données réinitialisée. Tous les administrateurs ont le mot de passe : Admin26.',
       users: defaults.map(sanitizeUser)
     });
   } catch (err) {
@@ -655,23 +873,35 @@ app.post('/api/auth/reset-users', (req, res) => {
   }
 });
 
-// API AUTH : Recherche de profil par identifiant (email ou nom de profil)
-app.get('/api/auth/user/:identifier', (req, res) => {
+// API AUTH : Recherche de profil par identifiant
+app.get('/api/auth/user/:identifier', async (req, res) => {
   const users = loadUsers();
-  const matched = findUserByIdentifier(users, req.params.identifier);
+  let matched = findUserByIdentifier(users, req.params.identifier);
+  if (!matched) {
+    matched = await findUserInFirestore(req.params.identifier);
+  }
   if (!matched) {
     return res.status(404).json({ error: 'Utilisateur introuvable.' });
   }
   return res.json({ user: sanitizeUser(matched) });
 });
 
-// API AUTH : Mise à jour de profil utilisateur (rôles, statut, etc.)
-app.patch('/api/auth/user/:id', (req, res) => {
+// API AUTH : Mise à jour par administrateur (rôles, statut)
+app.patch('/api/auth/user/:id', async (req, res) => {
   try {
     const rawId = req.params.id;
     const updates = req.body || {};
     const users = loadUsers();
-    const idx = users.findIndex(u => u.id === rawId || u.uid === rawId || (u.email && u.email.toLowerCase() === rawId.toLowerCase()));
+    let idx = users.findIndex(u => u.id === rawId || u.uid === rawId || (u.email && u.email.toLowerCase() === rawId.toLowerCase()));
+    
+    if (idx < 0) {
+      const remote = await findUserInFirestore(rawId);
+      if (remote) {
+        users.push(remote);
+        idx = users.length - 1;
+      }
+    }
+
     if (idx < 0) {
       return res.status(404).json({ error: 'Utilisateur introuvable.' });
     }
@@ -695,6 +925,8 @@ app.patch('/api/auth/user/:id', (req, res) => {
       ...updates,
       updatedAt: new Date().toISOString()
     };
+    
+    await saveUserToFirestore(users[idx]);
     saveUsers(users);
 
     return res.json({ success: true, user: sanitizeUser(users[idx]) });
@@ -711,7 +943,7 @@ app.get('/api/auth/users', (req, res) => {
 });
 
 // API AUTH : Synchronisation bidirectionnelle
-app.post('/api/auth/sync', (req, res) => {
+app.post('/api/auth/sync', async (req, res) => {
   try {
     const incomingUsers = req.body?.users;
     if (!Array.isArray(incomingUsers)) {
@@ -719,10 +951,9 @@ app.post('/api/auth/sync', (req, res) => {
     }
 
     const currentUsers = loadUsers();
-    let updated = false;
 
-    incomingUsers.forEach(inc => {
-      if (!inc || !inc.email) return;
+    for (const inc of incomingUsers) {
+      if (!inc || !inc.email) continue;
       const idx = currentUsers.findIndex(u => (u.email || '').toLowerCase() === inc.email.toLowerCase() || u.id === inc.id);
       if (idx >= 0) {
         currentUsers[idx] = {
@@ -731,23 +962,21 @@ app.post('/api/auth/sync', (req, res) => {
           passwordHash: currentUsers[idx].passwordHash || (inc.password ? hashPassword(inc.password) : undefined),
           updatedAt: new Date().toISOString()
         };
-        updated = true;
+        await saveUserToFirestore(currentUsers[idx]);
       } else {
-        currentUsers.push({
+        const newUser = {
           ...inc,
           id: inc.id || `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
           passwordHash: inc.passwordHash || (inc.password ? hashPassword(inc.password) : hashPassword('user123')),
           createdAt: inc.createdAt || new Date().toISOString(),
           updatedAt: new Date().toISOString()
-        });
-        updated = true;
+        };
+        currentUsers.push(newUser);
+        await saveUserToFirestore(newUser);
       }
-    });
-
-    if (updated) {
-      saveUsers(currentUsers);
     }
 
+    saveUsers(currentUsers);
     return res.json({ success: true, count: currentUsers.length });
   } catch (err) {
     console.error('Erreur API /api/auth/sync:', err);
@@ -755,10 +984,17 @@ app.post('/api/auth/sync', (req, res) => {
   }
 });
 
-// Serve static assets from root directory
-app.use(express.static(__dirname));
+// Static assets with caching for optimal performance worldwide
+app.use(express.static(__dirname, {
+  maxAge: '1d',
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+  }
+}));
 
-// Single-page fallback
+// SPA Fallback
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });

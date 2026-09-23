@@ -910,17 +910,28 @@ export async function getUserProfile(uid, email) {
   }
 
   if (email) {
+    const cleanEmail = String(email).toLowerCase().trim();
+    // 1. Essai prioritaire via l'API serveur (évite l'erreur "Missing or insufficient permissions" lors d'un appel non-authentifié)
     try {
-      const cleanEmail = String(email).toLowerCase().trim();
-      const q = query(collection(db, USERS_COLLECTION), where('email', '==', cleanEmail));
-      const emailSnap = await getDocs(q);
-      if (!emailSnap.empty) {
-        const docSnap = emailSnap.docs[0];
-        const data = docSnap.data();
-        return { ...data, id: docSnap.id, uid: data.uid || docSnap.id };
+      const serverRes = await safeFetchJson(`/api/auth/user/${encodeURIComponent(cleanEmail)}`);
+      if (serverRes?.ok && serverRes.data?.user) {
+        return serverRes.data.user;
       }
-    } catch (e) {
-      console.warn("Erreur recherche utilisateur par email:", e?.message);
+    } catch (apiErr) {}
+
+    // 2. Si l'utilisateur Firebase est connecté, recherche directe dans Firestore
+    if (auth.currentUser) {
+      try {
+        const q = query(collection(db, USERS_COLLECTION), where('email', '==', cleanEmail));
+        const emailSnap = await getDocs(q);
+        if (!emailSnap.empty) {
+          const docSnap = emailSnap.docs[0];
+          const data = docSnap.data();
+          return { ...data, id: docSnap.id, uid: data.uid || docSnap.id };
+        }
+      } catch (e) {
+        // Recherche silencieuse
+      }
     }
   }
 

@@ -20,7 +20,8 @@
     "passwordHash": "cde4ceb209e66afd43771a189d185a4f74bf96a4c9c049d03e21442c8e1a2d69",
     "createdAt": "2026-09-22T21:10:46.326Z",
     "updatedAt": "2026-09-22T21:10:46.326Z",
-    "notes": "Fondateur & Administrateur Principal"
+    "notes": "Fondateur & Administrateur Principal",
+    "lastLoginAt": "2026-09-23T14:40:08.915Z"
   },
   {
     "id": "usr_admin_castimaklik",
@@ -99,5 +100,32 @@
     "lastLoginAt": "2026-09-23T12:19:45.212Z",
     "createdBy": "yapek81784@ncleap.com",
     "updatedBy": "yapek81784@ncleap.com"
+  },
+  {
+    "id": "usr_1790173739686_jtun2",
+    "uid": "usr_1790173739686_jtun2",
+    "nom": "Dupont",
+    "prenom": "Jean",
+    "name": "Dupont Jean",
+    "username": "jdupont500",
+    "email": "jean.dupont.test500@example.com",
+    "telephone": "+509 3700 1234",
+    "phone": "+509 3700 1234",
+    "photoURL": "",
+    "roles": [
+      "client"
+    ],
+    "role": "client",
+    "status": "actif",
+    "statutCompte": "actif",
+    "statutClient": "client",
+    "passwordHash": "f91293cd0517dfcc1f846eb96683aadeb04d4b998b5b109dbdbcb723586dd370",
+    "notes": "Client inscrit sur le site LAPERLE TOUR HT",
+    "permissions": {},
+    "createdAt": "2026-09-23T14:28:59.686Z",
+    "updatedAt": "2026-09-23T14:28:59.686Z",
+    "lastLoginAt": "2026-09-23T14:29:14.604Z",
+    "createdBy": "jean.dupont.test500@example.com",
+    "updatedBy": "jean.dupont.test500@example.com"
   }
 ]

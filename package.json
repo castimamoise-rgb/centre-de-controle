@@ -10,8 +10,14 @@
     "lint": "node -e \"console.log('Lint passed')\""
   },
   "dependencies": {
+    "@google-cloud/firestore": "^9.2.0",
+    "compression": "^1.8.2",
+    "cors": "^2.8.6",
     "express": "^4.21.2",
-    "firebase": "^12.19.0"
+    "express-rate-limit": "^8.7.0",
+    "firebase": "^12.19.0",
+    "firebase-admin": "^14.4.0",
+    "helmet": "^8.3.0"
   },
   "devDependencies": {
     "@firebase/eslint-plugin-security-rules": "^0.0.2",
