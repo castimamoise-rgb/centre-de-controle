@@ -15,6 +15,7 @@ import {
   OperationType 
 } from '../src/lib/firebase.js';
 import { ROLES, SUPER_ADMIN_EMAIL, isSuperAdminEmail, normalizeRole, normalizeRoles, normalizeStatus } from './permissionService.js';
+import { safeFetchJson } from './authService.js';
 
 const COLLECTION_NAME = 'utilisateurs';
 
@@ -37,10 +38,9 @@ export async function getAllUsers() {
 
   // Fallback via API serveur
   try {
-    const res = await fetch('/api/auth/users');
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data.users) && data.users.length > 0) return data.users;
+    const apiRes = await safeFetchJson('/api/auth/users');
+    if (apiRes.ok && Array.isArray(apiRes.data?.users) && apiRes.data.users.length > 0) {
+      return apiRes.data.users;
     }
   } catch (e) {}
 
@@ -81,11 +81,8 @@ export async function getUserById(id) {
 
   // 2. Recherche via l'API partagée du serveur
   try {
-    const res = await fetch(`/api/auth/user/${encodeURIComponent(cleanId)}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data?.user) return data.user;
-    }
+    const apiRes = await safeFetchJson(`/api/auth/user/${encodeURIComponent(cleanId)}`);
+    if (apiRes.ok && apiRes.data?.user) return apiRes.data.user;
   } catch (e) {}
 
   // 3. Fallback stockage local
@@ -384,7 +381,7 @@ export async function updateUserProfile(profileUpdates) {
   // 1. Appel vers l'API serveur sécurisée (qui applique la protection stricte sur les rôles)
   let serverData = null;
   try {
-    const res = await fetch('/api/auth/profile/update', {
+    const apiRes = await safeFetchJson('/api/auth/profile/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -402,13 +399,14 @@ export async function updateUserProfile(profileUpdates) {
         newPasswordConfirm
       })
     });
-    const result = await res.json();
-    if (!res.ok) {
-      throw new Error(result.error || "Erreur lors de la mise à jour du profil.");
+    if (!apiRes.ok && apiRes.data?.error) {
+      throw new Error(apiRes.data.error || "Erreur lors de la mise à jour du profil.");
     }
-    serverData = result;
+    if (apiRes.ok && apiRes.data) {
+      serverData = apiRes.data;
+    }
   } catch (err) {
-    if (err.message && !err.message.includes('fetch')) {
+    if (err.message && !err.message.includes('fetch') && !err.message.includes('réseau')) {
       throw err;
     }
     console.warn("Serveur indisponible, application locale du profil:", err?.message);
@@ -496,12 +494,11 @@ export async function updateUserProfile(profileUpdates) {
  * Tous les administrateurs se connectent avec le mot de passe Admin26
  */
 export async function resetUsersDatabase() {
-  const res = await fetch('/api/auth/reset-users', { method: 'POST' });
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error || "Erreur réinitialisation utilisateurs.");
+  const apiRes = await safeFetchJson('/api/auth/reset-users', { method: 'POST' });
+  if (!apiRes.ok) {
+    throw new Error(apiRes.data?.error || "Erreur réinitialisation utilisateurs.");
   }
-  return data;
+  return apiRes.data;
 }
 
 

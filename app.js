@@ -1675,10 +1675,9 @@ try {
   onAuthStateChanged(auth, async (user) => {
     if (isAuthProcessing) return;
 
-    // Si l'utilisateur est déconnecté ou n'a pas de session sauvegardée active,
-    // on interdit formellement toute reconnexion automatique lors du rafraîchissement.
-    // La page de reconnexion doit rester accessible et affichée.
-    if (isExplicitlyLoggedOut() || !getUserSession()) {
+    // Si l'utilisateur s'est explicitement déconnecté via le bouton Déconnexion,
+    // la page de connexion reste affichée.
+    if (isExplicitlyLoggedOut()) {
       if (user) {
         try { await signOut(auth); } catch (e) {}
       }
@@ -1692,10 +1691,16 @@ try {
 
     if (user && !currentUser) {
       try {
-        const profile = await getUserProfile(user.uid, user.email);
+        let profile = await getUserProfile(user.uid, user.email);
+        if (!profile && user.email) {
+          profile = await getUserProfileByIdentifier(user.email);
+        }
+        if (!profile) {
+          profile = await ensureUserProfile(user, 'login');
+        }
         if (profile) completeUserSignIn(user, profile);
       } catch (e) {
-        console.warn("Profil Firestore:", e?.message);
+        console.warn("Profil Firestore reconnexion:", e?.message);
       }
     }
   });

@@ -67,5 +67,32 @@
     "createdAt": "2026-09-22T21:10:46.326Z",
     "updatedAt": "2026-09-22T21:10:46.326Z",
     "notes": "Direction Générale LAPERLE TOUR HT"
+  },
+  {
+    "id": "usr_1790165985213_jfrow",
+    "uid": "usr_1790165985213_jfrow",
+    "nom": "wewe",
+    "prenom": "wawa",
+    "name": "wewe wawa",
+    "username": "wawa_wewe",
+    "email": "yapek81784@ncleap.com",
+    "telephone": "",
+    "phone": "",
+    "photoURL": "",
+    "roles": [
+      "client"
+    ],
+    "role": "client",
+    "status": "actif",
+    "statutCompte": "actif",
+    "statutClient": "client",
+    "passwordHash": "57aa9f0e8f5a880f5aa092b729e71a7e04d39a610d95c2d14bfdc48d9c2b6530",
+    "notes": "Client inscrit sur le site LAPERLE TOUR HT",
+    "permissions": {},
+    "createdAt": "2026-09-23T12:19:45.212Z",
+    "updatedAt": "2026-09-23T12:19:45.212Z",
+    "lastLoginAt": "2026-09-23T12:19:45.212Z",
+    "createdBy": "yapek81784@ncleap.com",
+    "updatedBy": "yapek81784@ncleap.com"
   }
 ]

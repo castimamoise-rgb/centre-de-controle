@@ -62,6 +62,28 @@ export function clearExplicitLogout() {
   } catch (e) {}
 }
 
+/**
+ * Helper sécurisé pour exécuter des requêtes fetch sans risque d'erreur "Unexpected end of JSON input"
+ */
+export async function safeFetchJson(url, options = {}) {
+  try {
+    const res = await fetch(url, options);
+    const text = await res.text();
+    let data = {};
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        console.warn(`[safeFetchJson] Réponse non-JSON depuis ${url}:`, text.slice(0, 150));
+      }
+    }
+    return { ok: res.ok, status: res.status, data, text };
+  } catch (err) {
+    console.warn(`[safeFetchJson] Erreur réseau ${url}:`, err?.message);
+    return { ok: false, status: 0, data: { error: err?.message || "Erreur réseau de communication avec le serveur." }, isNetworkError: true };
+  }
+}
+
 // Mémoire de session pour la confirmation téléphonique Firebase
 let pendingPhoneConfirmation = null;
 let phoneRecaptchaVerifier = null;
@@ -182,43 +204,13 @@ export async function signUpWithEmailAndPasswordMethod({ nom, prenom, email, pas
   const cleanNom = String(nom).trim();
   const cleanPrenom = String(prenom).trim();
   const fullName = `${cleanNom} ${cleanPrenom}`;
-
-  // 1. Enregistrement dans la base de données partagée du serveur
-  let serverResult = null;
-  try {
-    const res = await fetch('/api/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        nom: cleanNom,
-        prenom: cleanPrenom,
-        email: cleanEmail,
-        password: cleanPass,
-        passwordConfirm: cleanPass,
-        username,
-        telephone
-      })
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      const err = new Error(data.error || "Erreur lors de la création du compte.");
-      err.code = data.code || 'auth/registration-failed';
-      throw err;
-    }
-    serverResult = data;
-  } catch (apiErr) {
-    // Si l'erreur provient de la validation de l'API, la relancer
-    if (apiErr.code || (apiErr.message && !apiErr.message.includes('fetch'))) {
-      throw apiErr;
-    }
-    console.warn("API serveur /api/auth/register non disponible, bascule locale/Firebase:", apiErr?.message);
-  }
-
   const isSuperAdmin = isSuperAdminEmail(cleanEmail) || isSuperAdminIdentifier(cleanEmail);
   const now = new Date().toISOString();
   const passHash = await hashPassword(cleanPass);
+  const initialRoles = isSuperAdmin ? [ROLES.ADMIN] : [ROLES.CLIENT];
+  const initialRole = isSuperAdmin ? ROLES.ADMIN : ROLES.CLIENT;
 
-  // 2. Synchronisation Firebase Authentication si disponible
+  // 1. Synchronisation Firebase Authentication si disponible
   let firebaseUser = null;
   const firebaseAuthPass = cleanPass.length < 6 ? `lp_${cleanPass}_auth` : cleanPass;
   try {
@@ -233,13 +225,45 @@ export async function signUpWithEmailAndPasswordMethod({ nom, prenom, email, pas
       try {
         const cred = await signInWithEmailAndPassword(auth, cleanEmail, firebaseAuthPass);
         firebaseUser = cred.user;
-      } catch (loginErr) {}
+      } catch (loginErr) {
+        const err = new Error(`Un compte existe déjà pour « ${cleanEmail} ». Veuillez basculer sur « Pour Se Connecter » ou utiliser un autre email.`);
+        err.code = 'auth/email-already-in-use';
+        throw err;
+      }
     }
   }
 
-  const uid = serverResult?.user?.uid || firebaseUser?.uid || `usr_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-  const initialRoles = isSuperAdmin ? [ROLES.ADMIN] : [ROLES.CLIENT];
-  const initialRole = isSuperAdmin ? ROLES.ADMIN : ROLES.CLIENT;
+  const uid = firebaseUser?.uid || `usr_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+
+  // 2. Enregistrement dans la base de données partagée du serveur (avec gestion sécurisée)
+  let serverResult = null;
+  try {
+    const apiRes = await safeFetchJson('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        uid,
+        nom: cleanNom,
+        prenom: cleanPrenom,
+        email: cleanEmail,
+        password: cleanPass,
+        passwordConfirm: cleanPass,
+        username,
+        telephone
+      })
+    });
+    if (!apiRes.ok && apiRes.data?.code === 'auth/email-already-in-use') {
+      const err = new Error(apiRes.data.error || `Un compte existe déjà pour « ${cleanEmail} ». Veuillez basculer sur « Pour Se Connecter ».`);
+      err.code = 'auth/email-already-in-use';
+      throw err;
+    }
+    if (apiRes.ok && apiRes.data) {
+      serverResult = apiRes.data;
+    }
+  } catch (apiErr) {
+    if (apiErr.code === 'auth/email-already-in-use') throw apiErr;
+    console.warn("API serveur /api/auth/register non bloquant:", apiErr?.message);
+  }
 
   const newProfile = serverResult?.profile || {
     id: uid,
@@ -247,7 +271,7 @@ export async function signUpWithEmailAndPasswordMethod({ nom, prenom, email, pas
     nom: cleanNom,
     prenom: cleanPrenom,
     name: fullName,
-    username: `${cleanPrenom.toLowerCase()}_${cleanNom.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
+    username: username ? String(username).trim().toLowerCase() : `${cleanPrenom.toLowerCase()}_${cleanNom.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
     email: cleanEmail,
     photoURL: '',
     roles: initialRoles,
@@ -282,7 +306,7 @@ export async function signUpWithEmailAndPasswordMethod({ nom, prenom, email, pas
     if (rawData) {
       const parsed = JSON.parse(rawData);
       if (!parsed.utilisateurs) parsed.utilisateurs = [];
-      const idx = parsed.utilisateurs.findIndex(u => u.email === cleanEmail || u.id === uid);
+      const idx = parsed.utilisateurs.findIndex(u => u.email === cleanEmail || u.id === uid || u.uid === uid);
       if (idx >= 0) {
         parsed.utilisateurs[idx] = newProfile;
       } else {
@@ -318,6 +342,7 @@ export async function signInWithEmailAndPasswordMethod(identifier, password) {
     throw new Error("Veuillez saisir votre mot de passe.");
   }
 
+  clearExplicitLogout();
   const cleanId = String(identifier).trim();
   const cleanPass = String(password).trim();
   const isEmail = cleanId.includes('@');
@@ -326,15 +351,14 @@ export async function signInWithEmailAndPasswordMethod(identifier, password) {
 
   // 1. TENTATIVE VIA LA BASE DE DONNÉES PARTAGÉE DU SERVEUR
   try {
-    const res = await fetch('/api/auth/login', {
+    const apiRes = await safeFetchJson('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ identifier: cleanId, password: cleanPass })
     });
-    const data = await res.json();
 
-    if (res.ok && data.success) {
-      const { user, profile } = data;
+    if (apiRes.ok && apiRes.data?.success) {
+      const { user, profile } = apiRes.data;
 
       // Connexion optionnelle Firebase Auth pour les règles de sécurité Firestore
       const targetEmail = user.email || cleanEmail;
@@ -365,20 +389,20 @@ export async function signInWithEmailAndPasswordMethod(identifier, password) {
       return { user, profile, isNew: false };
     }
 
-    if (res.status === 404 || data.code === 'auth/user-not-registered') {
-      const notRegErr = new Error(data.error || `Le compte « ${cleanId} » n'est pas encore inscrit sur LAPERLE TOUR HT. Veuillez d'abord créer votre compte via l'onglet « Pour S'inscrire » avant de vous connecter.`);
+    if (apiRes.status === 404 || apiRes.data?.code === 'auth/user-not-registered') {
+      const notRegErr = new Error(apiRes.data?.error || `Le compte « ${cleanId} » n'est pas encore inscrit sur LAPERLE TOUR HT. Veuillez d'abord créer votre compte via l'onglet « Pour S'inscrire » avant de vous connecter.`);
       notRegErr.code = 'auth/user-not-registered';
       throw notRegErr;
     }
 
-    if (res.status === 401 || data.code === 'auth/wrong-password') {
-      const pwdErr = new Error(data.error || "Mot de passe incorrect. Veuillez vérifier votre saisie.");
+    if (apiRes.status === 401 || apiRes.data?.code === 'auth/wrong-password') {
+      const pwdErr = new Error(apiRes.data?.error || "Mot de passe incorrect. Veuillez vérifier votre saisie.");
       pwdErr.code = 'auth/wrong-password';
       throw pwdErr;
     }
 
-    if (res.status === 403 || data.code === 'auth/user-disabled') {
-      const disErr = new Error(data.error || "Ce compte a été désactivé ou suspendu par l'administration LAPERLE TOUR HT.");
+    if (apiRes.status === 403 || apiRes.data?.code === 'auth/user-disabled') {
+      const disErr = new Error(apiRes.data?.error || "Ce compte a été désactivé ou suspendu par l'administration LAPERLE TOUR HT.");
       disErr.code = 'auth/user-disabled';
       throw disErr;
     }
@@ -436,9 +460,9 @@ export async function signInWithEmailAndPasswordMethod(identifier, password) {
 
     const resolvedUserObj = {
       uid: existing.uid || existing.id,
-      displayName: existing.name || existing.nom || (existing.username || (existing.email ? existing.email.split('@')[0] : 'Utilisateur')),
+      displayName: existing.nom || existing.name || existing.username || 'Utilisateur',
       email: existing.email || cleanEmail,
-      username: existing.username || '',
+      username: existing.username,
       phoneNumber: existing.telephone || existing.phone || '',
       photoURL: existing.photoURL || ''
     };
@@ -667,11 +691,8 @@ export async function getUserProfileByIdentifier(identifier) {
 
   // 1. Recherche via l'API partagée du serveur
   try {
-    const res = await fetch(`/api/auth/user/${encodeURIComponent(cleanId)}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data?.user) return data.user;
-    }
+    const apiRes = await safeFetchJson(`/api/auth/user/${encodeURIComponent(cleanId)}`);
+    if (apiRes.ok && apiRes.data?.user) return apiRes.data.user;
   } catch (e) {}
 
   // 2. Recherche par e-mail dans Firestore
@@ -803,24 +824,24 @@ export async function processAuthenticatedUser(user, email = '', customName = ''
     return { user: resolvedUserObj, profile: existingProfile, isNew: false };
   }
 
-  // 3. RÈGLE STRICTE LAPERLE :
-  // Si le compte n'est pas encore inscrit et tente de se connecter, refuser la connexion.
-  if (!isSuperAdmin && mode === 'login') {
+  // 3. RÈGLE LAPERLE :
+  // Si le compte n'est pas encore inscrit et tente de se connecter
+  const isGoogleUser = Boolean(user.providerData && user.providerData.some(p => p.providerId === 'google.com'));
+  if (!isSuperAdmin && !isGoogleUser && mode === 'login') {
     try { await signOut(auth); } catch (e) {}
     clearUserSession();
-    const notRegErr = new Error("Ce compte n'est pas encore inscrit sur LAPERLE TOUR HT. Veuillez d'abord créer votre compte via l'onglet « Inscription » avant de pouvoir vous connecter.");
+    const notRegErr = new Error("Ce compte n'est pas encore inscrit sur LAPERLE TOUR HT. Veuillez d'abord créer votre compte via l'onglet « Pour S'inscrire » avant de pouvoir vous connecter.");
     notRegErr.code = 'auth/user-not-registered';
     throw notRegErr;
   }
 
-  // 4. CAS NOUVEAU COMPTE (UNIQUEMENT LORS D'UNE INSCRIPTION EXPLICITE OU SUPER ADMIN) :
-  // Nouveau compte = roles: ["lecture_seule"], accès uniquement à son profil
-  // (sauf si Super Admin principal)
+  // 4. CAS NOUVEAU COMPTE :
+  // Tout nouvel utilisateur Google ou inscrit bénéficie du rôle client actif
   const now = new Date().toISOString();
   const displayName = customName || user.displayName || (userEmail ? userEmail.split('@')[0] : `Voyageur ${uid.slice(-4)}`);
-  const initialRoles = isSuperAdmin ? [ROLES.ADMIN] : [ROLES.LECTURE_SEULE];
-  const initialRole = isSuperAdmin ? ROLES.ADMIN : ROLES.LECTURE_SEULE;
-  const initialStatutClient = isSuperAdmin ? 'client' : 'prospect';
+  const initialRoles = isSuperAdmin ? [ROLES.ADMIN] : [ROLES.CLIENT];
+  const initialRole = isSuperAdmin ? ROLES.ADMIN : ROLES.CLIENT;
+  const initialStatutClient = 'client';
 
   const newProfile = {
     id: uid,
@@ -904,14 +925,14 @@ export async function getUserProfile(uid, email) {
 }
 
 /**
- * Crée automatiquement le profil Firestore pour un nouvel utilisateur Google
+ * Crée automatiquement le profil Firestore et serveur pour un nouvel utilisateur Google
  */
 export async function createUserProfile(user) {
   if (!user || !user.uid) return null;
 
   const uid = user.uid;
   const email = (user.email || '').toLowerCase().trim();
-  const isSuperAdmin = isSuperAdminEmail(email);
+  const isSuperAdmin = isSuperAdminEmail(email) || isSuperAdminIdentifier(email);
   const now = new Date().toISOString();
 
   const existing = await getUserProfile(uid, email);
@@ -919,21 +940,25 @@ export async function createUserProfile(user) {
     return existing;
   }
 
-  const initialRoles = isSuperAdmin ? [ROLES.ADMIN] : [ROLES.LECTURE_SEULE];
-  const initialRole = isSuperAdmin ? ROLES.ADMIN : ROLES.LECTURE_SEULE;
+  const initialRoles = isSuperAdmin ? [ROLES.ADMIN] : [ROLES.CLIENT];
+  const initialRole = isSuperAdmin ? ROLES.ADMIN : ROLES.CLIENT;
+  const displayName = user.displayName || (email ? email.split('@')[0] : "Utilisateur");
+  const baseUsername = email ? email.split('@')[0].replace(/[^a-z0-9_]/gi, '') : `google_${uid.slice(0, 6)}`;
 
   const newProfile = {
     id: uid,
     uid: uid,
-    nom: user.displayName || (email ? email.split('@')[0] : "Utilisateur"),
-    name: user.displayName || (email ? email.split('@')[0] : "Utilisateur"),
+    nom: displayName,
+    prenom: '',
+    name: displayName,
+    username: baseUsername,
     email: email,
     photoURL: user.photoURL || '',
     roles: initialRoles,
     role: initialRole,
     status: 'actif',
     statutCompte: 'actif',
-    statutClient: isSuperAdmin ? 'client' : 'prospect',
+    statutClient: 'client',
     telephone: user.phoneNumber || '',
     phone: user.phoneNumber || '',
     notes: isSuperAdmin ? 'Administrateur Principal LAPERLE TOUR HT' : 'Compte Google LAPERLE TOUR HT',
@@ -945,12 +970,30 @@ export async function createUserProfile(user) {
     updatedBy: email || uid
   };
 
+  // 1. Sauvegarde dans Firestore
   try {
     const userDocRef = doc(db, USERS_COLLECTION, uid);
-    await setDoc(userDocRef, newProfile);
+    await setDoc(userDocRef, newProfile, { merge: true });
   } catch (e) {
     console.warn("Erreur création profil Google Firestore:", e?.message);
   }
+
+  // 2. Sauvegarde synchronisée sur le serveur (pour reconnexion cross-device)
+  try {
+    await safeFetchJson('/api/auth/google', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        uid: uid,
+        email: email,
+        displayName: displayName,
+        photoURL: user.photoURL || ''
+      })
+    });
+  } catch (e) {
+    console.warn("Erreur synchronisation Google serveur:", e?.message);
+  }
+
   return newProfile;
 }
 
@@ -989,22 +1032,31 @@ export async function ensureUserProfile(user, mode = 'register') {
       throw new Error("Ce compte a été désactivé ou suspendu par l'administration LAPERLE TOUR HT.");
     }
     await updateUserLastLogin(existing.uid || existing.id || user.uid);
+
+    // Sync dernière connexion avec le serveur
+    try {
+      await safeFetchJson('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uid: existing.uid || existing.id || user.uid,
+          email: userEmail,
+          displayName: existing.nom || existing.name || user.displayName || '',
+          photoURL: existing.photoURL || user.photoURL || ''
+        })
+      });
+    } catch (e) {}
+
     return existing;
   }
 
-  // RÈGLE STRICTE LAPERLE : Si le compte Google n'est pas inscrit et est en mode connexion
-  if (!isSuperAdmin && mode === 'login') {
-    try { await signOut(auth); } catch (e) {}
-    clearUserSession();
-    const notRegErr = new Error(`Le compte Google (${userEmail}) n'est pas encore inscrit sur LAPERLE TOUR HT. Veuillez d'abord cliquer sur l'onglet « Inscription » pour créer votre compte avant de vous connecter.`);
-    notRegErr.code = 'auth/user-not-registered';
-    throw notRegErr;
-  }
-
+  // TOUTE PERSONNE AYANT UN COMPTE GOOGLE PEUT S'INSCRIRE OU SE CONNECTER EN UN CLIC !
+  // La vraie inscription est active : le profil est immédiatement persisté pour reconnexion multi-appareils
   return await createUserProfile(user);
 }
 
 export async function loginWithGoogle(mode = 'login') {
+  clearExplicitLogout();
   const user = await signInWithGoogleOnly();
   if (!user || !user.uid) {
     throw new Error("Session Google introuvable.");

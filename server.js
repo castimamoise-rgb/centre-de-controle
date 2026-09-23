@@ -249,7 +249,7 @@ app.post('/api/auth/register', (req, res) => {
     const isSuper = isSuperAdminEmail(cleanEmail);
     const now = new Date().toISOString();
     const passHash = hashPassword(cleanPass);
-    const uid = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const uid = req.body?.uid || req.body?.id || `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
     // Rôle Client/User pour tout nouvel inscrit, Admin si super admin
     const initialRole = isSuper ? 'admin' : 'client';
@@ -303,6 +303,86 @@ app.post('/api/auth/register', (req, res) => {
   } catch (err) {
     console.error('Erreur API /api/auth/register:', err);
     return res.status(500).json({ error: 'Erreur serveur lors de la création du compte.' });
+  }
+});
+
+// API AUTH : Synchronisation / Connexion directe Google (Multi-appareils)
+app.post('/api/auth/google', (req, res) => {
+  try {
+    const { uid, email, displayName, photoURL } = req.body || {};
+    if (!email && !uid) {
+      return res.status(400).json({ error: 'Informations de compte Google manquantes.' });
+    }
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    const users = loadUsers();
+    let matched = users.find(u => (cleanEmail && (u.email || '').toLowerCase().trim() === cleanEmail) || u.uid === uid || u.id === uid);
+    const isSuper = isSuperAdminEmail(cleanEmail);
+    const now = new Date().toISOString();
+
+    if (!matched) {
+      const parts = (displayName || '').trim().split(' ');
+      const cleanPrenom = parts[0] || 'Utilisateur';
+      const cleanNom = parts.slice(1).join(' ') || parts[0] || 'Google';
+      const baseUsername = cleanEmail ? cleanEmail.split('@')[0].replace(/[^a-z0-9_]/gi, '') : `google_${String(uid || Date.now()).slice(0, 6)}`;
+      let chosenUsername = baseUsername;
+      let counter = 1;
+      while (users.some(u => (u.username || '').toLowerCase() === chosenUsername.toLowerCase())) {
+        chosenUsername = `${baseUsername}${counter}`;
+        counter++;
+      }
+
+      const newGoogleUser = {
+        id: uid || `usr_g_${Date.now()}`,
+        uid: uid || `usr_g_${Date.now()}`,
+        nom: cleanNom,
+        prenom: cleanPrenom,
+        name: displayName || `${cleanNom} ${cleanPrenom}`,
+        username: chosenUsername,
+        email: cleanEmail,
+        telephone: '',
+        phone: '',
+        photoURL: photoURL || '',
+        roles: isSuper ? ['admin'] : ['client'],
+        role: isSuper ? 'admin' : 'client',
+        status: 'actif',
+        statutCompte: 'actif',
+        statutClient: 'client',
+        notes: isSuper ? 'Administrateur Principal LAPERLE TOUR HT' : 'Compte Google LAPERLE TOUR HT',
+        permissions: {},
+        createdAt: now,
+        updatedAt: now,
+        lastLoginAt: now,
+        createdBy: cleanEmail || uid,
+        updatedBy: cleanEmail || uid
+      };
+
+      users.push(newGoogleUser);
+      saveUsers(users);
+      return res.status(201).json({
+        success: true,
+        user: sanitizeUser(newGoogleUser),
+        profile: sanitizeUser(newGoogleUser),
+        isNew: true
+      });
+    } else {
+      matched.lastLoginAt = now;
+      if (photoURL && !matched.photoURL) matched.photoURL = photoURL;
+      if (uid && (!matched.uid || matched.uid.startsWith('usr_'))) matched.uid = uid;
+      if (isSuper && (!matched.roles || !matched.roles.includes('admin'))) {
+        matched.roles = ['admin'];
+        matched.role = 'admin';
+      }
+      saveUsers(users);
+      return res.json({
+        success: true,
+        user: sanitizeUser(matched),
+        profile: sanitizeUser(matched),
+        isNew: false
+      });
+    }
+  } catch (err) {
+    console.error('Erreur API /api/auth/google:', err);
+    return res.status(500).json({ error: 'Erreur serveur authentification Google.' });
   }
 });
 
