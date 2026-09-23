@@ -1472,39 +1472,11 @@ function initAuthUI(initialMode = "login") {
       }
 
       if (
-        errCode === "auth/unauthorized-domain" ||
-        errCode === "auth/operation-not-allowed" ||
         errCode === "auth/popup-blocked" ||
-        errCode === "auth/cancelled-popup-request" ||
-        errMsg.includes("unauthorized-domain") ||
-        errMsg.includes("operation-not-allowed") ||
-        errMsg.includes("popup")
+        errCode === "auth/cancelled-popup-request"
       ) {
-        try {
-          const fallbackEmail = mode === "register" && registerEmail?.value.trim()
-            ? registerEmail.value.trim().toLowerCase()
-            : (loginEmail?.value.trim().toLowerCase() || "castimaklik@gmail.com");
-          const fallbackName = mode === "register" && registerNom?.value.trim()
-            ? `${registerNom.value.trim()} ${registerPrenom?.value.trim() || ""}`
-            : (fallbackEmail === "castimaklik@gmail.com" ? "Administrateur Laperle" : fallbackEmail.split("@")[0]);
-
-          if (mode === "login" && !isSuperAdminEmail(fallbackEmail) && !isSuperAdminIdentifier(fallbackEmail)) {
-            const existing = await getUserProfileByIdentifier(fallbackEmail);
-            if (!existing) {
-              setAuthMessage("error", `❌ <b>Le compte « ${esc(fallbackEmail)} » n'est pas encore inscrit.</b><br>Veuillez d'abord créer votre compte via l'onglet <b>« Pour S'inscrire »</b> avant de vous connecter.<br><button type="button" onclick="document.getElementById('authTabRegister')?.click()" style="margin-top:8px;padding:6px 14px;background:#082b70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;">👉 Cliquer ici pour vous inscrire</button>`);
-              return;
-            }
-          }
-
-          setAuthMessage("loading", `Connexion avec ${fallbackEmail}...`);
-          const res = await directEmailSignInFallback(fallbackEmail, fallbackName, mode);
-          setAuthMessage("success", "Connexion réussie ! Bienvenue chez LAPERLE TOUR HT.");
-          completeUserSignIn(res.user, res.profile, res.isNew);
-          return;
-        } catch (fbErr) {
-          setAuthMessage("error", formatAuthError(fbErr) || "Impossible d'établir la connexion.");
-          return;
-        }
+        setAuthMessage("error", "La fenêtre d'authentification Google a été fermée ou bloquée par le navigateur.");
+        return;
       }
 
       setAuthMessage("error", `Échec connexion Google — ${formatAuthError(err) || errMsg}`);
