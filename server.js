@@ -146,24 +146,36 @@ function sanitizeUser(u) {
 function findUserByIdentifier(users, rawIdentifier) {
   if (!rawIdentifier) return null;
   const idStr = String(rawIdentifier).trim().toLowerCase();
+  const cleanHandle = idStr.startsWith('@') ? idStr.substring(1).trim() : idStr;
   const digits = idStr.replace(/\D/g, '');
 
   return users.find(u => {
     const email = (u.email || '').toLowerCase().trim();
-    if (email === idStr) return true;
+    if (email === idStr || email === cleanHandle) return true;
 
     const username = (u.username || '').toLowerCase().trim();
-    if (username && username === idStr) return true;
+    if (username && (username === idStr || username === cleanHandle)) return true;
+
+    if (Array.isArray(u.aliases)) {
+      if (u.aliases.some(a => {
+        const ca = String(a).trim().toLowerCase();
+        return ca === idStr || ca === cleanHandle;
+      })) return true;
+    }
 
     const name = (u.name || '').toLowerCase().trim();
-    if (name && name === idStr) return true;
+    if (name && (name === idStr || name === cleanHandle)) return true;
 
     const nom = (u.nom || '').toLowerCase().trim();
     const prenom = (u.prenom || '').toLowerCase().trim();
-    if (nom && nom === idStr) return true;
-    if (prenom && prenom === idStr) return true;
-    if (nom && prenom && `${nom} ${prenom}` === idStr) return true;
-    if (nom && prenom && `${prenom} ${nom}` === idStr) return true;
+    if (nom && (nom === idStr || nom === cleanHandle)) return true;
+    if (prenom && (prenom === idStr || prenom === cleanHandle)) return true;
+    if (nom && prenom && (`${nom} ${prenom}` === idStr || `${prenom} ${nom}` === idStr)) return true;
+    if (nom && prenom && (`${nom} ${prenom}` === cleanHandle || `${prenom} ${nom}` === cleanHandle)) return true;
+    if (nom && prenom && (`${nom}_${prenom}` === cleanHandle || `${prenom}_${nom}` === cleanHandle)) return true;
+    if (nom && prenom && (`${nom}${prenom}` === cleanHandle || `${prenom}${nom}` === cleanHandle)) return true;
+
+    if (u.id === idStr || u.uid === idStr || u.id === cleanHandle || u.uid === cleanHandle) return true;
 
     if (digits.length >= 8) {
       const uPhoneDigits = String(u.telephone || u.phone || '').replace(/\D/g, '');
@@ -516,12 +528,19 @@ app.post('/api/auth/profile/update', (req, res) => {
     }
 
     const users = loadUsers();
-    const idx = users.findIndex(u => 
+    let idx = users.findIndex(u => 
       u.id === targetIdentifier || 
       u.uid === targetIdentifier || 
       (u.email && u.email.toLowerCase() === String(targetIdentifier).toLowerCase()) ||
       (u.username && u.username.toLowerCase() === String(targetIdentifier).toLowerCase())
     );
+
+    if (idx < 0) {
+      const matched = findUserByIdentifier(users, targetIdentifier);
+      if (matched) {
+        idx = users.findIndex(u => u.id === matched.id || u.uid === matched.uid || u.email === matched.email);
+      }
+    }
 
     if (idx < 0) {
       return res.status(404).json({ error: 'Compte utilisateur introuvable.' });
@@ -531,8 +550,9 @@ app.post('/api/auth/profile/update', (req, res) => {
 
     // 1. Validation et mise à jour du Nom de Profil (Username)
     let updatedUsername = currentUserData.username;
+    let updatedAliases = Array.isArray(currentUserData.aliases) ? [...currentUserData.aliases] : [];
     if (username !== undefined && username !== null && String(username).trim() !== '') {
-      const cleanUsername = String(username).trim().toLowerCase().replace(/[^a-z0-9_.-]/g, '');
+      const cleanUsername = String(username).trim().toLowerCase().replace(/^@/, '').replace(/[^a-z0-9_.-]/g, '');
       if (cleanUsername.length < 2) {
         return res.status(400).json({ error: 'Le nom de profil doit contenir au moins 2 caractères valides.' });
       }
@@ -540,6 +560,9 @@ app.post('/api/auth/profile/update', (req, res) => {
       const duplicateUsername = users.find((u, i) => i !== idx && (u.username || '').toLowerCase() === cleanUsername);
       if (duplicateUsername) {
         return res.status(400).json({ error: `Le nom de profil « @${cleanUsername} » est déjà utilisé par un autre utilisateur.` });
+      }
+      if (currentUserData.username && currentUserData.username !== cleanUsername && !updatedAliases.includes(currentUserData.username)) {
+        updatedAliases.push(currentUserData.username);
       }
       updatedUsername = cleanUsername;
     }
@@ -574,6 +597,7 @@ app.post('/api/auth/profile/update', (req, res) => {
     users[idx] = {
       ...currentUserData,
       username: updatedUsername,
+      aliases: updatedAliases,
       nom: cleanNom,
       prenom: cleanPrenom,
       name: cleanName,

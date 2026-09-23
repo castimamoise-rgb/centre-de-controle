@@ -344,10 +344,10 @@ export async function signInWithEmailAndPasswordMethod(identifier, password) {
 
   clearExplicitLogout();
   const cleanId = String(identifier).trim();
-  const cleanPass = String(password).trim();
-  const isEmail = cleanId.includes('@');
+  const cleanHandle = cleanId.startsWith('@') ? cleanId.substring(1).trim() : cleanId;
+  const isEmail = cleanId.includes('@') && !cleanId.startsWith('@') && cleanId.includes('.');
   const cleanEmail = isEmail ? cleanId.toLowerCase() : '';
-  const isSuperAdmin = isSuperAdminEmail(cleanId) || isSuperAdminIdentifier(cleanId);
+  const isSuperAdmin = isSuperAdminEmail(cleanId) || isSuperAdminIdentifier(cleanId) || isSuperAdminIdentifier(cleanHandle);
 
   // 1. TENTATIVE VIA LA BASE DE DONNÉES PARTAGÉE DU SERVEUR
   try {
@@ -686,12 +686,13 @@ export async function getUserProfileByIdentifier(identifier) {
   if (!identifier) return null;
   const cleanId = String(identifier).trim();
   const cleanLower = cleanId.toLowerCase();
-  const isEmail = cleanId.includes('@');
+  const cleanHandle = cleanLower.startsWith('@') ? cleanLower.substring(1).trim() : cleanLower;
+  const isEmail = cleanId.includes('@') && !cleanId.startsWith('@') && cleanId.includes('.');
   const cleanEmail = isEmail ? cleanLower : '';
 
   // 1. Recherche via l'API partagée du serveur
   try {
-    const apiRes = await safeFetchJson(`/api/auth/user/${encodeURIComponent(cleanId)}`);
+    const apiRes = await safeFetchJson(`/api/auth/user/${encodeURIComponent(cleanHandle || cleanId)}`);
     if (apiRes.ok && apiRes.data?.user) return apiRes.data.user;
   } catch (e) {}
 
@@ -710,7 +711,7 @@ export async function getUserProfileByIdentifier(identifier) {
   } else {
     // Recherche par username ou nom ou téléphone dans Firestore
     try {
-      const qUser = query(collection(db, USERS_COLLECTION), where('username', '==', cleanLower));
+      const qUser = query(collection(db, USERS_COLLECTION), where('username', '==', cleanHandle));
       const snapUser = await getDocs(qUser);
       if (!snapUser.empty) {
         const d = snapUser.docs[0];
@@ -721,9 +722,11 @@ export async function getUserProfileByIdentifier(identifier) {
       const allUsersSnap = await getDocs(collection(db, USERS_COLLECTION));
       for (const d of allUsersSnap.docs) {
         const u = d.data();
-        if ((u.username && u.username.toLowerCase() === cleanLower) ||
-            (u.name && u.name.toLowerCase() === cleanLower) ||
-            (u.nom && u.nom.toLowerCase() === cleanLower)) {
+        const uUser = (u.username || '').toLowerCase();
+        if (uUser === cleanHandle || uUser === cleanLower ||
+            (u.name && u.name.toLowerCase() === cleanHandle) ||
+            (u.nom && u.nom.toLowerCase() === cleanHandle) ||
+            (Array.isArray(u.aliases) && u.aliases.some(a => String(a).toLowerCase() === cleanHandle))) {
           return { ...u, id: d.id, uid: u.uid || d.id };
         }
         if (digits.length >= 8) {

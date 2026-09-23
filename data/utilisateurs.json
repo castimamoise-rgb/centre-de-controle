@@ -74,7 +74,12 @@
     "nom": "wewe",
     "prenom": "wawa",
     "name": "wewe wawa",
-    "username": "wawa_wewe",
+    "username": "wawe123",
+    "aliases": [
+      "wawa_wewe",
+      "wawe",
+      "wawe123"
+    ],
     "email": "yapek81784@ncleap.com",
     "telephone": "",
     "phone": "",
