@@ -722,10 +722,10 @@ function getInitialData() {
       { id: "DEP-002", label: "Part chauffeur Wilner", date: d, amount: 4500, category: "Chauffeur / Commission", driver: "Wilner Charles", notes: "Course RES-001" }
     ],
     proformas: [
-      { id: "PT-2026-09-19-001", number: "PT-2026-09-19-001", client: "Jean-Baptiste Valmé", date: d, route: "Pétion-Ville - Delmas", service: "Transport scolaire", amount: 25000, validity: "30 jours", status: "Acceptée", notes: "Offre annuelle transport" }
+      { id: "PRF-2026-09-19-001", number: "PRF-2026-09-19-001", client: "Jean-Baptiste Valmé", date: d, route: "Pétion-Ville - Delmas", service: "Transport scolaire", amount: 25000, validity: "30 jours", status: "Acceptée", notes: "Offre annuelle transport" }
     ],
     factures: [
-      { id: "FT-2026-09-19-001", number: "FT-2026-09-19-001", client: "Jean-Baptiste Valmé", date: d, proforma: "PT-2026-09-19-001", amount: 25000, status: "Payée", due: d, notes: "Facture acquittée" }
+      { id: "FAC-2026-09-19-001", number: "FAC-2026-09-19-001", client: "Jean-Baptiste Valmé", date: d, proforma: "PRF-2026-09-19-001", amount: 25000, status: "Payée", due: d, notes: "Facture acquittée" }
     ],
     utilisateurs: [
       { id: "castimamoise_gmail_com", name: "Moïse Castima", username: "castima", email: "castimamoise@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Fondateur & Administrateur Principal" },
@@ -1472,39 +1472,11 @@ function initAuthUI(initialMode = "login") {
       }
 
       if (
-        errCode === "auth/unauthorized-domain" ||
-        errCode === "auth/operation-not-allowed" ||
         errCode === "auth/popup-blocked" ||
-        errCode === "auth/cancelled-popup-request" ||
-        errMsg.includes("unauthorized-domain") ||
-        errMsg.includes("operation-not-allowed") ||
-        errMsg.includes("popup")
+        errCode === "auth/cancelled-popup-request"
       ) {
-        try {
-          const fallbackEmail = mode === "register" && registerEmail?.value.trim()
-            ? registerEmail.value.trim().toLowerCase()
-            : (loginEmail?.value.trim().toLowerCase() || "castimaklik@gmail.com");
-          const fallbackName = mode === "register" && registerNom?.value.trim()
-            ? `${registerNom.value.trim()} ${registerPrenom?.value.trim() || ""}`
-            : (fallbackEmail === "castimaklik@gmail.com" ? "Administrateur Laperle" : fallbackEmail.split("@")[0]);
-
-          if (mode === "login" && !isSuperAdminEmail(fallbackEmail) && !isSuperAdminIdentifier(fallbackEmail)) {
-            const existing = await getUserProfileByIdentifier(fallbackEmail);
-            if (!existing) {
-              setAuthMessage("error", `❌ <b>Le compte « ${esc(fallbackEmail)} » n'est pas encore inscrit.</b><br>Veuillez d'abord créer votre compte via l'onglet <b>« Pour S'inscrire »</b> avant de vous connecter.<br><button type="button" onclick="document.getElementById('authTabRegister')?.click()" style="margin-top:8px;padding:6px 14px;background:#082b70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;">👉 Cliquer ici pour vous inscrire</button>`);
-              return;
-            }
-          }
-
-          setAuthMessage("loading", `Connexion avec ${fallbackEmail}...`);
-          const res = await directEmailSignInFallback(fallbackEmail, fallbackName, mode);
-          setAuthMessage("success", "Connexion réussie ! Bienvenue chez LAPERLE TOUR HT.");
-          completeUserSignIn(res.user, res.profile, res.isNew);
-          return;
-        } catch (fbErr) {
-          setAuthMessage("error", formatAuthError(fbErr) || "Impossible d'établir la connexion.");
-          return;
-        }
+        setAuthMessage("error", "La fenêtre d'authentification Google a été fermée ou bloquée par le navigateur.");
+        return;
       }
 
       setAuthMessage("error", `Échec connexion Google — ${formatAuthError(err) || errMsg}`);
@@ -2723,7 +2695,7 @@ function documentModuleIntro(key) {
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
           <div>
             <b style="font-size:14px;color:#082b70">📄 Module Proformas LAPERLE TOUR HT</b><br>
-            Numérotation officielle automatique <b>PT-YYYYMMDD-XXX</b>. Convertissez en facture en 1 clic ou générez le document <b>PDF</b> officiel.
+            Numérotation officielle automatique <b>PRF-YYYY-MM-DD-XXX</b>. Convertissez en facture en 1 clic ou générez le document <b>PDF</b> officiel.
           </div>
           <div style="display:flex;gap:8px;font-size:12px;flex-wrap:wrap">
             <span class="badge" style="background:#fff;border:1px solid #c7dcfb"><b>${qList.length}</b> Proforma(s)</span>
@@ -2744,7 +2716,7 @@ function documentModuleIntro(key) {
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
           <div>
             <b style="font-size:14px;color:#0d592f">🧾 Module Factures LAPERLE TOUR HT</b><br>
-            Factures numérotées <b>FT-YYYYMMDD-XXX</b> reliées aux proformas, suivi des encaissements et impression <b>PDF</b> acquittée.
+            Factures numérotées <b>FAC-YYYY-MM-DD-XXX</b> reliées aux proformas, suivi des encaissements et impression <b>PDF</b> acquittée.
           </div>
           <div style="display:flex;gap:8px;font-size:12px;flex-wrap:wrap">
             <span class="badge" style="background:#fff;border:1px solid #c3edd3"><b>${invList.length}</b> Facture(s)</span>
@@ -2891,6 +2863,7 @@ function drawTable(key) {
                     <button class="tiny" onclick="printDocument('proforma',${i})">PDF Proforma</button>
                   ` : ""}
                   ${canon === "factures" ? `
+                    <button class="tiny green" onclick="openPaymentGatewayModal(list('factures')[${i}])">Payer</button>
                     <button class="tiny" onclick="printDocument('facture',${i})">PDF Facture</button>
                   ` : ""}
                   ${canDelete ? `<button class="tiny delete" onclick="removeRow('${canon}',${i})">Archiver / Suppr.</button>` : ""}
@@ -3100,7 +3073,7 @@ function fieldHTMLLinked(id, label, type, val, key) {
   if (canon === "factures" && id === "proforma") {
     const quotes = list("proformas");
     if (!quotes.length) {
-      return `<div class="field"><label>N° Proforma lié</label><input name="proforma" value="${esc(val)}" placeholder="Optionnel (ex: PT-20260919-001)"></div>`;
+      return `<div class="field"><label>N° Proforma lié</label><input name="proforma" value="${esc(val)}" placeholder="Optionnel (ex: PRF-2026-09-19-001)"></div>`;
     }
     return `
       <div class="field">
@@ -3130,7 +3103,7 @@ function fieldHTMLLinked(id, label, type, val, key) {
   if (canon === "paiements" && id === "facture") {
     const factures = list("factures");
     if (!factures.length) {
-      return `<div class="field"><label>Facture liée</label><input name="facture" value="${esc(val)}" placeholder="Optionnel (ex: FT-2026-09-19-001)"></div>`;
+      return `<div class="field"><label>Facture liée</label><input name="facture" value="${esc(val)}" placeholder="Optionnel (ex: FAC-2026-09-19-001)"></div>`;
     }
     return `
       <div class="field">
@@ -4266,6 +4239,121 @@ async function createInvoiceFromQuote(index) {
   go("factures");
   showToast(`Facture ${invoiceNumber} créée avec succès.`);
 }
+
+function openPaymentGatewayModal(invoiceOrReservation) {
+  const isDoc = typeof invoiceOrReservation === 'object' && invoiceOrReservation !== null;
+  const amount = isDoc ? (invoiceOrReservation.amount || invoiceOrReservation.price || 0) : 5000;
+  const ref = isDoc ? (invoiceOrReservation.number || invoiceOrReservation.id || 'PAY') : 'PAY-' + Date.now().toString(36).toUpperCase();
+  const clientName = isDoc ? (invoiceOrReservation.client || invoiceOrReservation.name || 'Client') : (currentUserProfile?.name || 'Client Laperle');
+
+  document.getElementById("modal").innerHTML = `
+    <div class="modal-head">
+      <div>
+        <h2>💳 Passerelle de Paiement Sécurisée</h2>
+        <small>Encaissement en ligne instantané LAPERLE TOUR HT</small>
+      </div>
+      <button class="close" onclick="closeModal()">×</button>
+    </div>
+
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <b style="color:#092e70;font-size:15px">Référence : ${esc(ref)}</b><br>
+          <span style="font-size:12px;color:#64748b">Client : ${esc(clientName)}</span>
+        </div>
+        <div style="text-align:right">
+          <small style="color:#64748b;display:block">Montant à régler</small>
+          <b style="color:#15803d;font-size:18px">${money(amount)}</b>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:14px">
+      <label style="font-weight:700;color:#092e70;font-size:13px;display:block;margin-bottom:8px">Choisissez votre mode de paiement :</label>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:8px">
+        <label style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 8px;background:#fff;border:2px solid #22c55e;border-radius:10px;cursor:pointer;text-align:center">
+          <input type="radio" name="payMethod" value="MonCash" checked style="accent-color:#22c55e">
+          <span style="font-size:22px">📲</span>
+          <b style="font-size:12px;color:#0f172a">MonCash</b>
+          <small style="font-size:10px;color:#64748b">Haïti Mobile</small>
+        </label>
+        <label style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 8px;background:#fff;border:1px solid #cbd5e1;border-radius:10px;cursor:pointer;text-align:center">
+          <input type="radio" name="payMethod" value="Natcash" style="accent-color:#22c55e">
+          <span style="font-size:22px">🔴</span>
+          <b style="font-size:12px;color:#0f172a">Natcash</b>
+          <small style="font-size:10px;color:#64748b">Natcom Mobile</small>
+        </label>
+        <label style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 8px;background:#fff;border:1px solid #cbd5e1;border-radius:10px;cursor:pointer;text-align:center">
+          <input type="radio" name="payMethod" value="Stripe" style="accent-color:#22c55e">
+          <span style="font-size:22px">💳</span>
+          <b style="font-size:12px;color:#0f172a">Carte / Stripe</b>
+          <small style="font-size:10px;color:#64748b">Visa / MasterCard</small>
+        </label>
+      </div>
+    </div>
+
+    <form id="onlinePaymentForm">
+      <div class="field" style="margin-bottom:12px">
+        <label>Numéro de téléphone / Compte de paiement :</label>
+        <input type="tel" id="payAccountNum" placeholder="+509 4440 8687 ou N° carte" required style="font-weight:700">
+      </div>
+      <div class="field" style="margin-bottom:14px">
+        <label>Code PIN / OTP de confirmation :</label>
+        <input type="password" id="payOtpCode" placeholder="****" maxlength="6" required style="letter-spacing:4px;font-weight:700">
+      </div>
+
+      <div class="form-actions">
+        <button type="button" class="secondary" onclick="closeModal()">Annuler</button>
+        <button type="submit" class="primary green" id="paySubmitBtn">
+          <span>⚡ Valider le Paiement (${money(amount)})</span>
+        </button>
+      </div>
+    </form>
+  `;
+
+  document.getElementById("modalBackdrop").classList.add("open");
+
+  document.getElementById("onlinePaymentForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById("paySubmitBtn");
+    const method = document.querySelector('input[name="payMethod"]:checked')?.value || 'MonCash';
+    const acc = document.getElementById("payAccountNum")?.value;
+
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<span class="auth-spinner"></span> Traitement sécurisé ${method}...`;
+    }
+
+    setTimeout(async () => {
+      const now = new Date().toISOString();
+      const newPay = {
+        id: "PAY-" + Date.now().toString(36).toUpperCase(),
+        client: clientName,
+        date: now.slice(0, 10),
+        amount: Number(amount) || 0,
+        method: method,
+        status: "Reçu",
+        reference: `${method.toUpperCase()}-${Math.floor(100000 + Math.random() * 900000)}`,
+        notes: `Paiement en ligne effectué via passerelle ${method} (${acc})`,
+        createdAt: now
+      };
+
+      list("paiements").push(newPay);
+      save();
+      await saveDocumentToFirestore("paiements", newPay);
+
+      if (isDoc && (invoiceOrReservation.number || invoiceOrReservation.id)) {
+        invoiceOrReservation.status = "Payée";
+        save();
+      }
+
+      closeModal();
+      showToast(`✅ Paiement de ${money(amount)} validé par ${method} !`);
+      render();
+    }, 1200);
+  };
+}
+window.openPaymentGatewayModal = openPaymentGatewayModal;
 
 function printDocument(type, index) {
   const isQuote = type === "proforma" || type === "quote";

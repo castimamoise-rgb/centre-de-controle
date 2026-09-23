@@ -1,0 +1,23 @@
+{
+  "short_name": "Laperle",
+  "name": "Centre de Contrôle Laperle — LAPERLE TOUR HT",
+  "description": "Système de gestion et centre de contrôle opérationnel pour LAPERLE TOUR HT (Transport, Tourisme, Flotte, Facturation).",
+  "icons": [
+    {
+      "src": "logo-laperle.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg"
+    },
+    {
+      "src": "logo-laperle.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg"
+    }
+  ],
+  "start_url": "./index.html",
+  "background_color": "#071936",
+  "theme_color": "#092e70",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "categories": ["business", "travel", "productivity"]
+}
