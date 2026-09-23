@@ -21,7 +21,7 @@
     "createdAt": "2026-09-22T21:10:46.326Z",
     "updatedAt": "2026-09-22T21:10:46.326Z",
     "notes": "Fondateur & Administrateur Principal",
-    "lastLoginAt": "2026-09-23T14:40:08.915Z"
+    "lastLoginAt": "2026-09-23T16:21:43.407Z"
   },
   {
     "id": "usr_admin_castimaklik",
@@ -127,5 +127,32 @@
     "lastLoginAt": "2026-09-23T14:29:14.604Z",
     "createdBy": "jean.dupont.test500@example.com",
     "updatedBy": "jean.dupont.test500@example.com"
+  },
+  {
+    "id": "usr_1790180513046_of2jr",
+    "uid": "usr_1790180513046_of2jr",
+    "nom": "Testeur",
+    "prenom": "Automatique",
+    "name": "Testeur Automatique",
+    "username": "testqa",
+    "email": "test.auto.qa@gmail.com",
+    "telephone": "",
+    "phone": "",
+    "photoURL": "",
+    "roles": [
+      "client"
+    ],
+    "role": "client",
+    "status": "actif",
+    "statutCompte": "actif",
+    "statutClient": "client",
+    "passwordHash": "cdf6f916c58695372116e282fd5428fe47c7a31cb49bf4cc9d1e2d012cb2a6fa",
+    "notes": "Client inscrit sur le site LAPERLE TOUR HT",
+    "permissions": {},
+    "createdAt": "2026-09-23T16:21:53.045Z",
+    "updatedAt": "2026-09-23T16:21:53.045Z",
+    "lastLoginAt": "2026-09-23T16:21:55.075Z",
+    "createdBy": "test.auto.qa@gmail.com",
+    "updatedBy": "test.auto.qa@gmail.com"
   }
 ]
