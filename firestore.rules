@@ -189,7 +189,8 @@ service cloud.firestore {
 
     function isNotificationTarget(data) {
       return (
-        (('targetUid' in data) && data.targetUid == request.auth.uid) ||
+        (('targetUid' in data) && (data.targetUid == request.auth.uid || data.targetUid == "all" || data.targetUid == "broadcast")) ||
+        (('broadcast' in data) && data.broadcast == true) ||
         (('userId' in data) && data.userId == request.auth.uid) ||
         (('uid' in data) && data.uid == request.auth.uid) ||
         (('clientId' in data) && data.clientId == request.auth.uid) ||

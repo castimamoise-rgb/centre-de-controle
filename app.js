@@ -32,7 +32,7 @@ import {
   createFacture, getFactures, updateFacture, archiveFacture, deleteFacture, subscribeFactures, generateFactureNumber,
   createFinance, getFinances, updateFinance, archiveFinance, deleteFinance, subscribeFinances, calculateFinancialSummary,
   createOrUpdateUser, getUtilisateurs, updateUtilisateur, deleteUtilisateur, subscribeUtilisateurs, checkUserPermission,
-  createNotification, getNotifications, markNotificationRead, deleteNotification, subscribeNotifications,
+  createNotification, getNotifications, markNotificationRead, markAllNotificationsRead, deleteNotification, subscribeNotifications, seedDefaultServiceAlerts, DEFAULT_SERVICE_ALERTS,
   getCompanySettings, saveCompanySettings, subscribeCompanySettings,
   // RBAC & Authentication Services
   ROLES, ROLE_LABELS, STATUS_LABELS, SUPER_ADMIN_EMAIL, SUPER_ADMIN_EMAILS, SUPER_ADMIN_PHONES,
@@ -874,6 +874,9 @@ function updateNavBadges() {
       }
     }
   });
+  if (typeof updateNotificationBadge === "function") {
+    updateNotificationBadge();
+  }
 }
 
 const dateEl = document.getElementById("date");
@@ -896,8 +899,444 @@ if (globalSearchInput) {
   globalSearchInput.onkeydown = e => { if (e.key === "Enter") globalSearch(); };
 }
 
+// =========================================================================
+// SYSTÈME DE NOTIFICATIONS EN TEMPS RÉEL (ALERTES DE SERVICE & MISES À JOUR)
+// =========================================================================
+let isNotifDropdownOpen = false;
+let activeNotifFilter = 'all'; // 'all', 'service', 'update', 'unread'
+let previousUnreadCount = null;
+
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function formatRelativeTime(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return String(dateStr);
+  const now = new Date();
+  const diffSec = Math.floor((now.getTime() - d.getTime()) / 1000);
+  if (diffSec < 60) return "À l'instant";
+  if (diffSec < 3600) {
+    const mins = Math.floor(diffSec / 60);
+    return `Il y a ${mins} min`;
+  }
+  if (diffSec < 86400) {
+    const hours = Math.floor(diffSec / 3600);
+    return `Il y a ${hours}h`;
+  }
+  const days = Math.floor(diffSec / 86400);
+  if (days === 1) {
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `Hier à ${hh}h${mm}`;
+  }
+  if (days < 7) {
+    return `Il y a ${days}j`;
+  }
+  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+}
+
+function getApplicableNotifications() {
+  const all = Array.isArray(state.notifications) ? [...state.notifications] : [];
+  all.sort((a, b) => new Date(b.createdAt || b.date || 0).getTime() - new Date(a.createdAt || a.date || 0).getTime());
+  
+  if (!currentUser) return all;
+  const roles = normalizeRoles(currentUserRoles);
+  const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r));
+  if (isStaff) return all;
+
+  // Filter for client / chauffeur
+  const uid = currentUser.uid || currentUser.id;
+  const email = (currentUser.email || '').toLowerCase();
+  return all.filter(n => {
+    if (n.targetUid === 'all' || n.targetUid === 'broadcast' || n.broadcast === true) return true;
+    if (n.targetUid === uid || n.userId === uid || n.uid === uid || n.clientId === uid || n.chauffeurId === uid) return true;
+    if (n.email && n.email.toLowerCase() === email) return true;
+    return false;
+  });
+}
+
+function updateNotificationBadge() {
+  const notifDot = document.getElementById("notifDot");
+  if (!notifDot) return;
+
+  const notifs = getApplicableNotifications();
+  const unreadList = notifs.filter(n => !n.read);
+  const unreadCount = unreadList.length;
+
+  if (unreadCount > 0) {
+    notifDot.style.display = "flex";
+    notifDot.textContent = unreadCount > 99 ? "99+" : String(unreadCount);
+    
+    // Check if any unread notification is urgent or service alert
+    const hasUrgent = unreadList.some(n => n.priority === 'urgent' || n.priority === 'high' || n.type === 'alerte' || n.type === 'service');
+    if (hasUrgent) {
+      notifDot.classList.add("pulse");
+    } else {
+      notifDot.classList.remove("pulse");
+    }
+
+    // Play subtle toast notification if count increased during runtime
+    if (previousUnreadCount !== null && unreadCount > previousUnreadCount) {
+      const newest = unreadList[0];
+      if (newest) {
+        showToast(`🔔 ${newest.title || 'Nouvelle notification Laperle'}`);
+      }
+    }
+  } else {
+    notifDot.style.display = "none";
+    notifDot.classList.remove("pulse");
+  }
+
+  previousUnreadCount = unreadCount;
+}
+
+function toggleNotificationDropdown() {
+  if (isNotifDropdownOpen) {
+    closeNotificationDropdown();
+  } else {
+    openNotificationDropdown();
+  }
+}
+
+function openNotificationDropdown() {
+  const dropdown = document.getElementById("notifDropdown");
+  if (!dropdown) return;
+  isNotifDropdownOpen = true;
+  dropdown.style.display = "flex";
+  renderNotificationDropdown();
+}
+
+function closeNotificationDropdown() {
+  const dropdown = document.getElementById("notifDropdown");
+  if (!dropdown) return;
+  isNotifDropdownOpen = false;
+  dropdown.style.display = "none";
+}
+
+function setNotifFilter(filter) {
+  activeNotifFilter = filter;
+  renderNotificationDropdown();
+}
+
+function renderNotificationDropdown() {
+  const dropdown = document.getElementById("notifDropdown");
+  if (!dropdown) return;
+
+  const allNotifs = getApplicableNotifications();
+  const unreadCount = allNotifs.filter(n => !n.read).length;
+  const alertsCount = allNotifs.filter(n => n.type === 'alerte' || n.type === 'service' || n.priority === 'high' || n.priority === 'urgent').length;
+  const updatesCount = allNotifs.filter(n => n.type === 'update' || n.type === 'transport' || n.type === 'info').length;
+
+  let filtered = allNotifs;
+  if (activeNotifFilter === 'unread') {
+    filtered = allNotifs.filter(n => !n.read);
+  } else if (activeNotifFilter === 'service') {
+    filtered = allNotifs.filter(n => n.type === 'alerte' || n.type === 'service' || n.priority === 'high' || n.priority === 'urgent');
+  } else if (activeNotifFilter === 'update') {
+    filtered = allNotifs.filter(n => n.type === 'update' || n.type === 'transport' || n.type === 'info');
+  }
+
+  const roles = normalizeRoles(currentUserRoles);
+  const canBroadcast = roles.some(r => ['admin', 'direction', 'operations'].includes(r)) || isSuperAdminEmail(currentUser?.email);
+  const canDeleteNotif = roles.includes('admin') || isSuperAdminEmail(currentUser?.email);
+
+  dropdown.innerHTML = `
+    <div class="notif-header">
+      <div class="notif-header-title-wrap">
+        <span style="font-size:18px;">🔔</span>
+        <h4 class="notif-header-title">Notifications & Alertes</h4>
+        ${unreadCount > 0 ? `<span class="notif-count-badge">${unreadCount} non lue${unreadCount > 1 ? 's' : ''}</span>` : ''}
+      </div>
+      <div class="notif-header-actions">
+        ${unreadCount > 0 ? `
+          <button class="notif-btn-header" onclick="handleMarkAllRead()" title="Marquer tout comme lu">
+            <span>✓✓</span> <span>Tout lire</span>
+          </button>
+        ` : ''}
+        <button class="notif-btn-close" onclick="closeNotificationDropdown()" title="Fermer">✕</button>
+      </div>
+    </div>
+
+    ${canBroadcast ? `
+      <div class="notif-broadcast-strip">
+        <span>📢 Diffuser une alerte aux conducteurs et clients</span>
+        <button class="notif-broadcast-btn" onclick="openBroadcastModal()">+ Diffuser</button>
+      </div>
+    ` : ''}
+
+    <div class="notif-tabs">
+      <button class="notif-tab ${activeNotifFilter === 'all' ? 'active' : ''}" onclick="setNotifFilter('all')">
+        Toutes (${allNotifs.length})
+      </button>
+      <button class="notif-tab ${activeNotifFilter === 'service' ? 'active' : ''}" onclick="setNotifFilter('service')">
+        🚨 Alertes (${alertsCount})
+      </button>
+      <button class="notif-tab ${activeNotifFilter === 'update' ? 'active' : ''}" onclick="setNotifFilter('update')">
+        📢 Mises à jour (${updatesCount})
+      </button>
+      <button class="notif-tab ${activeNotifFilter === 'unread' ? 'active' : ''}" onclick="setNotifFilter('unread')">
+        Non lues (${unreadCount})
+      </button>
+    </div>
+
+    <div class="notif-list">
+      ${filtered.length === 0 ? `
+        <div class="notif-empty">
+          <div class="notif-empty-icon">🔔</div>
+          <p class="notif-empty-title">Aucune alerte ou notification</p>
+          <p class="notif-empty-desc">Toutes les informations opérationnelles et alertes de service sont à jour.</p>
+        </div>
+      ` : filtered.map(item => {
+        const isUrgent = item.priority === 'urgent' || item.priority === 'high' || item.type === 'alerte';
+        const isTransport = item.type === 'transport';
+        let typePillClass = item.type || 'info';
+        let typeLabel = 'INFO';
+        let typeEmoji = 'ℹ️';
+
+        if (item.type === 'service') { typeLabel = 'ALERTE SERVICE'; typeEmoji = '🚨'; }
+        else if (item.type === 'alerte') { typeLabel = 'URGENCE'; typeEmoji = '⚠️'; }
+        else if (item.type === 'transport') { typeLabel = 'FLOTTE & CIRCUIT'; typeEmoji = '🚌'; }
+        else if (item.type === 'update') { typeLabel = 'MISE À JOUR'; typeEmoji = '📢'; }
+        else if (item.type === 'finance') { typeLabel = 'FINANCES'; typeEmoji = '💳'; }
+
+        return `
+          <div class="notif-item ${!item.read ? 'unread' : ''} ${isUrgent ? 'is-urgent' : ''} ${isTransport ? 'is-transport' : ''}">
+            <div class="notif-item-top">
+              <span class="notif-type-pill ${typePillClass}">
+                <span>${typeEmoji}</span>
+                <span>${typeLabel}</span>
+              </span>
+              ${isUrgent ? `<span class="notif-type-pill alerte" style="font-size:9px;padding:1px 5px;">PRIORITAIRE</span>` : ''}
+              <span class="notif-time">${formatRelativeTime(item.createdAt || item.date)}</span>
+            </div>
+            <h5 class="notif-title">${escapeHtml(item.title || 'Information LAPERLE')}</h5>
+            <p class="notif-message">${escapeHtml(item.message || '')}</p>
+            <div class="notif-actions">
+              <button class="notif-action-btn" onclick="handleToggleRead('${item.id}', ${!item.read})">
+                ${item.read ? 'Marquer non lu' : '✓ Marquer lu'}
+              </button>
+              ${canDeleteNotif ? `
+                <button class="notif-action-btn delete" onclick="handleDeleteNotification('${item.id}')">
+                  🗑️ Supprimer
+                </button>
+              ` : ''}
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+
+    <div class="notif-footer">
+      <div class="notif-live-indicator">
+        <span class="notif-live-dot"></span>
+        <span>Firebase Cloud Sync Actif</span>
+      </div>
+      <button class="notif-action-btn" onclick="refreshNotifications()" title="Actualiser manuellement">
+        🔄 Actualiser
+      </button>
+    </div>
+  `;
+}
+
+async function handleToggleRead(id, newReadStatus) {
+  try {
+    const notif = (state.notifications || []).find(n => n.id === id);
+    if (notif) {
+      notif.read = newReadStatus;
+    }
+    updateNotificationBadge();
+    renderNotificationDropdown();
+    if (newReadStatus) {
+      await markNotificationRead(id);
+    } else {
+      await updateDoc(doc(db, 'notifications', id), {
+        read: false,
+        updatedAt: new Date().toISOString(),
+        updatedBy: currentUser?.email || 'user'
+      });
+    }
+  } catch (e) {
+    console.error("Erreur toggle read notification:", e);
+    updateNotificationBadge();
+    renderNotificationDropdown();
+  }
+}
+
+async function handleMarkAllRead() {
+  const notifs = getApplicableNotifications().filter(n => !n.read);
+  if (notifs.length === 0) return;
+  notifs.forEach(n => { n.read = true; });
+  updateNotificationBadge();
+  renderNotificationDropdown();
+  try {
+    await markAllNotificationsRead(notifs);
+    showToast("Toutes les notifications ont été marquées comme lues.");
+  } catch (e) {
+    console.warn("Erreur marquage global:", e);
+  }
+}
+
+async function handleDeleteNotification(id) {
+  if (!confirm("Voulez-vous supprimer cette alerte / notification ?")) return;
+  try {
+    state.notifications = (state.notifications || []).filter(n => n.id !== id);
+    updateNotificationBadge();
+    renderNotificationDropdown();
+    await deleteNotification(id);
+    showToast("Alerte / notification supprimée.");
+  } catch (e) {
+    console.error("Erreur suppression notif:", e);
+    showToast("Erreur lors de la suppression.");
+  }
+}
+
+function openBroadcastModal() {
+  closeNotificationDropdown();
+  const modal = document.getElementById("modal");
+  const modalBackdrop = document.getElementById("modalBackdrop");
+  if (!modal || !modalBackdrop) return;
+
+  modal.innerHTML = `
+    <div class="modal-head">
+      <h2 style="display:flex;align-items:center;gap:8px;">
+        <span>📢</span> <span>Diffuser une Alerte de Service ou Mise à Jour</span>
+      </h2>
+      <button class="close" onclick="closeModal()">✕</button>
+    </div>
+    <form id="broadcastAlertForm" onsubmit="handleSendBroadcast(event)" style="display:flex;flex-direction:column;gap:14px;">
+      <div class="form-grid">
+        <div class="field">
+          <label for="alertType">Type d'alerte / notification :</label>
+          <select id="alertType" required>
+            <option value="service">🚨 Alerte de service / Trafic routier</option>
+            <option value="transport">🚌 Flotte, Véhicules & Circuits</option>
+            <option value="alerte">⚠️ Maintenance urgente ou Retard</option>
+            <option value="update">📢 Mise à jour opérationnelle</option>
+            <option value="finance">💳 Facturation & Avis financier</option>
+            <option value="info">ℹ️ Information générale</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="alertPriority">Niveau d'urgence :</label>
+          <select id="alertPriority">
+            <option value="normal">Normal (Information)</option>
+            <option value="high">Haute (Prioritaire)</option>
+            <option value="urgent">Urgente (Alerte rouge)</option>
+          </select>
+        </div>
+        <div class="field full">
+          <label for="alertTarget">Destinataires :</label>
+          <select id="alertTarget">
+            <option value="all">Tous les utilisateurs (Diffusion globale en temps réel)</option>
+            <option value="clients">Clients et Passagers seulement</option>
+            <option value="chauffeurs">Chauffeurs et Conducteurs seulement</option>
+          </select>
+        </div>
+        <div class="field full">
+          <label for="alertTitle">Titre de l'alerte (Court et clair) :</label>
+          <input type="text" id="alertTitle" placeholder="Ex: Alerte Météo : Itinéraire Pétion-Ville dégagé" maxlength="150" required>
+        </div>
+        <div class="field full">
+          <label for="alertMessage">Message détaillé :</label>
+          <textarea id="alertMessage" placeholder="Précisez la situation, les consignes ou les horaires pour les conducteurs et passagers..." maxlength="500" rows="4" required></textarea>
+          <small style="color:#64748b;font-size:11px;display:block;margin-top:4px;">Maximum 500 caractères. Visible instantanément par les utilisateurs connectés.</small>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="secondary" onclick="closeModal()">Annuler</button>
+        <button type="submit" class="primary" style="background:#f7941d;">🚀 Publier en direct sur Firebase</button>
+      </div>
+    </form>
+  `;
+  modalBackdrop.classList.add("open");
+}
+
+async function handleSendBroadcast(e) {
+  e.preventDefault();
+  const typeEl = document.getElementById("alertType");
+  const priorityEl = document.getElementById("alertPriority");
+  const targetEl = document.getElementById("alertTarget");
+  const titleEl = document.getElementById("alertTitle");
+  const messageEl = document.getElementById("alertMessage");
+
+  if (!titleEl || !messageEl) return;
+  const title = titleEl.value.trim();
+  const message = messageEl.value.trim();
+
+  if (!title || !message) {
+    showToast("⚠️ Veuillez renseigner le titre et le message de l'alerte.");
+    return;
+  }
+
+  try {
+    const payload = {
+      title,
+      message,
+      type: typeEl?.value || 'service',
+      priority: priorityEl?.value || 'normal',
+      targetUid: targetEl?.value || 'all',
+      broadcast: (targetEl?.value === 'all' || !targetEl?.value),
+      read: false,
+      date: new Date().toISOString()
+    };
+
+    await createNotification(payload);
+    closeModal();
+    showToast("✅ Alerte de service diffusée avec succès sur Firebase Cloud !");
+  } catch (err) {
+    console.error("Erreur diffusion alerte:", err);
+    showToast("❌ Erreur lors de la diffusion de l'alerte.");
+  }
+}
+
+// Bind notification bell button
 const notifBtn = document.getElementById("notificationBtn");
-if (notifBtn) notifBtn.onclick = () => showToast("Centre de notifications à jour.");
+if (notifBtn) {
+  notifBtn.onclick = (e) => {
+    e.stopPropagation();
+    toggleNotificationDropdown();
+  };
+}
+
+// Global click & key listeners to close dropdown when clicking outside
+document.addEventListener("click", (e) => {
+  const wrapper = document.getElementById("notifWrapper");
+  if (isNotifDropdownOpen && wrapper && !wrapper.contains(e.target)) {
+    closeNotificationDropdown();
+  }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && isNotifDropdownOpen) {
+    closeNotificationDropdown();
+  }
+});
+
+window.handleMarkAllRead = handleMarkAllRead;
+window.handleToggleRead = handleToggleRead;
+window.handleDeleteNotification = handleDeleteNotification;
+window.closeNotificationDropdown = closeNotificationDropdown;
+window.setNotifFilter = setNotifFilter;
+window.openBroadcastModal = openBroadcastModal;
+window.handleSendBroadcast = handleSendBroadcast;
+window.refreshNotifications = async () => {
+  try {
+    const list = await getNotifications();
+    if (list) state.notifications = list;
+    updateNotificationBadge();
+    renderNotificationDropdown();
+    showToast("Notifications actualisées.");
+  } catch (e) {
+    showToast("Erreur actualisation.");
+  }
+};
 
 const profBtn = document.getElementById("profileBtn");
 if (profBtn) profBtn.onclick = () => openProfile();
@@ -981,7 +1420,7 @@ function setupFirestoreListeners() {
       { col: 'vehicules', q: query(collection(db, 'vehicules'), where('chauffeurId', '==', currentUser.uid)) },
       { col: 'eleves', q: query(collection(db, 'eleves'), where('chauffeurId', '==', currentUser.uid)) },
       { col: 'chauffeurs', q: query(collection(db, 'chauffeurs'), where('chauffeurId', '==', currentUser.uid)) },
-      { col: 'notifications', q: query(collection(db, 'notifications'), where('targetUid', '==', currentUser.uid)) }
+      { col: 'notifications', q: query(collection(db, 'notifications'), where('targetUid', 'in', [currentUser.uid, 'all'])) }
     ];
 
     chauffeurCols.forEach(({ col, q }) => {
@@ -991,6 +1430,10 @@ function setupFirestoreListeners() {
           snap.forEach(d => items.push({ ...d.data(), id: d.id }));
           state[col] = items;
           save();
+          if (col === 'notifications') {
+            updateNotificationBadge();
+            if (isNotifDropdownOpen) renderNotificationDropdown();
+          }
           if (current === col || canonicalCol(current) === col || current === "dashboard") render();
         }, (err) => console.warn(`Lecture chauffeur [${col}]:`, err?.message));
         firestoreUnsubscribers.push(unsub);
@@ -1021,7 +1464,7 @@ function setupFirestoreListeners() {
       { col: 'paiements', q: query(collection(db, 'paiements'), where('clientId', '==', currentUser.uid)) },
       { col: 'proformas', q: query(collection(db, 'proformas'), where('clientId', '==', currentUser.uid)) },
       { col: 'factures', q: query(collection(db, 'factures'), where('clientId', '==', currentUser.uid)) },
-      { col: 'notifications', q: query(collection(db, 'notifications'), where('targetUid', '==', currentUser.uid)) }
+      { col: 'notifications', q: query(collection(db, 'notifications'), where('targetUid', 'in', [currentUser.uid, 'all'])) }
     ];
 
     clientCols.forEach(({ col, q }) => {
@@ -1031,6 +1474,10 @@ function setupFirestoreListeners() {
           snap.forEach(d => items.push({ ...d.data(), id: d.id }));
           state[col] = items;
           save();
+          if (col === 'notifications') {
+            updateNotificationBadge();
+            if (isNotifDropdownOpen) renderNotificationDropdown();
+          }
           if (current === col || canonicalCol(current) === col || current === "dashboard") render();
         }, (err) => console.warn(`Lecture client [${col}]:`, err?.message));
         firestoreUnsubscribers.push(unsub);
@@ -1087,6 +1534,10 @@ function setupFirestoreListeners() {
         });
         save();
         updateFirebaseBadge("connected");
+        if (colName === 'notifications') {
+          updateNotificationBadge();
+          if (isNotifDropdownOpen) renderNotificationDropdown();
+        }
         if (current === colName || canonicalCol(current) === colName || current === "dashboard" || current === "reports") {
           render();
         }
@@ -1167,6 +1618,8 @@ async function seedInitialDataToFirestoreIfEmpty() {
       });
       console.log("Base Firestore LAPERLE TOUR HT initialisée avec succès.");
     }
+    // S'assurer que les alertes de service et notifications par défaut sont initialisées
+    await seedDefaultServiceAlerts();
   } catch (err) {
     console.warn("Vérification seed Firestore:", err?.message);
   }

@@ -253,7 +253,10 @@
       <div class="header-right">
         <div class="top-icons">
           <button class="firebase-chip" id="firebaseBtn" title="Connexion & Synchronisation Firebase Cloud"><span class="firebase-icon">🔥</span><span id="firebaseStatusText">Firebase</span></button>
-          <button class="icon-btn" id="notificationBtn" title="Notifications">🔔<span id="notifDot">0</span></button>
+          <div class="notif-wrapper" id="notifWrapper">
+            <button class="icon-btn" id="notificationBtn" title="Notifications & Alertes de service" aria-label="Notifications et alertes">🔔<span id="notifDot" style="display:none;">0</span></button>
+            <div id="notifDropdown" class="notif-dropdown" style="display:none;" role="dialog" aria-label="Panneau des notifications"></div>
+          </div>
           <button class="user-btn" id="profileBtn"><span class="avatar" id="headerAvatar">C</span><span id="headerUserName">Castima</span><span id="headerUserRole" class="user-role-badge ADMIN">ADMIN</span>⌄</button>
           <button class="logout-header-btn" id="headerLogoutBtn" type="button" title="Se déconnecter">
             <span>🚪</span> <span>Déconnexion</span>
