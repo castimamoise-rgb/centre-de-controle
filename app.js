@@ -2143,7 +2143,7 @@ function dashboard() {
                 <h3>🛡️ Gestion des Rôles & Comptes Utilisateurs</h3>
                 <button onclick="openForm('utilisateurs')" class="admin-btn-pill">+ Créer un compte</button>
               </div>
-              <div style="overflow-x:auto">
+              <div class="media-files-table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%">
                 <table class="media-files-table">
                   <thead>
                     <tr>
