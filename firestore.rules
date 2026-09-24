@@ -577,7 +577,7 @@ service cloud.firestore {
           (!('permissions' in incoming()) || incoming().permissions == {})
         ) || (
           // Super admin document sync
-          isTargetSuperAdminEmail(incoming().email) &&
+          (isTargetSuperAdminEmail(incoming().email) || utilisateurId in ["usr_admin_castima", "usr_admin_castimaklik", "usr_admin_laperle"]) &&
           (!('status' in incoming()) || incoming().status in ["actif", "Actif"]) &&
           (!('statutCompte' in incoming()) || incoming().statutCompte in ["actif", "Actif"])
         ) || (
@@ -639,8 +639,8 @@ service cloud.firestore {
         ) ||
         (
           // Super admin email profile update
-          (isTargetSuperAdminEmail(existing().email) || isTargetSuperAdminEmail(incoming().email)) &&
-          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'nom', 'prenom', 'username', 'aliases', 'phone', 'telephone', 'photoURL', 'avatar', 'passwordHash', 'notes', 'status', 'statutCompte', 'statutClient', 'roles', 'role', 'updatedAt', 'updatedBy', 'lastLoginAt'])
+          (isTargetSuperAdminEmail(existing().email) || isTargetSuperAdminEmail(incoming().email) || utilisateurId in ["usr_admin_castima", "usr_admin_castimaklik", "usr_admin_laperle"]) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['id', 'uid', 'targetId', 'permissions', 'name', 'nom', 'prenom', 'username', 'aliases', 'phone', 'telephone', 'photoURL', 'avatar', 'passwordHash', 'notes', 'status', 'statutCompte', 'statutClient', 'roles', 'role', 'updatedAt', 'updatedBy', 'lastLoginAt'])
         ) ||
         (
           // Profile updates for web users without administrative role escalation

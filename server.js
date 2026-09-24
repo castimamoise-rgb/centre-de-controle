@@ -126,6 +126,7 @@ function isSuperAdminEmail(email) {
 }
 
 function getDefaultUsers() {
+  const baseCreatedAt = '2026-09-22T21:24:32.231Z';
   const now = new Date().toISOString();
   const adminPassHash = hashPassword('Admin26');
   return [
@@ -146,7 +147,7 @@ function getDefaultUsers() {
       phone: '+509 4440 8687',
       photoURL: '',
       passwordHash: adminPassHash,
-      createdAt: now,
+      createdAt: baseCreatedAt,
       updatedAt: now,
       notes: 'Fondateur & Administrateur Principal'
     },
@@ -167,7 +168,7 @@ function getDefaultUsers() {
       phone: '+509 4440 8687',
       photoURL: '',
       passwordHash: adminPassHash,
-      createdAt: now,
+      createdAt: baseCreatedAt,
       updatedAt: now,
       notes: 'Super Administrateur Studio'
     },
@@ -188,7 +189,7 @@ function getDefaultUsers() {
       phone: '+509 4440 8687',
       photoURL: '',
       passwordHash: adminPassHash,
-      createdAt: now,
+      createdAt: baseCreatedAt,
       updatedAt: now,
       notes: 'Direction Générale LAPERLE TOUR HT'
     }
@@ -231,25 +232,39 @@ async function saveUserToFirestore(user) {
 
   try {
     const userDocRef = doc(db, 'utilisateurs', docId);
-    await setDoc(userDocRef, user, { merge: true });
+    let payload = { ...user };
+    try {
+      const snap = await getDoc(userDocRef);
+      if (snap.exists()) {
+        const existingData = snap.data();
+        if (existingData.createdAt) {
+          payload.createdAt = existingData.createdAt;
+          user.createdAt = existingData.createdAt;
+        }
+      }
+    } catch (readErr) {
+      // Proceed with payload if reading fails
+    }
+
+    await setDoc(userDocRef, payload, { merge: true });
 
     // Also persist username lookup document for instant O(1) matching
-    if (user.username) {
-      const cleanUname = String(user.username).trim().toLowerCase().replace(/^@/, '');
+    if (payload.username) {
+      const cleanUname = String(payload.username).trim().toLowerCase().replace(/^@/, '');
       const unameIndexRef = doc(db, 'utilisateurs', 'usr_uname_' + cleanUname);
       await setDoc(unameIndexRef, {
         id: 'usr_uname_' + cleanUname,
         targetId: docId,
         uid: docId,
         username: cleanUname,
-        email: user.email,
-        name: user.name || `${user.prenom || ''} ${user.nom || ''}`.trim(),
-        role: user.role,
-        roles: user.roles,
-        status: user.status || 'actif',
-        statutCompte: user.statutCompte || 'actif',
-        statutClient: user.statutClient || 'client',
-        passwordHash: user.passwordHash,
+        email: payload.email,
+        name: payload.name || `${payload.prenom || ''} ${payload.nom || ''}`.trim(),
+        role: payload.role,
+        roles: payload.roles,
+        status: payload.status || 'actif',
+        statutCompte: payload.statutCompte || 'actif',
+        statutClient: payload.statutClient || 'client',
+        passwordHash: payload.passwordHash,
         updatedAt: new Date().toISOString()
       }, { merge: true });
     }

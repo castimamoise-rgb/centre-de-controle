@@ -18,7 +18,7 @@
     "phone": "+509 4440 8687",
     "photoURL": "",
     "passwordHash": "cde4ceb209e66afd43771a189d185a4f74bf96a4c9c049d03e21442c8e1a2d69",
-    "createdAt": "2026-09-22T21:10:46.326Z",
+    "createdAt": "2026-09-22T21:24:32.231Z",
     "updatedAt": "2026-09-22T21:10:46.326Z",
     "notes": "Fondateur & Administrateur Principal",
     "lastLoginAt": "2026-09-23T16:21:43.407Z"
@@ -42,7 +42,7 @@
     "phone": "+509 4440 8687",
     "photoURL": "",
     "passwordHash": "cde4ceb209e66afd43771a189d185a4f74bf96a4c9c049d03e21442c8e1a2d69",
-    "createdAt": "2026-09-22T21:10:46.326Z",
+    "createdAt": "2026-09-22T21:24:32.231Z",
     "updatedAt": "2026-09-22T21:10:46.326Z",
     "notes": "Super Administrateur Studio"
   },
@@ -65,9 +65,10 @@
     "phone": "+509 4440 8687",
     "photoURL": "",
     "passwordHash": "cde4ceb209e66afd43771a189d185a4f74bf96a4c9c049d03e21442c8e1a2d69",
-    "createdAt": "2026-09-22T21:10:46.326Z",
+    "createdAt": "2026-09-22T21:24:32.231Z",
     "updatedAt": "2026-09-22T21:10:46.326Z",
-    "notes": "Direction Générale LAPERLE TOUR HT"
+    "notes": "Direction Générale LAPERLE TOUR HT",
+    "lastLoginAt": "2026-09-24T23:56:27.894Z"
   },
   {
     "id": "usr_1790165985213_jfrow",
