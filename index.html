@@ -83,8 +83,8 @@
       <div class="auth-form-inner">
         <!-- Onglets en haut pour basculer facilement entre les deux modes du modèle -->
         <div class="auth-tabs" id="authTabs">
-          <button class="auth-tab active" id="authTabLogin" type="button">Pour Se Connecter</button>
-          <button class="auth-tab" id="authTabRegister" type="button">Pour S'inscrire</button>
+          <button class="auth-tab active" id="authTabLogin" type="button">Se Connecter</button>
+          <button class="auth-tab" id="authTabRegister" type="button">S'inscrire</button>
         </div>
 
         <div id="authMessageContainer" style="display:none;"></div>
@@ -93,16 +93,16 @@
         <div id="authViewLogin" style="display:block;">
           <div class="auth-form-top">
             <div class="auth-login-kicker">ESPACE SÉCURISÉ</div>
-            <h2 class="auth-login-heading">Pour Se Connecter</h2>
+            <h2 class="auth-login-heading">Se Connecter</h2>
             <p class="auth-login-sub">Saisissez votre e-mail ou votre nom de profil et votre mot de passe</p>
           </div>
 
           <!-- Champ Email ou Nom de profil -->
           <div class="auth-field">
-            <label for="authLoginEmail">Email ou Nom de profil :</label>
+            <label for="authLoginEmail">Email :</label>
             <div class="auth-input-icon-wrap">
               <span class="auth-icon-prefix">👤</span>
-              <input type="text" id="authLoginEmail" placeholder="votre.email@domaine.com ou nom de profil" autocomplete="off" required>
+              <input type="text" id="authLoginEmail" placeholder="Votre email" autocomplete="off" required>
             </div>
           </div>
 
@@ -123,7 +123,7 @@
 
           <div class="auth-switch-prompt">
             Pas encore de compte ?
-            <button type="button" class="auth-switch-btn" id="authSwitchToRegister">Pour S'inscrire</button>
+            <button type="button" class="auth-switch-btn" id="authSwitchToRegister">S'inscrire</button>
           </div>
         </div>
 
@@ -131,8 +131,8 @@
         <div id="authViewRegister" style="display:none;">
           <div class="auth-form-top">
             <div class="auth-login-kicker">NOUVEAU COMPTE</div>
-            <h2 class="auth-login-heading">Pour S'inscrire</h2>
-            <p class="auth-login-sub">Renseignez vos informations pour créer votre profil Laperle</p>
+            <h2 class="auth-login-heading">S'inscrire</h2>
+            <p class="auth-login-sub">Créer votre profil Laperle</p>
           </div>
 
           <!-- Nom et Prénom sur la même ligne (selon le modèle) -->
@@ -166,14 +166,14 @@
           <div class="auth-field">
             <label for="authRegisterUsername">
               Nom de profil :
-              <span class="auth-label-badge" style="background:#f1f5f9;color:#475569;border-color:#cbd5e1">Connexion par pseudo</span>
+              <span class="auth-label-badge" style="background:#f1f5f9;color:#475569;border-color:#cbd5e1">Pseudo</span>
             </label>
             <div class="auth-input-icon-wrap">
               <span class="auth-icon-prefix">🏷️</span>
-              <input type="text" id="authRegisterUsername" placeholder="Ex: jean_dupont (généré automatiquement sinon)" autocomplete="nickname">
+              <input type="text" id="authRegisterUsername" placeholder="Ex: jean_dupont" autocomplete="nickname">
             </div>
             <div class="auth-field-hint">
-              Ce nom de profil vous permettra aussi de vous reconnecter sans avoir à taper votre email.
+              
             </div>
           </div>
 
@@ -181,7 +181,7 @@
           <div class="auth-field">
             <label for="authRegisterPassword">
               Password :
-              <span class="auth-label-badge">4 - 8 chiffre / Alphanumérique</span>
+              <span class="auth-label-badge">4 et 8 caractères (chiffres ou lettres).</span>
             </label>
             <div class="auth-input-icon-wrap">
               <span class="auth-icon-prefix">🔒</span>
@@ -189,7 +189,7 @@
               <button type="button" class="auth-pwd-toggle" id="authToggleRegisterPassword" title="Afficher/Masquer le mot de passe" aria-label="Afficher le mot de passe">👁️</button>
             </div>
             <div class="auth-field-hint">
-              Le mot de passe doit comporter entre 4 et 8 caractères alphanumériques (chiffres ou lettres).
+              Le mot de passe doit comporter entre 4 et 8 caractères (chiffres ou lettres).
             </div>
           </div>
 
@@ -210,7 +210,7 @@
 
           <div class="auth-switch-prompt">
             Déjà inscrit ?
-            <button type="button" class="auth-switch-btn" id="authSwitchToLogin">Pour Se Connecter</button>
+            <button type="button" class="auth-switch-btn" id="authSwitchToLogin">Se Connecter</button>
           </div>
         </div>
 
