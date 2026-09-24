@@ -405,7 +405,6 @@ function openFirebaseModal() {
         <button class="secondary" style="color:#b42318;border-color:#fca5a5" onclick="logoutUser()">Se déconnecter</button>
       ` : `
         <button class="secondary" onclick="testFirebaseConnectionUI()">⚡ Tester connexion</button>
-        <button class="primary" style="background:#123c98" onclick="loginWithGoogle()">🔑 Se connecter avec Google</button>
       `}
       <button class="secondary" onclick="closeModal()">Fermer</button>
     </div>
@@ -4150,7 +4149,7 @@ function settingsPage() {
         <div class="info" style="margin-bottom:10px">
           Projet Firebase : <b>pragmatic-port-83bk6</b> • Région : <b>us-west1</b><br>
           <span style="font-weight:600;color:${currentUser ? '#15803d' : '#475569'}">
-            ${currentUser ? `✅ Connecté : ${esc(currentUser.email)} (${currentUserRoles.map(r => `<span class="user-role-badge ${r}">${ROLE_LABELS[r] || r}</span>`).join(" ")})` : '⚪ Mode local actif. Connectez-vous avec Google pour activer le Cloud.'}
+            ${currentUser ? `✅ Connecté : ${esc(currentUser.email)} (${currentUserRoles.map(r => `<span class="user-role-badge ${r}">${ROLE_LABELS[r] || r}</span>`).join(" ")})` : '⚪ Mode local actif. Connectez-vous pour activer le Cloud.'}
           </span>
         </div>
         <div class="quick-list">
