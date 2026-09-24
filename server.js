@@ -316,6 +316,10 @@ function findUserByIdentifier(users, rawIdentifier) {
     const email = (u.email || '').toLowerCase().trim();
     if (email === idStr || email === cleanHandle) return true;
 
+    // Reconnaissance automatique du préfixe avant @ de l'e-mail (ex: "qwerty" pour "qwerty@gmail.com")
+    const emailPrefix = email.includes('@') ? email.split('@')[0].trim().toLowerCase() : '';
+    if (emailPrefix && (emailPrefix === idStr || emailPrefix === cleanHandle)) return true;
+
     const username = (u.username || '').toLowerCase().trim();
     if (username && (username === idStr || username === cleanHandle)) return true;
 
@@ -468,6 +472,14 @@ app.post('/api/auth/register', async (req, res) => {
       prenom: cleanPrenom,
       name: fullName,
       username: finalUsername,
+      aliases: [
+        cleanEmail.split('@')[0].toLowerCase(),
+        finalUsername,
+        cleanNom.toLowerCase(),
+        cleanPrenom.toLowerCase(),
+        `${cleanNom.toLowerCase()}_${cleanPrenom.toLowerCase()}`,
+        `${cleanPrenom.toLowerCase()}_${cleanNom.toLowerCase()}`
+      ].filter((v, i, a) => v && a.indexOf(v) === i),
       email: cleanEmail,
       telephone: telephone ? String(telephone).trim() : '',
       phone: telephone ? String(telephone).trim() : '',

@@ -774,10 +774,16 @@ function save() {
   localStorage.setItem(DBKEY, JSON.stringify(state));
 }
 
-function list(k) {
+function rawList(k) {
   const canon = canonicalCol(k);
   if (!Array.isArray(state[canon])) state[canon] = [];
   return state[canon];
+}
+
+function list(k) {
+  const canon = canonicalCol(k);
+  if (!Array.isArray(state[canon])) state[canon] = [];
+  return filterDataForUser(canon, state[canon], currentUserProfile);
 }
 
 function money(n) {
@@ -1422,8 +1428,9 @@ function initAuthUI(initialMode = "login") {
           save();
         }
 
-        setAuthMessage("success", "✅ Compte créé avec succès ! Bienvenue chez LAPERLE TOUR HT.");
-        showToast(`🎉 Bienvenue chez LAPERLE TOUR HT, ${nom} ${prenom} !`);
+        const userLoginId = result.profile?.username ? `@${result.profile.username}` : (result.profile?.email || email);
+        setAuthMessage("success", `✅ Compte créé avec succès ! Pour vous reconnecter, vous pouvez utiliser votre e-mail <b>${esc(result.profile?.email || email)}</b> ou votre nom de profil <b>${esc(userLoginId)}</b>.`);
+        showToast(`🎉 Bienvenue ${nom} ${prenom} ! Nom de profil : ${userLoginId}`);
         completeUserSignIn(result.user, result.profile, result.isNew);
       } catch (err) {
         btnRegister.disabled = false;
@@ -2336,6 +2343,7 @@ function dashboard() {
       ${kpi("🎒", "Élèves inscrits", list("eleves").filter(x => !x.archived).length, "eleves")}
       ${kpi("🎫", "Abonnements", list("abonnements").filter(x => !x.archived).length, "abonnements")}
       ${kpi("📅", "Réservations", list("reservations").filter(x => !x.archived).length, "reservations")}
+      ${roles.includes('secretaire') ? kpi("📋", "Rapport Jour & Semaine", "Consulter", "reports") : ""}
       ${canSeeFinances ? kpi("💰", "CA Encaissé", money(received), "paiements") : ""}
       ${canSeeFinances ? kpi("⏳", "Paiements en attente", money(toReceive), "paiements") : ""}
       ${kpi("📄", "Proformas", list("proformas").filter(x => !x.archived).length, "proformas")}
@@ -2346,23 +2354,50 @@ function dashboard() {
       ${canSeeFinances ? kpi("📊", "Bénéfice Net", money(netProfit), "reports") : ""}
     </div>
 
-    <div class="dashboard-grid">
-      <div class="panel">
-        <div class="panel-title">
-          <h3>📊 Revenus vs Dépenses (En direct Cloud)</h3>
-          <select id="chartRange"><option>Année courante</option><option>Mois en cours</option></select>
+    ${canSeeFinances ? `
+      <div class="dashboard-grid">
+        <div class="panel">
+          <div class="panel-title">
+            <h3>📊 Revenus vs Dépenses (En direct Cloud)</h3>
+            <select id="chartRange"><option>Année courante</option><option>Mois en cours</option></select>
+          </div>
+          ${chartHTML()}
+          <div class="legend"><i></i>Paiements reçus <i class="orange"></i>Dépenses</div>
         </div>
-        ${chartHTML()}
-        <div class="legend"><i></i>Paiements reçus <i class="orange"></i>Dépenses</div>
-      </div>
-      <div class="panel">
-        <div class="panel-title">
-          <h3>◕ Répartition des services</h3>
-          <select><option>Cette année</option></select>
+        <div class="panel">
+          <div class="panel-title">
+            <h3>◕ Répartition des services</h3>
+            <select><option>Cette année</option></select>
+          </div>
+          ${servicesHTML()}
         </div>
-        ${servicesHTML()}
       </div>
-    </div>
+    ` : `
+      <div class="dashboard-grid">
+        <div class="panel" style="border-left:4px solid #1675ea">
+          <div class="panel-title">
+            <h3>📋 Synthèse Secrétariat • Journalier & Hebdomadaire</h3>
+            <button onclick="go('reports')" class="primary tiny">Rapport complet ›</button>
+          </div>
+          <div class="info" style="margin-bottom:8px">
+            <b>Aujourd'hui :</b> ${list("reservations").filter(x => ((x.date && x.date === today()) || (x.createdAt && x.createdAt.startsWith(today()))) && !x.archived).length} courses programmées • ${list("paiements").filter(x => ((x.date && x.date === today()) || (x.createdAt && x.createdAt.startsWith(today()))) && !x.archived).length} encaissements
+          </div>
+          <div class="info">
+            <b>Cette semaine :</b> ${list("reservations").filter(x => !x.archived).length} réservations actives • ${list("abonnements").filter(x => !x.archived).length} abonnements en cours
+          </div>
+          <div style="margin-top:12px">
+            <button class="primary" style="width:100%" onclick="go('reports')">📈 Ouvrir le Rapport Journalier & Hebdomadaire</button>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">
+            <h3>◕ Répartition des services</h3>
+            <select><option>Cette année</option></select>
+          </div>
+          ${servicesHTML()}
+        </div>
+      </div>
+    `}
 
     <div class="panel" style="margin-top:12px">
       <div class="panel-title">
@@ -2982,7 +3017,14 @@ function openForm(key, index = -1) {
       obj.id = old.id;
       if (old.number) obj.number = old.number;
       if (old.createdAt) obj.createdAt = old.createdAt;
-      list(canon)[index] = obj;
+      if (old.clientId) obj.clientId = old.clientId;
+      if (old.chauffeurId) obj.chauffeurId = old.chauffeurId;
+      const rawIdx = rawList(canon).findIndex(x => (old.id && x.id === old.id) || (old.number && x.number === old.number));
+      if (rawIdx >= 0) {
+        rawList(canon)[rawIdx] = obj;
+      } else {
+        rawList(canon).push(obj);
+      }
     } else {
       if (canon === "clients") obj.id = obj.id || nextNumber("CL", "clients");
       else if (canon === "eleves") obj.id = nextNumber("EL", "eleves");
@@ -3025,7 +3067,21 @@ function openForm(key, index = -1) {
         }
       }
 
-      list(canon).push(obj);
+      // Attribution automatique des propriétés de rattachement pour Client et Chauffeur
+      if (currentUser) {
+        const myRoles = normalizeRoles(currentUserRoles);
+        if (myRoles.includes(ROLES.CLIENT) && !myRoles.includes(ROLES.ADMIN)) {
+          obj.clientId = currentUser.uid || currentUser.id;
+          if (!obj.client) obj.client = currentUserProfile?.name || currentUserProfile?.nom || currentUser.displayName || "Client";
+          if (!obj.email) obj.email = currentUser.email || currentUserProfile?.email || "";
+        }
+        if (myRoles.includes(ROLES.CHAUFFEUR) && !myRoles.includes(ROLES.ADMIN)) {
+          obj.chauffeurId = currentUser.uid || currentUser.id;
+          if (!obj.driver) obj.driver = currentUserProfile?.name || currentUserProfile?.nom || currentUser.displayName || "Chauffeur";
+        }
+      }
+
+      rawList(canon).push(obj);
     }
 
     // RÈGLE : lorsqu'un utilisateur effectue une réservation, il passe directement au rôle de CLIENT
@@ -3357,8 +3413,14 @@ async function executeArchive(key, index) {
   if (index >= 0 && index < arr.length) {
     const item = arr[index];
     const docId = item.number || item.id;
-    item.archived = true;
-    item.status = "Archivé";
+    const rawIdx = rawList(canon).findIndex(x => (item.id && x.id === item.id) || (item.number && x.number === item.number));
+    if (rawIdx >= 0) {
+      rawList(canon)[rawIdx].archived = true;
+      rawList(canon)[rawIdx].status = "Archivé";
+    } else {
+      item.archived = true;
+      item.status = "Archivé";
+    }
     save();
     if (docId) {
       await archiveDocumentInFirestore(canon, docId);
@@ -3375,7 +3437,10 @@ async function executePermanentDelete(key, index) {
   if (index >= 0 && index < arr.length) {
     const item = arr[index];
     const docId = item.number || item.id;
-    arr.splice(index, 1);
+    const rawIdx = rawList(canon).findIndex(x => (item.id && x.id === item.id) || (item.number && x.number === item.number));
+    if (rawIdx >= 0) {
+      rawList(canon).splice(rawIdx, 1);
+    }
     save();
     if (docId) {
       await deleteDocumentFromFirestore(canon, docId);
@@ -4047,29 +4112,160 @@ function showToast(msg) {
 }
 
 function reportsPage() {
-  const rev = list("paiements").filter(x => ["Reçu", "Validé", "Payé"].includes(x.status)).reduce((s, x) => s + Number(x.amount || 0), 0);
-  const exp = list("finances").reduce((s, x) => s + Number(x.amount || 0), 0);
-  const comm = list("finances").filter(x => String(x.category || '').toLowerCase().includes('chauffeur') || String(x.category || '').toLowerCase().includes('commission')).reduce((s, x) => s + Number(x.amount || 0), 0);
+  const roles = normalizeRoles(currentUserRoles);
+  const canSeeFinances = roles.some(r => [ROLES.ADMIN, ROLES.DIRECTION, ROLES.COMPTABILITE].includes(r));
+
+  const todayStr = today();
+  const now = new Date();
+  const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  const allRes = list("reservations");
+  const allPlans = list("plannings");
+  const allClients = list("clients");
+  const allEleves = list("eleves");
+  const allAbos = list("abonnements");
+  const allFactures = list("factures");
+  const allPaiements = list("paiements");
+  const allFinances = list("finances");
+
+  // Indicateurs Journaliers (Aujourd'hui)
+  const todayRes = allRes.filter(r => ((r.date && r.date === todayStr) || (r.createdAt && r.createdAt.startsWith(todayStr))) && !r.archived);
+  const todayPlans = allPlans.filter(p => p.date === todayStr && !p.archived);
+  const todayClients = allClients.filter(c => (c.createdAt && c.createdAt.startsWith(todayStr)) && !c.archived);
+  const todayFactures = allFactures.filter(f => ((f.date && f.date === todayStr) || (f.createdAt && f.createdAt.startsWith(todayStr))) && !f.archived);
+  const todayPaiements = allPaiements.filter(p => ((p.date && p.date === todayStr) || (p.createdAt && p.createdAt.startsWith(todayStr))) && !p.archived);
+  const todayCashIn = todayPaiements.reduce((s, p) => s + Number(p.amount || 0), 0);
+
+  // Indicateurs Hebdomadaires (7 derniers jours)
+  const weekRes = allRes.filter(r => ((r.date && r.date >= oneWeekAgo) || (r.createdAt && r.createdAt >= oneWeekAgo)) && !r.archived);
+  const weekPlans = allPlans.filter(p => p.date && p.date >= oneWeekAgo && !p.archived);
+  const weekClients = allClients.filter(c => (c.createdAt && c.createdAt >= oneWeekAgo) && !c.archived);
+  const weekAbos = allAbos.filter(a => ((a.date && a.date >= oneWeekAgo) || (a.createdAt && a.createdAt >= oneWeekAgo)) && !a.archived);
+  const weekEleves = allEleves.filter(el => (el.createdAt && el.createdAt >= oneWeekAgo) && !el.archived);
+  const weekFactures = allFactures.filter(f => ((f.date && f.date >= oneWeekAgo) || (f.createdAt && f.createdAt >= oneWeekAgo)) && !f.archived);
+  const weekPaiements = allPaiements.filter(p => ((p.date && p.date >= oneWeekAgo) || (p.createdAt && p.createdAt >= oneWeekAgo)) && !p.archived);
+  const weekCashIn = weekPaiements.reduce((s, p) => s + Number(p.amount || 0), 0);
+
+  // VUE SPÉCIFIQUE SECRÉTARIAT (Pas de finances globales d'entreprise, uniquement rapport journalier et hebdomadaire)
+  if (!canSeeFinances) {
+    document.getElementById("page").innerHTML = `
+      <div class="section-head">
+        <div>
+          <h2>📋 Rapport Journalier & Hebdomadaire (Secrétariat)</h2>
+          <p>Synthèse opérationnelle : réservations, plannings, abonnements et encaissements enregistrés.</p>
+        </div>
+        <button class="primary" onclick="exportData()">Exporter le rapport</button>
+      </div>
+
+      <!-- SECTION 1 : RAPPORT DU JOUR (JOURNALIER) -->
+      <div class="panel" style="margin-bottom:20px;border-top:4px solid #1675ea">
+        <div class="panel-title">
+          <h3>📅 Rapport Journalier — Aujourd'hui (${new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })})</h3>
+        </div>
+        <div class="kpis" style="margin-bottom:0">
+          <div class="kpi"><div class="kpi-icon">🚗</div><div><small>Courses & Réservations du Jour</small><strong>${todayRes.length}</strong></div></div>
+          <div class="kpi"><div class="kpi-icon">📋</div><div><small>Plannings Départs Aujourd'hui</small><strong>${todayPlans.length}</strong></div></div>
+          <div class="kpi"><div class="kpi-icon">👥</div><div><small>Nouveaux Clients Aujourd'hui</small><strong>${todayClients.length}</strong></div></div>
+          <div class="kpi"><div class="kpi-icon">🧾</div><div><small>Factures Émises Aujourd'hui</small><strong>${todayFactures.length}</strong></div></div>
+          <div class="kpi"><div class="kpi-icon">💵</div><div><small>Encaissements Caisse du Jour</small><strong>${money(todayCashIn)}</strong></div></div>
+        </div>
+      </div>
+
+      <!-- SECTION 2 : RAPPORT HEBDOMADAIRE (7 DERNIERS JOURS) -->
+      <div class="panel" style="margin-bottom:20px;border-top:4px solid #f7941d">
+        <div class="panel-title">
+          <h3>🗓️ Rapport Hebdomadaire — 7 Derniers Jours</h3>
+        </div>
+        <div class="kpis" style="margin-bottom:0">
+          <div class="kpi"><div class="kpi-icon">📅</div><div><small>Réservations Semaine</small><strong>${weekRes.length}</strong></div></div>
+          <div class="kpi"><div class="kpi-icon">🎫</div><div><small>Nouveaux Abonnements Semaine</small><strong>${weekAbos.length}</strong></div></div>
+          <div class="kpi"><div class="kpi-icon">🎒</div><div><small>Nouveaux Élèves Semaine</small><strong>${weekEleves.length}</strong></div></div>
+          <div class="kpi"><div class="kpi-icon">🧾</div><div><small>Factures de la Semaine</small><strong>${weekFactures.length}</strong></div></div>
+          <div class="kpi"><div class="kpi-icon">💰</div><div><small>Total Encaissé Semaine</small><strong>${money(weekCashIn)}</strong></div></div>
+        </div>
+      </div>
+
+      <!-- SECTION 3 : DÉTAIL DES DÉPARTS ET ACTIVITÉS DU JOUR -->
+      <div class="panel">
+        <div class="panel-title">
+          <h3>🚗 Courses et Départs Programmés Aujourd'hui</h3>
+          <button class="primary tiny" onclick="go('reservations')">Ouvrir réservations ›</button>
+        </div>
+        ${todayRes.length === 0 ? `
+          <div class="empty-table">Aucune course ou réservation enregistrée spécifiquement pour aujourd'hui.<br><button class="primary tiny" onclick="openForm('reservations')">＋ Ajouter une réservation</button></div>
+        ` : `
+          <table class="table">
+            <thead>
+              <tr><th>Client</th><th>Trajet</th><th>Heure</th><th>Chauffeur</th><th>Statut</th></tr>
+            </thead>
+            <tbody>
+              ${todayRes.map(r => `
+                <tr>
+                  <td><b>${esc(r.client || 'Client')}</b></td>
+                  <td>${esc(r.origin || '')} ➔ ${esc(r.destination || r.route || '')}</td>
+                  <td>${esc(r.time || '—')}</td>
+                  <td>${esc(r.driver || 'Non assigné')}</td>
+                  <td><span class="badge ${r.status === 'Confirmée' ? 'green' : 'orange'}">${esc(r.status || 'En attente')}</span></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `}
+      </div>
+    `;
+    return;
+  }
+
+  // VUE GLOBALE DIRECTION, ADMIN, COMPTABILITE
+  const rev = allPaiements.filter(x => ["Reçu", "Validé", "Payé"].includes(x.status)).reduce((s, x) => s + Number(x.amount || 0), 0);
+  const exp = allFinances.reduce((s, x) => s + Number(x.amount || 0), 0);
+  const comm = allFinances.filter(x => String(x.category || '').toLowerCase().includes('chauffeur') || String(x.category || '').toLowerCase().includes('commission')).reduce((s, x) => s + Number(x.amount || 0), 0);
   const net = rev - exp;
   const laperleRev = rev - comm;
 
   document.getElementById("page").innerHTML = `
     <div class="section-head">
       <div>
-        <h2>📊 Rapports & Synthèse Financière</h2>
-        <p>Calculs automatiques en temps réel basés sur les données Firestore.</p>
+        <h2>📊 Rapports Financiers & Synthèse Opérationnelle</h2>
+        <p>Bilan financier d'entreprise et rapports d'activités en direct.</p>
       </div>
       <button class="primary" onclick="exportData()">Exporter les données</button>
     </div>
+
     <div class="kpis">
       <div class="kpi"><div class="kpi-icon">💰</div><div><small>Chiffre d'Affaires Encaissé</small><strong>${money(rev)}</strong></div></div>
       <div class="kpi"><div class="kpi-icon">🧾</div><div><small>Dépenses Globales</small><strong>${money(exp)}</strong></div></div>
       <div class="kpi"><div class="kpi-icon">👨‍✈️</div><div><small>Commissions Chauffeurs</small><strong>${money(comm)}</strong></div></div>
       <div class="kpi"><div class="kpi-icon">💎</div><div><small>Revenus Nets LAPERLE</small><strong>${money(laperleRev)}</strong></div></div>
       <div class="kpi"><div class="kpi-icon">📈</div><div><small>Bénéfice Net</small><strong>${money(net)}</strong></div></div>
-      <div class="kpi"><div class="kpi-icon">👥</div><div><small>Clients Actifs</small><strong>${list("clients").filter(x => !x.archived).length}</strong></div></div>
-      <div class="kpi"><div class="kpi-icon">🎒</div><div><small>Élèves Inscrits</small><strong>${list("eleves").filter(x => !x.archived).length}</strong></div></div>
-      <div class="kpi"><div class="kpi-icon">🎫</div><div><small>Abonnements en cours</small><strong>${list("abonnements").filter(x => !x.archived).length}</strong></div></div>
+      <div class="kpi"><div class="kpi-icon">👥</div><div><small>Clients Actifs</small><strong>${allClients.filter(x => !x.archived).length}</strong></div></div>
+      <div class="kpi"><div class="kpi-icon">🎒</div><div><small>Élèves Inscrits</small><strong>${allEleves.filter(x => !x.archived).length}</strong></div></div>
+      <div class="kpi"><div class="kpi-icon">🎫</div><div><small>Abonnements en cours</small><strong>${allAbos.filter(x => !x.archived).length}</strong></div></div>
+    </div>
+
+    <div class="dashboard-grid" style="margin-top:16px">
+      <div class="panel" style="border-left:4px solid #2563eb">
+        <div class="panel-title">
+          <h3>📅 Synthèse Journalière (Aujourd'hui)</h3>
+        </div>
+        <div class="quick-list">
+          <div><b>Courses & Réservations aujourd'hui :</b> ${todayRes.length}</div>
+          <div><b>Plannings de départ du jour :</b> ${todayPlans.length}</div>
+          <div><b>Factures émises ce jour :</b> ${todayFactures.length}</div>
+          <div><b>Encaissements reçus aujourd'hui :</b> ${money(todayCashIn)}</div>
+        </div>
+      </div>
+      <div class="panel" style="border-left:4px solid #f7941d">
+        <div class="panel-title">
+          <h3>🗓️ Synthèse Hebdomadaire (7 Jours)</h3>
+        </div>
+        <div class="quick-list">
+          <div><b>Total Réservations semaine :</b> ${weekRes.length}</div>
+          <div><b>Nouveaux Abonnements semaine :</b> ${weekAbos.length}</div>
+          <div><b>Factures de la semaine :</b> ${weekFactures.length}</div>
+          <div><b>Total Encaissé cette semaine :</b> ${money(weekCashIn)}</div>
+        </div>
+      </div>
     </div>
   `;
 }

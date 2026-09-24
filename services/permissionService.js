@@ -165,7 +165,7 @@ function roleCanAccessModule(normRole, m) {
 
   if (normRole === ROLES.SECRETAIRE) {
     const allowed = [
-      'dashboard', 'clients', 'eleves', 'abonnements', 
+      'dashboard', 'reports', 'clients', 'eleves', 'abonnements', 
       'reservations', 'plannings', 'chauffeurs', 'vehicules', 
       'prospects', 'notifications', 'proformas', 'factures', 'paiements', 'utilisateurs'
     ];
@@ -333,98 +333,131 @@ export function hasActionPermission(rolesOrUser, moduleKey, action, permissions 
  */
 export function filterDataForUser(moduleKey, items, userProfile) {
   if (!Array.isArray(items)) return [];
-  if (!userProfile) return items;
+  if (!userProfile) return [];
 
   const roles = normalizeRoles(userProfile);
   const m = String(moduleKey).toLowerCase().trim();
 
-  // Si l'utilisateur possède ADMIN, DIRECTION, COMPTABILITE, OPERATIONS, SECRETAIRE ou LECTURE_SEULE
-  // alors aucune restriction d'isolation individuelle n'est appliquée
-  const hasManagementRole = roles.some(r => [
-    ROLES.ADMIN, 
-    ROLES.DIRECTION, 
-    ROLES.COMPTABILITE, 
-    ROLES.OPERATIONS, 
-    ROLES.SECRETAIRE, 
-    ROLES.LECTURE_SEULE
-  ].includes(r));
-
-  if (hasManagementRole) {
+  // 1. ADMIN & DIRECTION : Vue globale complète de l'entreprise
+  if (roles.includes(ROLES.ADMIN) || roles.includes(ROLES.DIRECTION)) {
     return items;
   }
 
-  const isChauffeur = roles.includes(ROLES.CHAUFFEUR);
-  const isClient = roles.includes(ROLES.CLIENT);
+  // 2. COMPTABILITE : Gestion financière, facturation, paiements et clients
+  if (roles.includes(ROLES.COMPTABILITE)) {
+    // Interdiction d'accès aux modules hors comptabilité
+    if (['utilisateurs', 'settings', 'vehicules', 'chauffeurs'].includes(m)) {
+      return [];
+    }
+    return items;
+  }
 
-  const userEmail = (userProfile.email || '').toLowerCase();
-  const userName = (userProfile.nom || userProfile.name || '').toLowerCase();
-  const userPhone = (userProfile.telephone || '').replace(/[^0-9]/g, '');
+  // 3. SECRÉTAIRE :
+  // "le secretaire ne voit pas la finance globale de lentreprise ,mais peut voir le rapport journalier et hebdomadaire"
+  if (roles.includes(ROLES.SECRETAIRE)) {
+    // Interdiction formelle et absolue des finances globales de l'entreprise
+    if (m === 'finances' || m === 'expenses' || m === 'settings') {
+      return [];
+    }
+    // Tous les modules opérationnels & commerciaux sont visibles pour le travail de secrétariat
+    return items;
+  }
+
+  // 4. OPÉRATIONS TRANSPORT :
+  if (roles.includes(ROLES.OPERATIONS)) {
+    // Pas d'accès aux finances de l'entreprise ni aux comptes utilisateurs
+    if (['finances', 'expenses', 'utilisateurs', 'settings', 'factures', 'proformas', 'paiements'].includes(m)) {
+      return [];
+    }
+    return items;
+  }
+
+  // Données d'identité de l'utilisateur pour le filtrage strict
+  const userEmail = (userProfile.email || '').toLowerCase().trim();
+  const userName = (userProfile.nom || userProfile.name || '').toLowerCase().trim();
+  const userPrenom = (userProfile.prenom || '').toLowerCase().trim();
+  const userUsername = (userProfile.username || '').toLowerCase().trim();
+  const userPhone = (userProfile.telephone || userProfile.phone || '').replace(/[^0-9]/g, '');
   const userUid = userProfile.uid || userProfile.id || '';
 
-  // Filtrage strict pour CHAUFFEUR uniquement
-  if (isChauffeur && !isClient) {
-    if (m === 'chauffeurs') {
-      return items.filter(c => {
-        const cEmail = (c.email || '').toLowerCase();
-        const cName = (c.name || c.nom || '').toLowerCase();
-        const cPhone = (c.phone || '').replace(/[^0-9]/g, '');
-        return c.chauffeurId === userUid || cEmail === userEmail || (userName && cName.includes(userName)) || (userPhone && cPhone && cPhone === userPhone);
-      });
+  // Helper pour vérifier si un document appartient à ce CLIENT
+  function matchesClientDoc(doc) {
+    if (!doc) return false;
+    // 1. Concordance directe sur les identifiants UID / ID
+    if (userUid && (doc.clientId === userUid || doc.uid === userUid || doc.id === userUid)) return true;
+    // 2. Concordance sur l'adresse e-mail
+    if (userEmail) {
+      const docEmail = String(doc.email || doc.clientEmail || '').toLowerCase().trim();
+      if (docEmail && docEmail === userEmail) return true;
     }
-
-    if (m === 'vehicules') {
-      return items.filter(v => {
-        const dName = (v.driver || '').toLowerCase();
-        return v.chauffeurId === userUid || (userName && dName.includes(userName));
-      });
+    // 3. Concordance sur le numéro de téléphone
+    if (userPhone && userPhone.length >= 8) {
+      const docPhone = String(doc.phone || doc.telephone || '').replace(/[^0-9]/g, '');
+      if (docPhone && (docPhone === userPhone || docPhone.endsWith(userPhone) || userPhone.endsWith(docPhone))) return true;
     }
-
-    if (m === 'plannings' || m === 'reservations') {
-      return items.filter(p => {
-        const pDriver = (p.driver || p.chauffeur || '').toLowerCase();
-        return p.chauffeurId === userUid || (userName && pDriver.includes(userName));
-      });
+    // 4. Concordance sur le Nom / Nom de profil
+    const docClient = String(doc.client || doc.name || doc.nom || doc.parent || '').toLowerCase().trim();
+    if (docClient) {
+      if (userName && (docClient === userName || docClient.includes(userName) || userName.includes(docClient))) return true;
+      if (userPrenom && userPrenom.length >= 3 && docClient.includes(userPrenom)) return true;
+      if (userUsername && docClient.includes(userUsername)) return true;
     }
+    return false;
+  }
 
+  // Helper pour vérifier si un document est attribué à ce CHAUFFEUR
+  function matchesChauffeurDoc(doc) {
+    if (!doc) return false;
+    // 1. Concordance directe sur les identifiants chauffeurId / driverId
+    if (userUid && (doc.chauffeurId === userUid || doc.driverId === userUid || doc.uid === userUid || doc.id === userUid)) return true;
+    // 2. Concordance sur l'adresse e-mail
+    if (userEmail) {
+      const docEmail = String(doc.email || '').toLowerCase().trim();
+      if (docEmail && docEmail === userEmail) return true;
+    }
+    // 3. Concordance sur le téléphone
+    if (userPhone && userPhone.length >= 8) {
+      const docPhone = String(doc.phone || doc.telephone || '').replace(/[^0-9]/g, '');
+      if (docPhone && (docPhone === userPhone || docPhone.endsWith(userPhone) || userPhone.endsWith(docPhone))) return true;
+    }
+    // 4. Concordance sur le champ chauffeur / driver
+    const docDriver = String(doc.driver || doc.chauffeur || doc.name || doc.nom || '').toLowerCase().trim();
+    if (docDriver) {
+      if (userName && (docDriver === userName || docDriver.includes(userName) || userName.includes(docDriver))) return true;
+      if (userPrenom && userPrenom.length >= 3 && docDriver.includes(userPrenom)) return true;
+    }
+    return false;
+  }
+
+  // 5. CHAUFFEUR : voit UNIQUEMENT les courses et véhicules qui lui sont attribués
+  if (roles.includes(ROLES.CHAUFFEUR)) {
+    if (['plannings', 'reservations', 'vehicules', 'chauffeurs'].includes(m)) {
+      return items.filter(matchesChauffeurDoc);
+    }
     if (m === 'eleves') {
-      return items.filter(el => {
-        const route = (el.route || '').toLowerCase();
-        return el.chauffeurId === userUid || route.length > 0;
-      });
+      return items.filter(el => matchesChauffeurDoc(el) || (el.route && el.route.length > 0 && matchesChauffeurDoc({ driver: el.driver })));
     }
-
+    if (m === 'notifications') {
+      return items.filter(n => matchesChauffeurDoc(n) || n.targetUid === userUid || n.forRole === 'chauffeur');
+    }
+    // Aucun accès aux finances, factures, proformas, clients généraux, etc.
     return [];
   }
 
-  // Filtrage strict pour CLIENT uniquement
-  if (isClient && !isChauffeur) {
-    if (m === 'clients') {
-      return items.filter(c => {
-        const cEmail = (c.email || '').toLowerCase();
-        const cName = (c.name || c.nom || '').toLowerCase();
-        const cPhone = (c.phone || '').replace(/[^0-9]/g, '');
-        return c.clientId === userUid || cEmail === userEmail || (userName && cName.includes(userName)) || (userPhone && cPhone && cPhone === userPhone);
-      });
+  // 6. CLIENT : voit UNIQUEMENT ce qui lui est attribué (Factures, Réservations, Abonnements, etc.)
+  // "par exemple un client ne peux pas voir la facture ou la reservation dun autre client ni la finance de lentreprise"
+  if (roles.includes(ROLES.CLIENT)) {
+    if (['reservations', 'abonnements', 'eleves', 'factures', 'proformas', 'paiements', 'clients'].includes(m)) {
+      return items.filter(matchesClientDoc);
     }
-
-    if (m === 'eleves') {
-      return items.filter(el => {
-        const pName = (el.client || el.parent || '').toLowerCase();
-        return el.clientId === userUid || (userName && pName.includes(userName));
-      });
+    if (m === 'notifications') {
+      return items.filter(n => matchesClientDoc(n) || n.targetUid === userUid || n.forRole === 'client');
     }
-
-    if (['abonnements', 'reservations', 'paiements', 'factures', 'proformas'].includes(m)) {
-      return items.filter(doc => {
-        const cName = (doc.client || '').toLowerCase();
-        const cEmail = (doc.email || '').toLowerCase();
-        return doc.clientId === userUid || (userName && cName.includes(userName)) || (userEmail && cEmail === userEmail);
-      });
-    }
-
+    // Aucune finance d'entreprise, aucun autre client, aucun véhicule, chauffeur, utilisateur
     return [];
   }
 
-  return items;
+  // 7. LECTURE_SEULE strict : aucun accès aux modules métier
+  return [];
 }
 

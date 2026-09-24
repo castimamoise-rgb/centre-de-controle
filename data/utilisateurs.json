@@ -154,5 +154,32 @@
     "lastLoginAt": "2026-09-23T16:21:55.075Z",
     "createdBy": "test.auto.qa@gmail.com",
     "updatedBy": "test.auto.qa@gmail.com"
+  },
+  {
+    "id": "usr_1790257660308_nroxi",
+    "uid": "usr_1790257660308_nroxi",
+    "nom": "Test",
+    "prenom": "User",
+    "name": "Test User",
+    "username": "qwerty",
+    "email": "test123456@gmail.com",
+    "telephone": "",
+    "phone": "",
+    "photoURL": "",
+    "roles": [
+      "client"
+    ],
+    "role": "client",
+    "status": "actif",
+    "statutCompte": "actif",
+    "statutClient": "client",
+    "passwordHash": "320a3ae2c8883f69ea9b40094ebe460d01d0245c512cc1a542ee7d1b19d2e7da",
+    "notes": "Client inscrit sur le site LAPERLE TOUR HT",
+    "permissions": {},
+    "createdAt": "2026-09-24T13:47:40.308Z",
+    "updatedAt": "2026-09-24T13:47:40.308Z",
+    "lastLoginAt": "2026-09-24T13:50:25.696Z",
+    "createdBy": "test123456@gmail.com",
+    "updatedBy": "test123456@gmail.com"
   }
 ]
