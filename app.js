@@ -1811,9 +1811,9 @@ function initAuthUI(initialMode = "login") {
         btnLogin.disabled = false;
         console.warn("Erreur connexion login:", err);
         const errMsg = err?.message || String(err);
-        const isNotRegistered = err?.code === "auth/user-not-registered" || errMsg.includes("pas encore inscrit");
+        const isNotRegistered = err?.code === "auth/user-not-registered" || errMsg.includes("pas encore inscrit") || errMsg.includes("n'existe pas dans la base de données");
         if (isNotRegistered) {
-          setAuthMessage("error", `❌ <b>Le compte « ${esc(identifier)} » n'est pas encore inscrit sur LAPERLE TOUR HT.</b><br>Vous devez d'abord créer votre compte avant de pouvoir vous connecter.<br><button type="button" id="btnGoToRegisterFromError" style="margin-top:8px;padding:6px 14px;background:#082b70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;">👉 Cliquer ici pour vous inscrire (Pour S'inscrire)</button>`);
+          setAuthMessage("error", `❌ <b>Le compte « ${esc(identifier)} » n'existe pas dans la base de données.</b><br>Veuillez d'abord créer votre compte avant de pouvoir vous connecter.<br><button type="button" id="btnGoToRegisterFromError" style="margin-top:8px;padding:7px 16px;background:#082b70;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12.5px;">👉 S'inscrire maintenant</button>`);
           setTimeout(() => {
             const btnErr = document.getElementById("btnGoToRegisterFromError");
             if (btnErr) {

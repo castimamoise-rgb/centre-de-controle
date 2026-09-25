@@ -8,7 +8,7 @@ import compression from 'compression';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -248,23 +248,45 @@ async function saveUserToFirestore(user) {
 
     await setDoc(userDocRef, payload, { merge: true });
 
-    // Also persist username lookup document for instant O(1) matching
+    // Persist email index document for instant O(1) matching by email
+    if (payload.email) {
+      const cleanEmail = String(payload.email).trim().toLowerCase();
+      const safeEmailKey = cleanEmail.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const emailIndexRef = doc(db, 'utilisateurs', 'usr_email_' + safeEmailKey);
+      await setDoc(emailIndexRef, {
+        id: 'usr_email_' + safeEmailKey,
+        targetId: docId,
+        uid: docId,
+        email: cleanEmail,
+        username: payload.username || '',
+        name: payload.name || `${payload.prenom || ''} ${payload.nom || ''}`.trim(),
+        role: payload.role || 'client',
+        roles: payload.roles || ['client'],
+        status: payload.status || 'actif',
+        statutCompte: payload.statutCompte || 'actif',
+        statutClient: payload.statutClient || 'client',
+        passwordHash: payload.passwordHash || '',
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    }
+
+    // Persist username lookup document for instant O(1) matching by username
     if (payload.username) {
-      const cleanUname = String(payload.username).trim().toLowerCase().replace(/^@/, '');
+      const cleanUname = String(payload.username).trim().toLowerCase().replace(/^@/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
       const unameIndexRef = doc(db, 'utilisateurs', 'usr_uname_' + cleanUname);
       await setDoc(unameIndexRef, {
         id: 'usr_uname_' + cleanUname,
         targetId: docId,
         uid: docId,
         username: cleanUname,
-        email: payload.email,
+        email: payload.email || '',
         name: payload.name || `${payload.prenom || ''} ${payload.nom || ''}`.trim(),
-        role: payload.role,
-        roles: payload.roles,
+        role: payload.role || 'client',
+        roles: payload.roles || ['client'],
         status: payload.status || 'actif',
         statutCompte: payload.statutCompte || 'actif',
         statutClient: payload.statutClient || 'client',
-        passwordHash: payload.passwordHash,
+        passwordHash: payload.passwordHash || '',
         updatedAt: new Date().toISOString()
       }, { merge: true });
     }
@@ -283,20 +305,91 @@ async function findUserInFirestore(identifier) {
   try {
     const directDoc = await getDoc(doc(db, 'utilisateurs', cleanId));
     if (directDoc.exists()) {
-      return directDoc.data();
+      const data = directDoc.data();
+      if (data && (data.email || data.username || data.name)) {
+        return { ...data, id: directDoc.id, uid: data.uid || directDoc.id };
+      }
     }
   } catch (e) {}
 
-  // 2. Direct Username index lookup
+  // 2. Direct Email index lookup (usr_email_...)
   try {
-    const unameDoc = await getDoc(doc(db, 'utilisateurs', 'usr_uname_' + cleanHandle));
+    const safeEmailKey = cleanId.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const emailIndexDoc = await getDoc(doc(db, 'utilisateurs', 'usr_email_' + safeEmailKey));
+    if (emailIndexDoc.exists()) {
+      const idxData = emailIndexDoc.data();
+      if (idxData.targetId) {
+        const fullDoc = await getDoc(doc(db, 'utilisateurs', idxData.targetId));
+        if (fullDoc.exists()) {
+          const fullData = fullDoc.data();
+          return { ...fullData, id: fullDoc.id, uid: fullData.uid || fullDoc.id };
+        }
+      }
+      return { ...idxData, id: idxData.targetId || idxData.uid || emailIndexDoc.id };
+    }
+  } catch (e) {}
+
+  // 3. Direct Username index lookup (usr_uname_...)
+  try {
+    const safeUnameKey = cleanHandle.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const unameDoc = await getDoc(doc(db, 'utilisateurs', 'usr_uname_' + safeUnameKey));
     if (unameDoc.exists()) {
       const idxData = unameDoc.data();
       if (idxData.targetId) {
         const fullDoc = await getDoc(doc(db, 'utilisateurs', idxData.targetId));
-        if (fullDoc.exists()) return fullDoc.data();
+        if (fullDoc.exists()) {
+          const fullData = fullDoc.data();
+          return { ...fullData, id: fullDoc.id, uid: fullData.uid || fullDoc.id };
+        }
       }
-      return idxData;
+      return { ...idxData, id: idxData.targetId || idxData.uid || unameDoc.id };
+    }
+  } catch (e) {}
+
+  // 4. Query Firestore collection by email
+  if (cleanId.includes('@')) {
+    try {
+      const qEmail = query(collection(db, 'utilisateurs'), where('email', '==', cleanId));
+      const snapEmail = await getDocs(qEmail);
+      if (!snapEmail.empty) {
+        const docSnap = snapEmail.docs[0];
+        const data = docSnap.data();
+        return { ...data, id: docSnap.id, uid: data.uid || docSnap.id };
+      }
+    } catch (e) {}
+  }
+
+  // 5. Query Firestore collection by username
+  try {
+    const qUname = query(collection(db, 'utilisateurs'), where('username', '==', cleanHandle));
+    const snapUname = await getDocs(qUname);
+    if (!snapUname.empty) {
+      const docSnap = snapUname.docs[0];
+      const data = docSnap.data();
+      return { ...data, id: docSnap.id, uid: data.uid || docSnap.id };
+    }
+  } catch (e) {}
+
+  // 6. Comprehensive Scan of Firestore collection as robust fallback
+  try {
+    const snapAll = await getDocs(collection(db, 'utilisateurs'));
+    for (const d of snapAll.docs) {
+      const data = d.data();
+      if (!data) continue;
+      const uEmail = (data.email || '').toLowerCase().trim();
+      const uName = (data.username || '').toLowerCase().trim();
+      if (uEmail && (uEmail === cleanId || uEmail === cleanHandle)) {
+        return { ...data, id: d.id, uid: data.uid || d.id };
+      }
+      if (uName && (uName === cleanId || uName === cleanHandle)) {
+        return { ...data, id: d.id, uid: data.uid || d.id };
+      }
+      if (Array.isArray(data.aliases) && data.aliases.some(a => {
+        const ca = String(a).toLowerCase().trim();
+        return ca === cleanId || ca === cleanHandle;
+      })) {
+        return { ...data, id: d.id, uid: data.uid || d.id };
+      }
     }
   } catch (e) {}
 
@@ -700,7 +793,7 @@ app.post('/api/auth/login', async (req, res) => {
       }
 
       return res.status(404).json({
-        error: `Le compte « ${cleanId} » n'est pas encore inscrit sur LAPERLE TOUR HT. Veuillez d'abord créer votre compte via l'onglet « Pour S'inscrire ».`,
+        error: `Le compte « ${cleanId} » n'existe pas dans la base de données. Veuillez d'abord vous inscrire via l'onglet « S'inscrire ».`,
         code: 'auth/user-not-registered'
       });
     }
@@ -1047,9 +1140,54 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+async function syncFirestoreUsersOnBoot() {
+  try {
+    console.log('[Database] Synchronisation initiale des utilisateurs depuis Cloud Firestore...');
+    const snap = await getDocs(collection(db, 'utilisateurs'));
+    const diskUsers = loadUsersFromDisk();
+    const diskUserMap = new Map();
+    diskUsers.forEach(u => {
+      const key = u.id || u.uid;
+      if (key) diskUserMap.set(key, u);
+    });
+
+    let importedCount = 0;
+    snap.forEach(d => {
+      const data = d.data();
+      // Ignore index documents
+      if (d.id.startsWith('usr_uname_') || d.id.startsWith('usr_email_')) return;
+      if (data && (data.email || data.username || data.name)) {
+        const docId = data.id || data.uid || d.id;
+        const existing = diskUserMap.get(docId);
+        if (!existing) {
+          diskUsers.push({ ...data, id: docId, uid: data.uid || docId });
+          diskUserMap.set(docId, true);
+          importedCount++;
+        } else {
+          // Merge freshest data
+          Object.assign(existing, data);
+        }
+      }
+    });
+
+    // Make sure all default users exist in Firestore
+    for (const u of diskUsers) {
+      if (u && (u.id || u.uid)) {
+        await saveUserToFirestore(u);
+      }
+    }
+
+    saveUsers(diskUsers);
+    console.log(`[Database] Synchronisation terminée : ${diskUsers.length} comptes dans la base (${importedCount} chargés depuis Firestore).`);
+  } catch (err) {
+    console.warn('[Database] Avertissement synchronisation Firestore boot:', err.message);
+  }
+}
+
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n  Centre de Contrôle Laperle ready on http://0.0.0.0:${PORT}/\n`);
   console.log(`Centre de Contrôle Laperle ready and listening on port ${PORT}`);
+  syncFirestoreUsersOnBoot();
 });
 
 process.on('SIGTERM', () => {

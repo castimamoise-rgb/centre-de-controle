@@ -296,10 +296,48 @@ export async function signUpWithEmailAndPasswordMethod({ nom, prenom, email, pas
     updatedBy: cleanEmail || uid
   };
 
-  // 3. Sauvegarde dans Firestore si Firebase Auth est connecté
+  // 3. Sauvegarde dans Firestore Cloud Database
   try {
     const userDocRef = doc(db, USERS_COLLECTION, uid);
     await setDoc(userDocRef, newProfile, { merge: true });
+
+    if (cleanEmail) {
+      const safeEmailKey = cleanEmail.replace(/[^a-zA-Z0-9_-]/g, '_');
+      await setDoc(doc(db, USERS_COLLECTION, 'usr_email_' + safeEmailKey), {
+        id: 'usr_email_' + safeEmailKey,
+        targetId: uid,
+        uid: uid,
+        email: cleanEmail,
+        username: newProfile.username || '',
+        name: fullName,
+        role: initialRole,
+        roles: initialRoles,
+        status: 'actif',
+        statutCompte: 'actif',
+        statutClient: 'client',
+        passwordHash: passHash,
+        updatedAt: now
+      }, { merge: true });
+    }
+
+    if (newProfile.username) {
+      const safeUnameKey = String(newProfile.username).replace(/[^a-zA-Z0-9_-]/g, '_');
+      await setDoc(doc(db, USERS_COLLECTION, 'usr_uname_' + safeUnameKey), {
+        id: 'usr_uname_' + safeUnameKey,
+        targetId: uid,
+        uid: uid,
+        username: newProfile.username,
+        email: cleanEmail,
+        name: fullName,
+        role: initialRole,
+        roles: initialRoles,
+        status: 'actif',
+        statutCompte: 'actif',
+        statutClient: 'client',
+        passwordHash: passHash,
+        updatedAt: now
+      }, { merge: true });
+    }
   } catch (fsErr) {
     console.warn("setDoc profil Firestore:", fsErr?.message);
   }
@@ -396,43 +434,43 @@ export async function signInWithEmailAndPasswordMethod(identifier, password) {
     }
 
     if (apiRes.status === 404 || apiRes.data?.code === 'auth/user-not-registered') {
-      // Vérifier d'abord si le compte existe dans le stockage local du navigateur
-      const localExisting = await getUserProfileByIdentifier(cleanId);
-      if (localExisting && localExisting.passwordHash) {
+      // Vérification directe dans Cloud Firestore pour confirmer l'absence dans toute la base de données
+      const cloudExisting = await getUserProfileByIdentifier(cleanId);
+      if (cloudExisting && cloudExisting.passwordHash) {
         const inputHash = await hashPassword(cleanPass);
-        const existingRoles = Array.isArray(localExisting.roles) ? localExisting.roles : [localExisting.role];
-        const isAdminUser = existingRoles.includes('admin') || localExisting.role === 'admin' || isSuperAdminEmail(localExisting.email) || isSuperAdmin;
+        const existingRoles = Array.isArray(cloudExisting.roles) ? cloudExisting.roles : [cloudExisting.role];
+        const isAdminUser = existingRoles.includes('admin') || cloudExisting.role === 'admin' || isSuperAdminEmail(cloudExisting.email) || isSuperAdmin;
         const isAdminPass = isAdminUser && cleanPass === 'Admin26';
 
-        if (localExisting.passwordHash === inputHash || localExisting.password === cleanPass || isAdminPass) {
-          // Mot de passe valide : tenter de resynchroniser automatiquement le compte vers le serveur
+        if (cloudExisting.passwordHash === inputHash || cloudExisting.password === cleanPass || isAdminPass) {
+          // Synchroniser le compte vers le serveur
           try {
             await safeFetchJson('/api/auth/register', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                uid: localExisting.uid || localExisting.id,
-                nom: localExisting.nom || localExisting.name || 'Utilisateur',
-                prenom: localExisting.prenom || '',
-                email: localExisting.email,
+                uid: cloudExisting.uid || cloudExisting.id,
+                nom: cloudExisting.nom || cloudExisting.name || 'Utilisateur',
+                prenom: cloudExisting.prenom || '',
+                email: cloudExisting.email,
                 password: cleanPass,
                 passwordConfirm: cleanPass,
-                username: localExisting.username,
-                telephone: localExisting.telephone || localExisting.phone || ''
+                username: cloudExisting.username,
+                telephone: cloudExisting.telephone || cloudExisting.phone || ''
               })
             });
           } catch (e) {}
 
           const resolvedUserObj = {
-            uid: localExisting.uid || localExisting.id,
-            displayName: localExisting.nom || localExisting.name || localExisting.username || 'Utilisateur',
-            email: localExisting.email || cleanEmail,
-            username: localExisting.username,
-            phoneNumber: localExisting.telephone || localExisting.phone || '',
-            photoURL: localExisting.photoURL || ''
+            uid: cloudExisting.uid || cloudExisting.id,
+            displayName: cloudExisting.nom || cloudExisting.name || cloudExisting.username || 'Utilisateur',
+            email: cloudExisting.email || cleanEmail,
+            username: cloudExisting.username,
+            phoneNumber: cloudExisting.telephone || cloudExisting.phone || '',
+            photoURL: cloudExisting.photoURL || ''
           };
-          saveUserSession(resolvedUserObj, localExisting);
-          return { user: resolvedUserObj, profile: localExisting, isNew: false };
+          saveUserSession(resolvedUserObj, cloudExisting);
+          return { user: resolvedUserObj, profile: cloudExisting, isNew: false };
         } else {
           const pwdErr = new Error("Mot de passe incorrect. Veuillez vérifier votre saisie.");
           pwdErr.code = 'auth/wrong-password';
@@ -440,7 +478,7 @@ export async function signInWithEmailAndPasswordMethod(identifier, password) {
         }
       }
 
-      const notRegErr = new Error(apiRes.data?.error || `Le compte « ${cleanId} » n'est pas encore inscrit sur LAPERLE TOUR HT. Veuillez d'abord créer votre compte via l'onglet « Pour S'inscrire » avant de vous connecter.`);
+      const notRegErr = new Error(`Le compte « ${cleanId} » n'existe pas dans la base de données. Veuillez d'abord vous inscrire via l'onglet « S'inscrire ».`);
       notRegErr.code = 'auth/user-not-registered';
       throw notRegErr;
     }
@@ -744,6 +782,43 @@ export async function getUserProfileByIdentifier(identifier) {
   try {
     const apiRes = await safeFetchJson(`/api/auth/user/${encodeURIComponent(cleanHandle || cleanId)}`);
     if (apiRes.ok && apiRes.data?.user) return apiRes.data.user;
+  } catch (e) {}
+
+  // 2. Recherche directe par ID de document ou index dans Firestore
+  try {
+    const directDoc = await getDoc(doc(db, USERS_COLLECTION, cleanId));
+    if (directDoc.exists()) {
+      const data = directDoc.data();
+      if (data && (data.email || data.username || data.name)) {
+        return { ...data, id: directDoc.id, uid: data.uid || directDoc.id };
+      }
+    }
+    const safeEmailKey = cleanLower.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const emailIndexDoc = await getDoc(doc(db, USERS_COLLECTION, 'usr_email_' + safeEmailKey));
+    if (emailIndexDoc.exists()) {
+      const idxData = emailIndexDoc.data();
+      if (idxData.targetId) {
+        const fullDoc = await getDoc(doc(db, USERS_COLLECTION, idxData.targetId));
+        if (fullDoc.exists()) {
+          const fullData = fullDoc.data();
+          return { ...fullData, id: fullDoc.id, uid: fullData.uid || fullDoc.id };
+        }
+      }
+      return { ...idxData, id: idxData.targetId || idxData.uid || emailIndexDoc.id };
+    }
+    const safeUnameKey = cleanHandle.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const unameDoc = await getDoc(doc(db, USERS_COLLECTION, 'usr_uname_' + safeUnameKey));
+    if (unameDoc.exists()) {
+      const idxData = unameDoc.data();
+      if (idxData.targetId) {
+        const fullDoc = await getDoc(doc(db, USERS_COLLECTION, idxData.targetId));
+        if (fullDoc.exists()) {
+          const fullData = fullDoc.data();
+          return { ...fullData, id: fullDoc.id, uid: fullData.uid || fullDoc.id };
+        }
+      }
+      return { ...idxData, id: idxData.targetId || idxData.uid || unameDoc.id };
+    }
   } catch (e) {}
 
   // 2. Recherche par e-mail dans Firestore
