@@ -190,6 +190,9 @@ async function saveDocumentToFirestore(colKey, item) {
 async function archiveDocumentInFirestore(colKey, docId) {
   const col = canonicalCol(colKey);
   if (!docId) return;
+  if (!db || !auth.currentUser) {
+    return;
+  }
   try {
     updateFirebaseBadge("syncing");
     const userEmail = currentUser?.email || 'admin';
@@ -209,6 +212,14 @@ async function archiveDocumentInFirestore(colKey, docId) {
 async function deleteDocumentFromFirestore(colKey, docId) {
   const col = canonicalCol(colKey);
   if (!docId) return;
+  if (!db || !auth.currentUser) {
+    if (col === 'utilisateurs') {
+      try {
+        await fetch(`/api/auth/user/${encodeURIComponent(docId)}`, { method: 'DELETE' });
+      } catch (e) {}
+    }
+    return;
+  }
   try {
     updateFirebaseBadge("syncing");
     await deleteDoc(doc(db, col, String(docId)));
@@ -220,6 +231,9 @@ async function deleteDocumentFromFirestore(colKey, docId) {
 }
 
 async function saveSettingsToFirestore(settingsData) {
+  if (!db || !auth.currentUser) {
+    return;
+  }
   try {
     updateFirebaseBadge("syncing");
     const userEmail = currentUser?.email || 'admin';
@@ -905,6 +919,31 @@ if (globalSearchInput) {
 let isNotifDropdownOpen = false;
 let activeNotifFilter = 'all'; // 'all', 'service', 'update', 'unread'
 let previousUnreadCount = null;
+const knownNotificationIds = new Set();
+const newlyArrivedNotificationIds = new Set();
+
+// Initialiser les notifications déjà en mémoire pour identifier les nouvelles arrivées
+if (typeof state !== 'undefined' && Array.isArray(state.notifications)) {
+  state.notifications.forEach(n => {
+    if (n && n.id) knownNotificationIds.add(n.id);
+  });
+}
+
+function registerIncomingNotifications(items) {
+  if (!Array.isArray(items)) return;
+  if (knownNotificationIds.size === 0) {
+    items.forEach(it => {
+      if (it && it.id) knownNotificationIds.add(it.id);
+    });
+    return;
+  }
+  items.forEach(it => {
+    if (it && it.id && !knownNotificationIds.has(it.id)) {
+      knownNotificationIds.add(it.id);
+      newlyArrivedNotificationIds.add(it.id);
+    }
+  });
+}
 
 function escapeHtml(str) {
   if (str === null || str === undefined) return '';
@@ -1094,9 +1133,11 @@ function renderNotificationDropdown() {
           <p class="notif-empty-title">Aucune alerte ou notification</p>
           <p class="notif-empty-desc">Toutes les informations opérationnelles et alertes de service sont à jour.</p>
         </div>
-      ` : filtered.map(item => {
+      ` : filtered.map((item, idx) => {
         const isUrgent = item.priority === 'urgent' || item.priority === 'high' || item.type === 'alerte';
         const isTransport = item.type === 'transport';
+        const isNewArrival = newlyArrivedNotificationIds.has(item.id);
+        const animDelay = `${Math.min(idx * 30, 240)}ms`;
         let typePillClass = item.type || 'info';
         let typeLabel = 'INFO';
         let typeEmoji = 'ℹ️';
@@ -1108,13 +1149,14 @@ function renderNotificationDropdown() {
         else if (item.type === 'finance') { typeLabel = 'FINANCES'; typeEmoji = '💳'; }
 
         return `
-          <div class="notif-item ${!item.read ? 'unread' : ''} ${isUrgent ? 'is-urgent' : ''} ${isTransport ? 'is-transport' : ''}">
+          <div class="notif-item ${isNewArrival ? 'notif-new-arrival' : ''} ${!item.read ? 'unread' : ''} ${isUrgent ? 'is-urgent' : ''} ${isTransport ? 'is-transport' : ''}" style="animation-delay: ${animDelay};">
             <div class="notif-item-top">
               <span class="notif-type-pill ${typePillClass}">
                 <span>${typeEmoji}</span>
                 <span>${typeLabel}</span>
               </span>
               ${isUrgent ? `<span class="notif-type-pill alerte" style="font-size:9px;padding:1px 5px;">PRIORITAIRE</span>` : ''}
+              ${isNewArrival ? `<span class="notif-type-pill update" style="font-size:9px;padding:1px 6px;background:#e0f2fe;color:#0369a1;font-weight:800;">NOUVEAU</span>` : ''}
               <span class="notif-time">${formatRelativeTime(item.createdAt || item.date)}</span>
             </div>
             <h5 class="notif-title">${escapeHtml(item.title || 'Information LAPERLE')}</h5>
@@ -1144,6 +1186,12 @@ function renderNotificationDropdown() {
       </button>
     </div>
   `;
+
+  if (newlyArrivedNotificationIds.size > 0) {
+    setTimeout(() => {
+      newlyArrivedNotificationIds.clear();
+    }, 3000);
+  }
 }
 
 async function handleToggleRead(id, newReadStatus) {
@@ -1431,6 +1479,7 @@ function setupFirestoreListeners() {
           state[col] = items;
           save();
           if (col === 'notifications') {
+            registerIncomingNotifications(items);
             updateNotificationBadge();
             if (isNotifDropdownOpen) renderNotificationDropdown();
           }
@@ -1475,6 +1524,7 @@ function setupFirestoreListeners() {
           state[col] = items;
           save();
           if (col === 'notifications') {
+            registerIncomingNotifications(items);
             updateNotificationBadge();
             if (isNotifDropdownOpen) renderNotificationDropdown();
           }
@@ -1535,6 +1585,7 @@ function setupFirestoreListeners() {
         save();
         updateFirebaseBadge("connected");
         if (colName === 'notifications') {
+          registerIncomingNotifications(cloudItems);
           updateNotificationBadge();
           if (isNotifDropdownOpen) renderNotificationDropdown();
         }
@@ -1594,35 +1645,8 @@ function setupFirestoreListeners() {
 }
 
 async function seedInitialDataToFirestoreIfEmpty() {
-  if (!db || !auth.currentUser || !currentUserRoles.includes(ROLES.ADMIN)) return;
-  try {
-    const clientSnap = await getDocs(collection(db, "clients"));
-    if (clientSnap.empty) {
-      console.log("Premier démarrage : initialisation des données réelles sur Cloud Firestore...");
-      const initial = getInitialData();
-      for (const col of ALL_MODULES) {
-        if (initial[col] && initial[col].length > 0) {
-          for (const item of initial[col]) {
-            await saveDocumentToFirestore(col, item);
-          }
-        }
-      }
-      await saveSettingsToFirestore({
-        company: "LAPERLE TOUR HT",
-        slogan: "Un coup d'œil sur Haïti",
-        phone: "+509 4440 8687",
-        email: "laperletourht@gmail.com",
-        address: "Port-au-Prince, Haïti",
-        moncash: "+509 4440 8687",
-        admin: "Castima"
-      });
-      console.log("Base Firestore LAPERLE TOUR HT initialisée avec succès.");
-    }
-    // S'assurer que les alertes de service et notifications par défaut sont initialisées
-    await seedDefaultServiceAlerts();
-  } catch (err) {
-    console.warn("Vérification seed Firestore:", err?.message);
-  }
+  // Respecter la consigne stricte : aucune modification de la base de données à la mise à jour du site
+  return;
 }
 
 // Auth Flow State Management

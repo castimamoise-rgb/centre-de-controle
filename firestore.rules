@@ -389,7 +389,7 @@ service cloud.firestore {
       allow list: if canReadOperations() || 
         (isClient() && isClientDoc(existing()));
       allow create, update: if canManageOperations() && isValidId(clientId) && isValidClient(incoming());
-      allow delete: if isAdmin() && isValidId(clientId);
+      allow delete: if (isAdmin() || canManageOperations()) && isValidId(clientId);
     }
 
     // 2. Élèves
@@ -398,7 +398,7 @@ service cloud.firestore {
         (isClient() && isClientDoc(existing())) || 
         (isChauffeur() && isChauffeurDoc(existing()));
       allow create, update: if canManageOperations() && isValidId(eleveId) && isValidEleve(incoming());
-      allow delete: if isAdmin() && isValidId(eleveId);
+      allow delete: if (isAdmin() || canManageOperations()) && isValidId(eleveId);
     }
 
     // 3. Abonnements
@@ -406,7 +406,7 @@ service cloud.firestore {
       allow get, list: if canReadOperations() || 
         (isClient() && isClientDoc(existing()));
       allow create, update: if canManageOperations() && isValidId(abonnementId) && isValidAbonnement(incoming());
-      allow delete: if isAdmin() && isValidId(abonnementId);
+      allow delete: if (isAdmin() || canManageOperations()) && isValidId(abonnementId);
     }
 
     // 4. Chauffeurs (/chauffeurs and alias /drivers)
@@ -416,13 +416,13 @@ service cloud.firestore {
       allow list: if canReadOperations() || 
         (isChauffeur() && isChauffeurDoc(existing()));
       allow create, update: if canManageOperations() && isValidId(chauffeurId) && isValidChauffeur(incoming());
-      allow delete: if isAdmin() && isValidId(chauffeurId);
+      allow delete: if (isAdmin() || canManageOperations()) && isValidId(chauffeurId);
     }
     match /drivers/{driverId} {
       allow get: if canReadOperations() || (isChauffeur() && (driverId == request.auth.uid || isChauffeurDoc(existing())));
       allow list: if canReadOperations() || (isChauffeur() && isChauffeurDoc(existing()));
       allow create, update: if canManageOperations() && isValidId(driverId);
-      allow delete: if isAdmin() && isValidId(driverId);
+      allow delete: if (isAdmin() || canManageOperations()) && isValidId(driverId);
     }
 
     // 5. Véhicules (/vehicules and alias /vehicles)
@@ -430,12 +430,12 @@ service cloud.firestore {
       allow get, list: if canReadOperations() || 
         (isChauffeur() && isChauffeurDoc(existing()));
       allow create, update: if canManageOperations() && isValidId(vehiculeId) && isValidVehicule(incoming());
-      allow delete: if isAdmin() && isValidId(vehiculeId);
+      allow delete: if (isAdmin() || canManageOperations()) && isValidId(vehiculeId);
     }
     match /vehicles/{vehicleId} {
       allow get, list: if canReadOperations() || (isChauffeur() && isChauffeurDoc(existing()));
       allow create, update: if canManageOperations() && isValidId(vehicleId);
-      allow delete: if isAdmin() && isValidId(vehicleId);
+      allow delete: if (isAdmin() || canManageOperations()) && isValidId(vehicleId);
     }
 
     // 6. Plannings (/plannings and alias /planning)
@@ -458,12 +458,12 @@ service cloud.firestore {
           incoming().diff(existing()).affectedKeys().hasOnly(['status', 'notes', 'updatedAt', 'updatedBy'])
         )
       );
-      allow delete: if isAdmin() && isValidId(planningId);
+      allow delete: if (isAdmin() || canManageOperations()) && isValidId(planningId);
     }
     match /planning/{planningId} {
       allow get, list: if canReadOperations() || (isChauffeur() && isChauffeurDoc(existing()));
       allow create, update: if canManageOperations() && isValidId(planningId);
-      allow delete: if isAdmin() && isValidId(planningId);
+      allow delete: if (isAdmin() || canManageOperations()) && isValidId(planningId);
     }
 
     // 7. Paiements (/paiements and alias /payments)
@@ -471,12 +471,12 @@ service cloud.firestore {
       allow get, list: if canReadFinances() || 
         (isClient() && isClientDoc(existing()));
       allow create, update: if canManageFinances() && isValidId(paiementId) && isValidPaiement(incoming());
-      allow delete: if isAdmin() && isValidId(paiementId);
+      allow delete: if (isAdmin() || canManageFinances()) && isValidId(paiementId);
     }
     match /payments/{paymentId} {
       allow get, list: if canReadFinances() || (isClient() && isClientDoc(existing()));
       allow create, update: if canManageFinances() && isValidId(paymentId);
-      allow delete: if isAdmin() && isValidId(paymentId);
+      allow delete: if (isAdmin() || canManageFinances()) && isValidId(paymentId);
     }
 
     // 8. Réservations (/reservations and alias /bookings)
@@ -495,24 +495,24 @@ service cloud.firestore {
         )
       );
       allow update: if canManageOperations() && isValidId(reservationId) && isValidReservation(incoming());
-      allow delete: if isAdmin() && isValidId(reservationId);
+      allow delete: if (isAdmin() || canManageOperations()) && isValidId(reservationId);
     }
     match /bookings/{bookingId} {
       allow get, list: if canReadOperations() || (isClient() && isClientDoc(existing())) || (isChauffeur() && isChauffeurDoc(existing()));
       allow create, update: if canManageOperations() && isValidId(bookingId);
-      allow delete: if isAdmin() && isValidId(bookingId);
+      allow delete: if (isAdmin() || canManageOperations()) && isValidId(bookingId);
     }
 
     // 9. Finances & Dépenses (/finances and alias /expenses)
     match /finances/{financeId} {
       allow get, list: if canReadGlobalFinances();
       allow create, update: if canManageFinances() && isValidId(financeId) && isValidFinance(incoming());
-      allow delete: if isAdmin() && isValidId(financeId);
+      allow delete: if (isAdmin() || canManageFinances()) && isValidId(financeId);
     }
     match /expenses/{expenseId} {
       allow get, list: if canReadGlobalFinances();
       allow create, update: if canManageFinances() && isValidId(expenseId);
-      allow delete: if isAdmin() && isValidId(expenseId);
+      allow delete: if (isAdmin() || canManageFinances()) && isValidId(expenseId);
     }
 
     // 10. Proformas (/proformas and alias /quotes)
@@ -520,12 +520,12 @@ service cloud.firestore {
       allow get, list: if canReadFinances() || 
         (isClient() && isClientDoc(existing()));
       allow create, update: if canManageFinances() && isValidId(proformaId) && isValidProforma(incoming());
-      allow delete: if isAdmin() && isValidId(proformaId);
+      allow delete: if (isAdmin() || canManageFinances()) && isValidId(proformaId);
     }
     match /quotes/{quoteId} {
       allow get, list: if canReadFinances() || (isClient() && isClientDoc(existing()));
       allow create, update: if canManageFinances() && isValidId(quoteId);
-      allow delete: if isAdmin() && isValidId(quoteId);
+      allow delete: if (isAdmin() || canManageFinances()) && isValidId(quoteId);
     }
 
     // 11. Factures (/factures and alias /invoices)
@@ -533,12 +533,12 @@ service cloud.firestore {
       allow get, list: if canReadFinances() || 
         (isClient() && isClientDoc(existing()));
       allow create, update: if canManageFinances() && isValidId(factureId) && isValidFacture(incoming());
-      allow delete: if isAdmin() && isValidId(factureId);
+      allow delete: if (isAdmin() || canManageFinances()) && isValidId(factureId);
     }
     match /invoices/{invoiceId} {
       allow get, list: if canReadFinances() || (isClient() && isClientDoc(existing()));
       allow create, update: if canManageFinances() && isValidId(invoiceId);
-      allow delete: if isAdmin() && isValidId(invoiceId);
+      allow delete: if (isAdmin() || canManageFinances()) && isValidId(invoiceId);
     }
 
     // 12. Utilisateurs & Rôles
@@ -653,8 +653,8 @@ service cloud.firestore {
       );
 
       // Only Admin can delete a user, and Super Admin cannot be deleted
-      allow delete: if isAdmin() && isValidId(utilisateurId) && 
-        !(isTargetSuperAdminEmail(existing().email) || utilisateurId == request.auth.uid);
+      allow delete: if (isAdmin() || isSuperAdminEmail()) && isValidId(utilisateurId) && 
+        !(('email' in existing() && isTargetSuperAdminEmail(existing().email)) || utilisateurId == request.auth.uid);
     }
 
     // 13. Notifications

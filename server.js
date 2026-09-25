@@ -963,6 +963,27 @@ app.patch('/api/auth/user/:id', async (req, res) => {
   }
 });
 
+// API AUTH : Suppression d'utilisateur
+app.delete('/api/auth/user/:id', async (req, res) => {
+  try {
+    const rawId = req.params.id;
+    const users = loadUsers();
+    const target = users.find(u => u.id === rawId || u.uid === rawId || (u.email && u.email.toLowerCase() === rawId.toLowerCase()));
+    if (!target) {
+      return res.status(404).json({ error: 'Utilisateur introuvable.' });
+    }
+    if (isSuperAdminEmail(target.email) || target.id === 'usr_admin_laperle' || target.id === 'usr_admin_castima') {
+      return res.status(403).json({ error: 'Impossible de supprimer un compte Super Administrateur.' });
+    }
+    const filtered = users.filter(u => u.id !== target.id && u.uid !== target.uid);
+    saveUsers(filtered);
+    return res.json({ success: true, message: 'Utilisateur supprimé avec succès.' });
+  } catch (err) {
+    console.error('Erreur API DELETE /api/auth/user/:id:', err);
+    return res.status(500).json({ error: 'Erreur lors de la suppression de l\'utilisateur.' });
+  }
+});
+
 // API AUTH : Liste de tous les utilisateurs (pour administration)
 app.get('/api/auth/users', (req, res) => {
   const users = loadUsers();
