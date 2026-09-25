@@ -2010,6 +2010,188 @@ function initAuthUI(initialMode = "login") {
   });
 }
 
+/**
+ * Synchronise et déplace les données utilisateur du localStorage vers Cloud Firestore
+ * immédiatement après une authentification réussie.
+ *
+ * @param {object} user - Utilisateur authentifié (Firebase user ou session)
+ * @param {object} profile - Profil utilisateur (rôles, métadonnées, etc.)
+ * @returns {Promise<boolean>} Succès de la synchronisation
+ */
+async function syncUserDataFromLocalStorageToFirestore(user, profile) {
+  if (!db) {
+    console.warn("[Sync LocalStorage -> Firestore] Firestore non initialisé.");
+    return false;
+  }
+
+  const activeUser = user || currentUser || auth.currentUser;
+  const activeProfile = profile || currentUserProfile || {};
+  const uid = activeUser?.uid || activeProfile?.uid || activeProfile?.id;
+  const userEmail = (activeUser?.email || activeProfile?.email || '').toLowerCase().trim();
+
+  if (!uid && !userEmail) {
+    console.warn("[Sync LocalStorage -> Firestore] Aucun identifiant utilisateur trouvé.");
+    return false;
+  }
+
+  console.log(`[Sync LocalStorage -> Firestore] 🚀 Début synchronisation pour ${userEmail || uid}...`);
+  updateFirebaseBadge("syncing", "🔄 Synchronisation Firestore...");
+
+  try {
+    let syncedCount = 0;
+    const now = new Date().toISOString();
+
+    // 1. Récupération des données utilisateur présentes dans le localStorage
+    let storedSessionProfile = null;
+    try {
+      const rawSession = localStorage.getItem("LAPERLE_AUTH_SESSION");
+      if (rawSession) {
+        const parsed = JSON.parse(rawSession);
+        if (parsed?.profile) storedSessionProfile = parsed.profile;
+      }
+    } catch (e) {}
+
+    // Vérifier les données dans DBKEY (LAPERLE_CENTRE_CONTROL_V3)
+    let rawLocalDb = null;
+    try {
+      const rawDb = localStorage.getItem(DBKEY);
+      if (rawDb) rawLocalDb = JSON.parse(rawDb);
+    } catch (e) {}
+
+    const localUsers = (rawLocalDb && Array.isArray(rawLocalDb.utilisateurs))
+      ? rawLocalDb.utilisateurs
+      : (Array.isArray(state?.utilisateurs) ? state.utilisateurs : []);
+
+    const matchedLocalUser = localUsers.find(u =>
+      (uid && (u.id === uid || u.uid === uid)) ||
+      (userEmail && u.email && u.email.toLowerCase().trim() === userEmail)
+    );
+
+    // 2. Fusionner et préparer le profil utilisateur complet
+    const finalProfile = {
+      ...(matchedLocalUser || {}),
+      ...(storedSessionProfile || {}),
+      ...activeProfile,
+      id: uid || matchedLocalUser?.id || matchedLocalUser?.uid || activeProfile?.id,
+      uid: uid || matchedLocalUser?.uid || matchedLocalUser?.id || activeProfile?.uid,
+      email: userEmail || matchedLocalUser?.email || '',
+      updatedAt: now,
+      lastLoginAt: now,
+      syncedToFirestore: true,
+      lastSyncAt: now
+    };
+
+    const targetDocId = String(finalProfile.id || finalProfile.uid || userEmail.replace(/[^a-zA-Z0-9_-]/g, '_'));
+
+    // Nettoyer les valeurs undefined
+    const cleanUserDoc = { ...finalProfile };
+    Object.keys(cleanUserDoc).forEach(k => {
+      if (cleanUserDoc[k] === undefined) delete cleanUserDoc[k];
+    });
+
+    // 3. Déplacer / persister le document utilisateur dans Cloud Firestore
+    await setDoc(doc(db, 'utilisateurs', targetDocId), cleanUserDoc, { merge: true });
+    syncedCount++;
+
+    // Indexation O(1) pour recherche instantanée par email
+    if (userEmail) {
+      const safeEmailKey = userEmail.replace(/[^a-zA-Z0-9_-]/g, '_');
+      await setDoc(doc(db, 'utilisateurs', 'usr_email_' + safeEmailKey), {
+        id: 'usr_email_' + safeEmailKey,
+        targetId: targetDocId,
+        uid: targetDocId,
+        email: userEmail,
+        username: finalProfile.username || '',
+        name: finalProfile.name || `${finalProfile.prenom || ''} ${finalProfile.nom || ''}`.trim(),
+        role: finalProfile.role || 'client',
+        roles: finalProfile.roles || ['client'],
+        status: finalProfile.status || 'actif',
+        statutCompte: finalProfile.statutCompte || 'actif',
+        statutClient: finalProfile.statutClient || 'client',
+        passwordHash: finalProfile.passwordHash || '',
+        updatedAt: now,
+        syncedAt: now
+      }, { merge: true });
+      syncedCount++;
+    }
+
+    // Indexation O(1) pour recherche instantanée par nom de profil / username
+    if (finalProfile.username) {
+      const safeUnameKey = String(finalProfile.username).trim().toLowerCase().replace(/^@/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
+      await setDoc(doc(db, 'utilisateurs', 'usr_uname_' + safeUnameKey), {
+        id: 'usr_uname_' + safeUnameKey,
+        targetId: targetDocId,
+        uid: targetDocId,
+        username: safeUnameKey,
+        email: userEmail,
+        name: finalProfile.name || `${finalProfile.prenom || ''} ${finalProfile.nom || ''}`.trim(),
+        role: finalProfile.role || 'client',
+        roles: finalProfile.roles || ['client'],
+        status: finalProfile.status || 'actif',
+        statutCompte: finalProfile.statutCompte || 'actif',
+        statutClient: finalProfile.statutClient || 'client',
+        passwordHash: finalProfile.passwordHash || '',
+        updatedAt: now,
+        syncedAt: now
+      }, { merge: true });
+      syncedCount++;
+    }
+
+    // 4. Déplacer toutes les données métier de l'utilisateur stockées localement vers Firestore
+    const userOwnedCols = ['clients', 'reservations', 'eleves', 'abonnements', 'plannings', 'paiements', 'proformas', 'factures', 'finances', 'notifications'];
+    for (const col of userOwnedCols) {
+      const items = list(col) || [];
+      for (const it of items) {
+        const isUserItem = (it.clientId && it.clientId === uid) ||
+                           (it.chauffeurId && it.chauffeurId === uid) ||
+                           (it.targetUid && it.targetUid === uid) ||
+                           (it.userId && it.userId === uid) ||
+                           (it.email && userEmail && it.email.toLowerCase() === userEmail) ||
+                           (it.createdBy && userEmail && it.createdBy.toLowerCase() === userEmail);
+
+        if (isUserItem && (it._local === true || !it.syncedToFirestore || it.syncedAt === undefined)) {
+          const docId = String(it.number || it.id || Date.now());
+          const cleanItem = { ...it, syncedToFirestore: true, syncedAt: now };
+          delete cleanItem._local;
+          await setDoc(doc(db, col, docId), cleanItem, { merge: true });
+          it.syncedToFirestore = true;
+          it.syncedAt = now;
+          delete it._local;
+          syncedCount++;
+        }
+      }
+    }
+
+    // 5. Supprimer / nettoyer les données temporaires locales (déplacement effectif du localStorage vers Firestore)
+    const tempKeys = [
+      'LAPERLE_PENDING_USER_DATA',
+      'LAPERLE_OFFLINE_USER_DATA',
+      'LAPERLE_LOCAL_USER_CHANGES',
+      `LAPERLE_USER_CACHE_${uid}`,
+      `LAPERLE_PENDING_${uid}`
+    ];
+    tempKeys.forEach(k => {
+      try { localStorage.removeItem(k); } catch (e) {}
+    });
+
+    // Mettre à jour l'entrée correspondante dans le state local
+    if (matchedLocalUser) {
+      Object.assign(matchedLocalUser, finalProfile);
+    }
+    save();
+
+    updateFirebaseBadge("connected", "🔥 Cloud synchronisé");
+    console.log(`[Sync LocalStorage -> Firestore] ✅ ${syncedCount} données utilisateur déplacées et synchronisées avec succès vers Firestore.`);
+    return true;
+  } catch (err) {
+    console.error("[Sync LocalStorage -> Firestore] Erreur:", err);
+    updateFirebaseBadge("offline");
+    return false;
+  }
+}
+
+window.syncUserDataFromLocalStorageToFirestore = syncUserDataFromLocalStorageToFirestore;
+
 function completeUserSignIn(user, profile, isNew = false) {
   clearExplicitLogout();
   currentUser = user;
@@ -2100,6 +2282,11 @@ function completeUserSignIn(user, profile, isNew = false) {
   if (currentUserRoles.includes(ROLES.ADMIN)) {
     seedInitialDataToFirestoreIfEmpty();
   }
+
+  // 7. Déplacement et synchronisation immédiate des données utilisateur du localStorage vers Firestore
+  syncUserDataFromLocalStorageToFirestore(user, currentUserProfile).catch(err => {
+    console.warn("[Sync LocalStorage -> Firestore]:", err?.message);
+  });
 
   render();
 }
