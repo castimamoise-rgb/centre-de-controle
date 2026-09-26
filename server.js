@@ -9,6 +9,8 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { initializeApp as initAdminApp, getApps as getAdminApps } from 'firebase-admin/app';
+import { getAuth as getAdminAuth } from 'firebase-admin/auth';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,18 +31,29 @@ app.use((req, res, next) => {
 // FIREBASE FIRESTORE CLOUD INTEGRATION (Single Source of Truth)
 // =========================================================================
 const firebaseConfig = {
-  projectId: "pragmatic-port-83bk6",
-  appId: "1:521694060859:web:ae2b6f370b00671486d71e",
-  apiKey: "AIzaSyA5bY7uu74D7RyOcq-LnqFO84ggIVQXRfs",
-  authDomain: "pragmatic-port-83bk6.firebaseapp.com",
-  firestoreDatabaseId: "ai-studio-centredecontrole-21d992ae-a8b2-4e21-be4f-d17f771ab5bf",
-  storageBucket: "pragmatic-port-83bk6.firebasestorage.app",
-  messagingSenderId: "521694060859",
-  oAuthClientId: "521694060859-5870t8r8325vm6f4fi3t3r59bf71ems8.apps.googleusercontent.com"
+  projectId: "laperletourht-28ad8",
+  appId: "1:385210839996:web:e1873fe5675e5730cab1b9",
+  apiKey: "AIzaSyD4D5AajRVUFI6tkf42NlkrmwNMRcuCfbI",
+  authDomain: "laperletourht-28ad8.firebaseapp.com",
+  firestoreDatabaseId: "ai-studio-centredecontrole-27e8ff4b-e91d-4923-8cc6-6265fb193fe7",
+  storageBucket: "laperletourht-28ad8.firebasestorage.app",
+  messagingSenderId: "385210839996",
+  oAuthClientId: "385210839996-rj4uvt3iep5hefj4km198vjgemuk5g4g.apps.googleusercontent.com"
 };
 
 const fbApp = initializeApp(firebaseConfig);
 const db = getFirestore(fbApp, firebaseConfig.firestoreDatabaseId);
+
+// Firebase Admin SDK pour l'authentification de confiance côté serveur
+let adminAuth = null;
+try {
+  const adminApp = getAdminApps().length ? getAdminApps()[0] : initAdminApp({
+    projectId: firebaseConfig.projectId
+  });
+  adminAuth = getAdminAuth(adminApp);
+} catch (adminInitErr) {
+  console.warn('[Firebase Admin SDK Init]:', adminInitErr?.message);
+}
 
 // =========================================================================
 // SECURITY & PERFORMANCE MIDDLEWARES (Global 500+ Users Scaling)
@@ -505,6 +518,62 @@ app.get('/favicon.ico', (req, res) => {
 // API AUTH : Inscription partagée et synchronisée à 100% dans Firestore
 app.post('/api/auth/register', async (req, res) => {
   try {
+    const rawAuth = req.headers.authorization || req.headers.Authorization || '';
+    const authHeader = String(rawAuth).trim();
+    let idToken = null;
+    if (authHeader.startsWith('Bearer ')) {
+      idToken = authHeader.slice(7).trim();
+    } else if (authHeader) {
+      idToken = authHeader;
+    }
+    // Secours : si non présent dans le header (proxy, extension ou client fetch stripped header), vérifier le corps de la requête
+    if (!idToken && req.body && typeof req.body.idToken === 'string') {
+      idToken = req.body.idToken.trim();
+    }
+
+    const hasAuthorizationHeader = Boolean(authHeader && authHeader.length > 0);
+    const authorizationHeaderLength = authHeader ? authHeader.length : 0;
+    const tokenLength = idToken ? idToken.length : 0;
+
+    console.log(`[server.js] REGISTER_REQUEST_RECEIVED`);
+    console.log(`[server.js] hasAuthorizationHeader: ${hasAuthorizationHeader}`);
+    console.log(`[server.js] authorizationHeaderLength: ${authorizationHeaderLength}`);
+    console.log(`[server.js] tokenLength: ${tokenLength}`);
+
+    if (!idToken) {
+      console.warn('[server.js] REGISTER_ERROR : jeton de sécurité absent (HTTP 401)');
+      return res.status(401).json({
+        error: "Authentification requise : jeton de sécurité Firebase Authentication manquant.",
+        code: "auth/missing-id-token"
+      });
+    }
+
+    let authenticatedUid = null;
+    let authenticatedEmail = null;
+    try {
+      if (!adminAuth) {
+        const adminApp = getAdminApps().length ? getAdminApps()[0] : initAdminApp({ projectId: firebaseConfig.projectId });
+        adminAuth = getAdminAuth(adminApp);
+      }
+      const decodedToken = await adminAuth.verifyIdToken(idToken);
+      authenticatedUid = decodedToken.uid;
+      authenticatedEmail = (decodedToken.email || '').toLowerCase().trim();
+      console.log(`[server.js] Résultat verifyIdToken(): SUCCÈS (UID validé: ${authenticatedUid})`);
+    } catch (tokenErr) {
+      console.warn(`[server.js] Résultat verifyIdToken(): ÉCHEC (${tokenErr?.code || tokenErr?.message})`);
+      return res.status(401).json({
+        error: "Jeton de sécurité Firebase invalide ou expiré.",
+        code: tokenErr?.code || "auth/invalid-id-token"
+      });
+    }
+
+    if (!authenticatedUid) {
+      return res.status(401).json({
+        error: "Impossible de valider l'identité Firebase de l'utilisateur.",
+        code: "auth/invalid-uid"
+      });
+    }
+
     const { nom, prenom, email, password, passwordConfirm, username, telephone } = req.body || {};
 
     if (!nom || !String(nom).trim()) {
@@ -534,6 +603,13 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     const cleanEmail = String(email).trim().toLowerCase();
+    if (authenticatedEmail && authenticatedEmail !== cleanEmail) {
+      return res.status(400).json({
+        error: "L'e-mail du compte Firebase ne correspond pas à l'adresse e-mail saisie.",
+        code: "auth/email-mismatch"
+      });
+    }
+
     const cleanNom = String(nom).trim();
     const cleanPrenom = String(prenom).trim();
     const fullName = `${cleanNom} ${cleanPrenom}`;
@@ -568,7 +644,8 @@ app.post('/api/auth/register', async (req, res) => {
     const isSuper = isSuperAdminEmail(cleanEmail);
     const now = new Date().toISOString();
     const passHash = hashPassword(cleanPass);
-    const uid = req.body?.uid || req.body?.id || `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    // Source d'autorité unique : le UID Firebase Authentication vérifié par Firebase Admin
+    const uid = authenticatedUid;
 
     const initialRole = isSuper ? 'admin' : 'client';
     const initialRoles = isSuper ? ['admin'] : ['client'];
@@ -1125,12 +1202,13 @@ app.post('/api/auth/sync', async (req, res) => {
   }
 });
 
-// Static assets with caching for optimal performance worldwide
+// Static assets with caching (no-cache on HTML and JS scripts for instant code updates)
 app.use(express.static(__dirname, {
-  maxAge: '1d',
   setHeaders: (res, filePath) => {
-    if (filePath.endsWith('.html')) {
-      res.setHeader('Cache-Control', 'no-cache');
+    if (filePath.endsWith('.html') || filePath.endsWith('.js')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
     }
   }
 }));
@@ -1143,44 +1221,14 @@ app.get('*', (req, res) => {
 async function syncFirestoreUsersOnBoot() {
   try {
     console.log('[Database] Synchronisation initiale des utilisateurs depuis Cloud Firestore...');
-    const snap = await getDocs(collection(db, 'utilisateurs'));
+    // Au démarrage du serveur, aucune session utilisateur n'est active.
+    // L'exécution directe de getDocs sur la collection entière avec le SDK Web non authentifié
+    // est restreinte par les règles de sécurité Firestore (request.auth == null).
+    // Les comptes par défaut et du disque sont chargés de façon fiable sans bloquer le boot.
     const diskUsers = loadUsersFromDisk();
-    const diskUserMap = new Map();
-    diskUsers.forEach(u => {
-      const key = u.id || u.uid;
-      if (key) diskUserMap.set(key, u);
-    });
-
-    let importedCount = 0;
-    snap.forEach(d => {
-      const data = d.data();
-      // Ignore index documents
-      if (d.id.startsWith('usr_uname_') || d.id.startsWith('usr_email_')) return;
-      if (data && (data.email || data.username || data.name)) {
-        const docId = data.id || data.uid || d.id;
-        const existing = diskUserMap.get(docId);
-        if (!existing) {
-          diskUsers.push({ ...data, id: docId, uid: data.uid || docId });
-          diskUserMap.set(docId, true);
-          importedCount++;
-        } else {
-          // Merge freshest data
-          Object.assign(existing, data);
-        }
-      }
-    });
-
-    // Make sure all default users exist in Firestore
-    for (const u of diskUsers) {
-      if (u && (u.id || u.uid)) {
-        await saveUserToFirestore(u);
-      }
-    }
-
-    saveUsers(diskUsers);
-    console.log(`[Database] Synchronisation terminée : ${diskUsers.length} comptes dans la base (${importedCount} chargés depuis Firestore).`);
+    console.log(`[Database] Initialisation locale terminée : ${diskUsers.length} comptes chargés depuis le disque.`);
   } catch (err) {
-    console.warn('[Database] Avertissement synchronisation Firestore boot:', err.message);
+    console.warn('[Database] Avertissement synchronisation Firestore boot:', err?.message || err);
   }
 }
 

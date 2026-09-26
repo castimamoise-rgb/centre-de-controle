@@ -2284,9 +2284,13 @@ function completeUserSignIn(user, profile, isNew = false) {
   }
 
   // 7. Déplacement et synchronisation immédiate des données utilisateur du localStorage vers Firestore
-  syncUserDataFromLocalStorageToFirestore(user, currentUserProfile).catch(err => {
-    console.warn("[Sync LocalStorage -> Firestore]:", err?.message);
-  });
+  // Un utilisateur nouvellement enregistré (isNew === true) a déjà été persisté dans Firestore par le flux d'inscription.
+  // Déclencher cette synchronisation redondante réécrivait des champs non autorisés (statut, email, timestamps) entraînant un rejet de sécurité Firestore.
+  if (!isNew) {
+    syncUserDataFromLocalStorageToFirestore(user, currentUserProfile).catch(err => {
+      console.warn("[Sync LocalStorage -> Firestore]:", err?.message);
+    });
+  }
 
   render();
 }

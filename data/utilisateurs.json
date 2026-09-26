@@ -182,5 +182,108 @@
     "lastLoginAt": "2026-09-24T13:50:25.696Z",
     "createdBy": "test123456@gmail.com",
     "updatedBy": "test123456@gmail.com"
+  },
+  {
+    "id": "PtfGAqIPpWP9fvIRg3LiNdggeTp1",
+    "uid": "PtfGAqIPpWP9fvIRg3LiNdggeTp1",
+    "nom": "Dupont",
+    "prenom": "Jean",
+    "name": "Dupont Jean",
+    "username": "jean_dupont",
+    "aliases": [
+      "testuser4161",
+      "jean_dupont",
+      "dupont",
+      "jean",
+      "dupont_jean"
+    ],
+    "email": "testuser4161@gmail.com",
+    "telephone": "",
+    "phone": "",
+    "photoURL": "",
+    "roles": [
+      "client"
+    ],
+    "role": "client",
+    "status": "actif",
+    "statutCompte": "actif",
+    "statutClient": "client",
+    "passwordHash": "2e426ffcd03ca0152f1086615313a3f26ebddbf6a6807a642efc0ffbfd8b2a5c",
+    "notes": "Client inscrit sur le site LAPERLE TOUR HT",
+    "permissions": {},
+    "createdAt": "2026-09-26T13:57:55.292Z",
+    "updatedAt": "2026-09-26T13:57:55.292Z",
+    "lastLoginAt": "2026-09-26T13:57:55.292Z",
+    "createdBy": "testuser4161@gmail.com",
+    "updatedBy": "testuser4161@gmail.com"
+  },
+  {
+    "id": "h0Z1F0XSrBPHBhRSZhWa61Cc1Su1",
+    "uid": "h0Z1F0XSrBPHBhRSZhWa61Cc1Su1",
+    "nom": "Dupont",
+    "prenom": "Jean",
+    "name": "Dupont Jean",
+    "username": "jean_dupont1",
+    "aliases": [
+      "testuser0034",
+      "jean_dupont1",
+      "dupont",
+      "jean",
+      "dupont_jean",
+      "jean_dupont"
+    ],
+    "email": "testuser0034@gmail.com",
+    "telephone": "",
+    "phone": "",
+    "photoURL": "",
+    "roles": [
+      "client"
+    ],
+    "role": "client",
+    "status": "actif",
+    "statutCompte": "actif",
+    "statutClient": "client",
+    "passwordHash": "ad9c28073e510b26ed026531946d2d7b4a9fe40238dee37766adf46f3411189e",
+    "notes": "Client inscrit sur le site LAPERLE TOUR HT",
+    "permissions": {},
+    "createdAt": "2026-09-26T13:58:00.991Z",
+    "updatedAt": "2026-09-26T13:58:00.991Z",
+    "lastLoginAt": "2026-09-26T13:58:00.991Z",
+    "createdBy": "testuser0034@gmail.com",
+    "updatedBy": "testuser0034@gmail.com"
+  },
+  {
+    "id": "6hSrV1O8RmbHCVKYOgFUE3V0mWi1",
+    "uid": "6hSrV1O8RmbHCVKYOgFUE3V0mWi1",
+    "nom": "Martin",
+    "prenom": "Paul",
+    "name": "Martin Paul",
+    "username": "paul_martin",
+    "aliases": [
+      "userfall1226",
+      "paul_martin",
+      "martin",
+      "paul",
+      "martin_paul"
+    ],
+    "email": "userfall1226@gmail.com",
+    "telephone": "",
+    "phone": "",
+    "photoURL": "",
+    "roles": [
+      "client"
+    ],
+    "role": "client",
+    "status": "actif",
+    "statutCompte": "actif",
+    "statutClient": "client",
+    "passwordHash": "0ffbe548ba54485615bee28f5154ca0420e690c347ef82a4ce14e79b39cecd61",
+    "notes": "Client inscrit sur le site LAPERLE TOUR HT",
+    "permissions": {},
+    "createdAt": "2026-09-26T13:58:01.807Z",
+    "updatedAt": "2026-09-26T13:58:01.807Z",
+    "lastLoginAt": "2026-09-26T13:58:01.807Z",
+    "createdBy": "userfall1226@gmail.com",
+    "updatedBy": "userfall1226@gmail.com"
   }
 ]

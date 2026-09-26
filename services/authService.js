@@ -210,139 +210,110 @@ export async function signUpWithEmailAndPasswordMethod({ nom, prenom, email, pas
   const initialRoles = isSuperAdmin ? [ROLES.ADMIN] : [ROLES.CLIENT];
   const initialRole = isSuperAdmin ? ROLES.ADMIN : ROLES.CLIENT;
 
-  // 1. Synchronisation Firebase Authentication si disponible
+  // 1. Authentification Firebase Authentication (Source unique de vérité)
   let firebaseUser = null;
+  let idToken = null;
   const firebaseAuthPass = cleanPass.length < 6 ? `lp_${cleanPass}_auth` : cleanPass;
+
   try {
     const cred = await createUserWithEmailAndPassword(auth, cleanEmail, firebaseAuthPass);
     firebaseUser = cred.user;
     try {
       await updateProfile(firebaseUser, { displayName: fullName });
     } catch (e) {}
+    // Récupérer le véritable Firebase ID Token depuis cred.user ou auth.currentUser
+    if (firebaseUser && typeof firebaseUser.getIdToken === 'function') {
+      try {
+        idToken = await firebaseUser.getIdToken(true);
+      } catch (tokErr) {
+        console.warn("Échec récupération getIdToken sur cred.user:", tokErr);
+      }
+    }
+    if ((!idToken || typeof idToken !== 'string') && auth?.currentUser) {
+      try {
+        idToken = await auth.currentUser.getIdToken(true);
+      } catch (tokErr2) {
+        console.warn("Échec récupération getIdToken sur auth.currentUser:", tokErr2);
+      }
+    }
   } catch (authErr) {
-    console.warn("createUserWithEmailAndPassword Firebase warning:", authErr?.code || authErr?.message);
+    console.error("createUserWithEmailAndPassword Firebase error:", authErr?.code || authErr?.message);
     if (authErr?.code === 'auth/email-already-in-use') {
       try {
         const cred = await signInWithEmailAndPassword(auth, cleanEmail, firebaseAuthPass);
         firebaseUser = cred.user;
+        if (firebaseUser && typeof firebaseUser.getIdToken === 'function') {
+          idToken = await firebaseUser.getIdToken(true);
+        }
       } catch (loginErr) {
         const err = new Error(`Un compte existe déjà pour « ${cleanEmail} ». Veuillez basculer sur « Pour Se Connecter » ou utiliser un autre email.`);
         err.code = 'auth/email-already-in-use';
         throw err;
       }
+    } else {
+      // Interrompre immédiatement sans créer de compte local, sans session, sans Firestore
+      const formattedMsg = formatAuthError(authErr) || authErr?.message || "Échec de création du compte dans Firebase Authentication.";
+      const err = new Error(formattedMsg);
+      err.code = authErr?.code || 'auth/registration-failed';
+      throw err;
     }
   }
 
-  const uid = firebaseUser?.uid || `usr_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+  // Vérifier impérativement que idToken est une chaîne non vide avant d'appeler l'API
+  if (!firebaseUser?.uid || typeof idToken !== 'string' || !idToken.trim()) {
+    throw new Error("Impossible d'obtenir le jeton d'authentification Firebase sécurisé.");
+  }
 
-  // 2. Enregistrement dans la base de données partagée du serveur (avec gestion sécurisée)
+  const uid = firebaseUser.uid;
+
+  // 2. Enregistrement sécurisé côté serveur vérifié par Firebase Admin SDK
   let serverResult = null;
-  try {
-    const apiRes = await safeFetchJson('/api/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        uid,
-        nom: cleanNom,
-        prenom: cleanPrenom,
-        email: cleanEmail,
-        password: cleanPass,
-        passwordConfirm: cleanPass,
-        username,
-        telephone
-      })
-    });
-    if (!apiRes.ok) {
-      if (apiRes.data?.code === 'auth/email-already-in-use') {
-        const err = new Error(apiRes.data.error || `Un compte existe déjà pour « ${cleanEmail} ». Veuillez basculer sur « Pour Se Connecter ».`);
-        err.code = 'auth/email-already-in-use';
-        throw err;
-      }
-      if (apiRes.data?.error && apiRes.status >= 400 && apiRes.status < 500) {
-        throw new Error(apiRes.data.error);
-      }
+  const apiRes = await safeFetchJson('/api/auth/register', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${idToken}`
+    },
+    body: JSON.stringify({
+      uid,
+      idToken,
+      nom: cleanNom,
+      prenom: cleanPrenom,
+      email: cleanEmail,
+      password: cleanPass,
+      passwordConfirm: cleanPass,
+      username,
+      telephone
+    })
+  });
+
+  if (!apiRes.ok) {
+    if (apiRes.data?.code === 'auth/email-already-in-use') {
+      const err = new Error(apiRes.data.error || `Un compte existe déjà pour « ${cleanEmail} ». Veuillez basculer sur « Pour Se Connecter ».`);
+      err.code = 'auth/email-already-in-use';
+      throw err;
     }
-    if (apiRes.ok && apiRes.data) {
-      serverResult = apiRes.data;
-    }
-  } catch (apiErr) {
-    if (apiErr.code === 'auth/email-already-in-use' || apiErr.message) throw apiErr;
-    console.warn("API serveur /api/auth/register non bloquant:", apiErr?.message);
+    const err = new Error(apiRes.data?.error || `Erreur serveur lors de la finalisation du compte (${apiRes.status || 'inconnu'}).`);
+    err.code = apiRes.data?.code || 'auth/server-error';
+    throw err;
   }
 
-  const newProfile = serverResult?.profile || {
-    id: uid,
-    uid: uid,
-    nom: cleanNom,
-    prenom: cleanPrenom,
-    name: fullName,
-    username: username ? String(username).trim().toLowerCase() : `${cleanPrenom.toLowerCase()}_${cleanNom.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
-    email: cleanEmail,
-    photoURL: '',
-    roles: initialRoles,
-    role: initialRole,
-    status: 'actif',
-    statutCompte: 'actif',
-    statutClient: 'client',
-    telephone: telephone || '',
-    phone: telephone || '',
-    passwordHash: passHash,
-    notes: isSuperAdmin ? 'Administrateur Principal LAPERLE TOUR HT' : 'Client inscrit sur le site LAPERLE TOUR HT',
-    permissions: {},
-    createdAt: now,
-    updatedAt: now,
-    lastLoginAt: now,
-    createdBy: cleanEmail || uid,
-    updatedBy: cleanEmail || uid
-  };
+  serverResult = apiRes.data;
+  if (!serverResult || !serverResult.profile) {
+    throw new Error("Réponse serveur invalide lors de l'enregistrement du compte.");
+  }
 
-  // 3. Sauvegarde dans Firestore Cloud Database
+  const newProfile = serverResult.profile;
+
+  // 3. Sauvegarde de confirmation dans Firestore Cloud Database
   try {
     const userDocRef = doc(db, USERS_COLLECTION, uid);
     await setDoc(userDocRef, newProfile, { merge: true });
-
-    if (cleanEmail) {
-      const safeEmailKey = cleanEmail.replace(/[^a-zA-Z0-9_-]/g, '_');
-      await setDoc(doc(db, USERS_COLLECTION, 'usr_email_' + safeEmailKey), {
-        id: 'usr_email_' + safeEmailKey,
-        targetId: uid,
-        uid: uid,
-        email: cleanEmail,
-        username: newProfile.username || '',
-        name: fullName,
-        role: initialRole,
-        roles: initialRoles,
-        status: 'actif',
-        statutCompte: 'actif',
-        statutClient: 'client',
-        passwordHash: passHash,
-        updatedAt: now
-      }, { merge: true });
-    }
-
-    if (newProfile.username) {
-      const safeUnameKey = String(newProfile.username).replace(/[^a-zA-Z0-9_-]/g, '_');
-      await setDoc(doc(db, USERS_COLLECTION, 'usr_uname_' + safeUnameKey), {
-        id: 'usr_uname_' + safeUnameKey,
-        targetId: uid,
-        uid: uid,
-        username: newProfile.username,
-        email: cleanEmail,
-        name: fullName,
-        role: initialRole,
-        roles: initialRoles,
-        status: 'actif',
-        statutCompte: 'actif',
-        statutClient: 'client',
-        passwordHash: passHash,
-        updatedAt: now
-      }, { merge: true });
-    }
   } catch (fsErr) {
-    console.warn("setDoc profil Firestore:", fsErr?.message);
+    console.warn("Mise à jour directe Firestore ignorée (sécurisée par le serveur):", fsErr?.message);
   }
 
-  // 4. Mise à jour de la liste locale
+  // 4. Mise à jour du cache local uniquement après succès vérifié de Firebase Auth et du serveur
   try {
     const localKey = "LAPERLE_CENTRE_CONTROL_V3";
     const rawData = localStorage.getItem(localKey);
@@ -359,7 +330,7 @@ export async function signUpWithEmailAndPasswordMethod({ nom, prenom, email, pas
     }
   } catch (e) {}
 
-  const resolvedUserObj = serverResult?.user || {
+  const resolvedUserObj = serverResult.user || {
     uid: uid,
     displayName: fullName,
     email: cleanEmail,
@@ -443,24 +414,6 @@ export async function signInWithEmailAndPasswordMethod(identifier, password) {
         const isAdminPass = isAdminUser && cleanPass === 'Admin26';
 
         if (cloudExisting.passwordHash === inputHash || cloudExisting.password === cleanPass || isAdminPass) {
-          // Synchroniser le compte vers le serveur
-          try {
-            await safeFetchJson('/api/auth/register', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                uid: cloudExisting.uid || cloudExisting.id,
-                nom: cloudExisting.nom || cloudExisting.name || 'Utilisateur',
-                prenom: cloudExisting.prenom || '',
-                email: cloudExisting.email,
-                password: cleanPass,
-                passwordConfirm: cleanPass,
-                username: cloudExisting.username,
-                telephone: cloudExisting.telephone || cloudExisting.phone || ''
-              })
-            });
-          } catch (e) {}
-
           const resolvedUserObj = {
             uid: cloudExisting.uid || cloudExisting.id,
             displayName: cloudExisting.nom || cloudExisting.name || cloudExisting.username || 'Utilisateur',
@@ -1368,8 +1321,11 @@ export function formatAuthError(error) {
     return "La méthode « Lien par e-mail sans mot de passe » doit être activée dans la console Firebase (Authentication > Sign-in method > E-mail/Mot de passe > Activer « Lien par e-mail »). Vous pouvez vous connecter immédiatement avec Google ou en accès direct ci-dessous.";
   }
   if (code === 'auth/unauthorized-domain' || msg.includes('auth/unauthorized-domain')) {
-    const domain = typeof window !== 'undefined' ? window.location.hostname : '';
-    return `Le domaine ${domain} n'est pas encore autorisé dans Firebase Authentication (Authentication > Settings > Authorized domains).`;
+    const domain = typeof window !== 'undefined' ? window.location.hostname : 'votre domaine';
+    return `Le domaine « ${domain} » n'est pas autorisé dans Firebase Authentication. Veuillez l'ajouter dans la console Firebase (Authentication > Paramètres > Domaines autorisés).`;
+  }
+  if (code === 'auth/network-request-failed' || msg.includes('auth/network-request-failed')) {
+    return "Erreur réseau Firebase Authentication : la requête vers Google Firebase n'a pas pu aboutir. Veuillez vérifier la connexion ou l'autorisation du domaine.";
   }
   if (code === 'auth/invalid-email') {
     return "L'adresse e-mail saisie n'est pas valide.";
@@ -1394,9 +1350,6 @@ export function formatAuthError(error) {
   }
   if (code === 'auth/email-already-in-use') {
     return msg || "Un compte existe déjà pour cette adresse e-mail. Veuillez basculer sur l'onglet « Pour Se Connecter ».";
-  }
-  if (code === 'auth/network-request-failed') {
-    return "Erreur réseau. Veuillez vérifier votre connexion Internet.";
   }
   if (code === 'auth/user-disabled') {
     return "Ce compte utilisateur a été désactivé par l'administration.";

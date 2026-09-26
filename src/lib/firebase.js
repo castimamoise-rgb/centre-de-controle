@@ -60,15 +60,15 @@ export {
 };
 
 export const firebaseConfig = {
-  projectId: "pragmatic-port-83bk6",
-  appId: "1:521694060859:web:ae2b6f370b00671486d71e",
-  apiKey: "AIzaSyA5bY7uu74D7RyOcq-LnqFO84ggIVQXRfs",
-  authDomain: "pragmatic-port-83bk6.firebaseapp.com",
-  firestoreDatabaseId: "ai-studio-centredecontrole-21d992ae-a8b2-4e21-be4f-d17f771ab5bf",
-  storageBucket: "pragmatic-port-83bk6.firebasestorage.app",
-  messagingSenderId: "521694060859",
+  projectId: "laperletourht-28ad8",
+  appId: "1:385210839996:web:e1873fe5675e5730cab1b9",
+  apiKey: "AIzaSyD4D5AajRVUFI6tkf42NlkrmwNMRcuCfbI",
+  authDomain: "laperletourht-28ad8.firebaseapp.com",
+  firestoreDatabaseId: "ai-studio-centredecontrole-27e8ff4b-e91d-4923-8cc6-6265fb193fe7",
+  storageBucket: "laperletourht-28ad8.firebasestorage.app",
+  messagingSenderId: "385210839996",
   measurementId: "",
-  oAuthClientId: "521694060859-5870t8r8325vm6f4fi3t3r59bf71ems8.apps.googleusercontent.com",
+  oAuthClientId: "385210839996-rj4uvt3iep5hefj4km198vjgemuk5g4g.apps.googleusercontent.com",
   recaptchaSiteKey: ""
 };
 
