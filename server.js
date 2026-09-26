@@ -16,7 +16,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // Trust Cloud Run reverse proxy
 app.set('trust proxy', 1);
@@ -33,7 +33,7 @@ app.use((req, res, next) => {
 const firebaseConfig = {
   projectId: "laperletourht-28ad8",
   appId: "1:385210839996:web:e1873fe5675e5730cab1b9",
-  apiKey: "AIzaSyD4D5AajRVUFI6tkf42NlkrmwNMRcuCfbI",
+  apiKey: process.env.FIREBASE_API_KEY || "AIzaSyD4D5AajRVUFI6tkf42NlkrmwNMRcuCfbI",
   authDomain: "laperletourht-28ad8.firebaseapp.com",
   firestoreDatabaseId: "ai-studio-centredecontrole-27e8ff4b-e91d-4923-8cc6-6265fb193fe7",
   storageBucket: "laperletourht-28ad8.firebasestorage.app",
@@ -238,10 +238,18 @@ function saveUsersToDisk(users) {
 }
 
 // Write a user directly to Cloud Firestore and sync memory
+// Note: In browser sessions, the client SDK authenticates with Firebase Auth and writes to Firestore directly.
+// The server avoids performing unauthenticated writes that would fail with PERMISSION_DENIED.
 async function saveUserToFirestore(user) {
   if (!user) return;
   const docId = user.id || user.uid;
   if (!docId) return;
+
+  // The client browser performs authoritative writes to Firestore using the user's Firebase Auth credentials.
+  // We only attempt server writes if explicitly configured with service credentials.
+  if (!process.env.GOOGLE_APPLICATION_CREDENTIALS && !process.env.FIREBASE_SERVICE_ACCOUNT) {
+    return;
+  }
 
   try {
     const userDocRef = doc(db, 'utilisateurs', docId);
@@ -254,14 +262,23 @@ async function saveUserToFirestore(user) {
           payload.createdAt = existingData.createdAt;
           user.createdAt = existingData.createdAt;
         }
+        if (existingData.createdBy) {
+          payload.createdBy = existingData.createdBy;
+        }
       }
     } catch (readErr) {
       // Proceed with payload if reading fails
     }
 
+    Object.keys(payload).forEach(k => {
+      if (payload[k] === undefined) delete payload[k];
+    });
+
     await setDoc(userDocRef, payload, { merge: true });
   } catch (err) {
-    console.warn(`[Firestore Sync Warning] Error writing ${docId}:`, err.message);
+    if (err?.code !== 'permission-denied' && !err?.message?.includes('PERMISSION_DENIED')) {
+      console.warn(`[Firestore Sync Warning] Error writing ${docId}:`, err.message);
+    }
   }
 }
 

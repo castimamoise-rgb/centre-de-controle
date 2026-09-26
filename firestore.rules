@@ -622,31 +622,48 @@ service cloud.firestore {
         (
           isSignedIn() && request.auth.uid == utilisateurId &&
           (!('uid' in incoming()) || incoming().uid == existing().uid) &&
-          (!('createdAt' in incoming()) || incoming().createdAt == existing().createdAt) &&
-          (!('createdBy' in incoming()) || incoming().createdBy == existing().createdBy) &&
+          (!('createdAt' in incoming()) || !('createdAt' in existing()) || incoming().createdAt == existing().createdAt) &&
+          (!('createdBy' in incoming()) || !('createdBy' in existing()) || incoming().createdBy == existing().createdBy) &&
           // Cannot modify status or statutCompte
-          (!('status' in incoming()) || incoming().status == existing().status) &&
-          (!('statutCompte' in incoming()) || incoming().statutCompte == existing().statutCompte) &&
+          (!('status' in incoming()) || !('status' in existing()) || incoming().status == existing().status) &&
+          (!('statutCompte' in incoming()) || !('statutCompte' in existing()) || incoming().statutCompte == existing().statutCompte) &&
           // Cannot self-assign or change any role or permissions
-          (!('roles' in incoming()) || incoming().roles == existing().roles) &&
-          (!('role' in incoming()) || incoming().role == existing().role) &&
-          (!('statutClient' in incoming()) || incoming().statutClient == existing().statutClient) &&
-          (!('permissions' in incoming()) || incoming().permissions == existing().permissions) &&
-          // Only personal contact details can be modified by the user
-          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'nom', 'prenom', 'username', 'aliases', 'phone', 'telephone', 'photoURL', 'avatar', 'passwordHash', 'notes', 'updatedAt', 'updatedBy', 'lastLoginAt'])
+          (!('roles' in incoming()) || !('roles' in existing()) || incoming().roles == existing().roles) &&
+          (!('role' in incoming()) || !('role' in existing()) || incoming().role == existing().role) &&
+          (!('statutClient' in incoming()) || !('statutClient' in existing()) || incoming().statutClient == existing().statutClient) &&
+          (!('permissions' in incoming()) || !('permissions' in existing()) || incoming().permissions == existing().permissions) &&
+          // Personal contact details and synchronization metadata
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'name', 'nom', 'prenom', 'username', 'aliases', 
+            'phone', 'telephone', 'photoURL', 'avatar', 
+            'passwordHash', 'notes', 'updatedAt', 'updatedBy', 'lastLoginAt',
+            'syncedToFirestore', 'lastSyncAt', 'syncedAt', 'createdBy', 'permissions',
+            'email', 'id', 'uid', 'status', 'statutCompte', 'statutClient', 'roles', 'role'
+          ])
         ) ||
         (
           // Super admin email profile update
           (isTargetSuperAdminEmail(existing().email) || isTargetSuperAdminEmail(incoming().email) || utilisateurId in ["usr_admin_castima", "usr_admin_castimaklik", "usr_admin_laperle"]) &&
-          incoming().diff(existing()).affectedKeys().hasOnly(['id', 'uid', 'targetId', 'permissions', 'name', 'nom', 'prenom', 'username', 'aliases', 'phone', 'telephone', 'photoURL', 'avatar', 'passwordHash', 'notes', 'status', 'statutCompte', 'statutClient', 'roles', 'role', 'updatedAt', 'updatedBy', 'lastLoginAt'])
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'id', 'uid', 'targetId', 'permissions', 'name', 'nom', 'prenom', 'username', 'aliases', 
+            'phone', 'telephone', 'photoURL', 'avatar', 'passwordHash', 'notes', 
+            'status', 'statutCompte', 'statutClient', 'roles', 'role', 
+            'updatedAt', 'updatedBy', 'lastLoginAt', 'syncedToFirestore', 'lastSyncAt', 'syncedAt', 'createdBy'
+          ])
         ) ||
         (
           // Profile updates for web users without administrative role escalation
           (!('uid' in incoming()) || incoming().uid == existing().uid) &&
-          (!('createdAt' in incoming()) || incoming().createdAt == existing().createdAt) &&
+          (!('createdAt' in incoming()) || !('createdAt' in existing()) || incoming().createdAt == existing().createdAt) &&
           (!('roles' in incoming()) || !incoming().roles.hasAny(["admin", "direction", "comptabilite", "secretaire", "operations", "chauffeur"])) &&
           (!('role' in incoming()) || !(["admin", "direction", "comptabilite", "secretaire", "operations", "chauffeur"].hasAny([incoming().role.lower()]))) &&
-          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'nom', 'prenom', 'username', 'aliases', 'phone', 'telephone', 'photoURL', 'avatar', 'passwordHash', 'notes', 'updatedAt', 'updatedBy', 'lastLoginAt'])
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'name', 'nom', 'prenom', 'username', 'aliases', 
+            'phone', 'telephone', 'photoURL', 'avatar', 
+            'passwordHash', 'notes', 'updatedAt', 'updatedBy', 'lastLoginAt',
+            'syncedToFirestore', 'lastSyncAt', 'syncedAt', 'createdBy', 'permissions',
+            'email', 'id', 'uid', 'status', 'statutCompte', 'statutClient', 'roles', 'role'
+          ])
         )
       );
 

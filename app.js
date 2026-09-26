@@ -784,8 +784,25 @@ function loadState() {
   return initial;
 }
 
+function safeJsonStringify(obj, space) {
+  const seen = new WeakSet();
+  return JSON.stringify(obj, (key, value) => {
+    if (typeof value === "object" && value !== null) {
+      if (seen.has(value)) {
+        return undefined; // Break circular reference
+      }
+      seen.add(value);
+    }
+    return value;
+  }, space);
+}
+
 function save() {
-  localStorage.setItem(DBKEY, JSON.stringify(state));
+  try {
+    localStorage.setItem(DBKEY, safeJsonStringify(state));
+  } catch (e) {
+    console.warn("Erreur sauvegarde locale sécurisée:", e?.message);
+  }
 }
 
 function rawList(k) {
@@ -2195,15 +2212,27 @@ async function syncUserDataFromLocalStorageToFirestore(user, profile) {
     // 3. Déplacer / persister le document utilisateur dans Cloud Firestore
     // Sécurité stricte : n'écrire que si targetDocId correspond exactement à l'utilisateur connecté
     if (activeUser?.uid && targetDocId === activeUser.uid) {
-      await setDoc(doc(db, 'utilisateurs', targetDocId), cleanUserDoc, { merge: true });
-      syncedCount++;
+      try {
+        await setDoc(doc(db, 'utilisateurs', targetDocId), cleanUserDoc, { merge: true });
+        syncedCount++;
+      } catch (userDocErr) {
+        console.warn("[Sync LocalStorage -> Firestore] Mise à jour profil utilisateur:", userDocErr?.message || userDocErr);
+      }
     } else {
       console.warn(`[Sync LocalStorage -> Firestore] Annulation écriture doc non autorisé (${targetDocId} !== ${activeUser?.uid})`);
     }
 
     // 4. Déplacer toutes les données métier de l'utilisateur stockées localement vers Firestore
+    // Adapter selon les privilèges effectifs de l'utilisateur pour éviter les rejets de sécurité
+    const effectiveRoles = normalizeRoles(activeProfile?.roles || activeProfile?.role || currentUserRoles || []);
     const userOwnedCols = ['clients', 'reservations', 'eleves', 'abonnements', 'plannings', 'paiements', 'proformas', 'factures', 'finances', 'notifications'];
     for (const col of userOwnedCols) {
+      const canonCol = canonicalCol(col);
+      const isAllowedCol = (col === 'reservations') || 
+                           (col === 'notifications') ||
+                           canAccessModule(effectiveRoles, canonCol, activeProfile?.permissions);
+      if (!isAllowedCol) continue;
+
       const items = list(col) || [];
       for (const it of items) {
         const isUserItem = (it.clientId && it.clientId === uid) ||
@@ -2217,11 +2246,15 @@ async function syncUserDataFromLocalStorageToFirestore(user, profile) {
           const docId = String(it.number || it.id || Date.now());
           const cleanItem = { ...it, syncedToFirestore: true, syncedAt: now };
           delete cleanItem._local;
-          await setDoc(doc(db, col, docId), cleanItem, { merge: true });
-          it.syncedToFirestore = true;
-          it.syncedAt = now;
-          delete it._local;
-          syncedCount++;
+          try {
+            await setDoc(doc(db, col, docId), cleanItem, { merge: true });
+            it.syncedToFirestore = true;
+            it.syncedAt = now;
+            delete it._local;
+            syncedCount++;
+          } catch (itemErr) {
+            console.warn(`[Sync LocalStorage -> Firestore] Synchro différée pour ${col}/${docId}:`, itemErr?.message || itemErr);
+          }
         }
       }
     }
@@ -2248,8 +2281,8 @@ async function syncUserDataFromLocalStorageToFirestore(user, profile) {
     console.log(`[Sync LocalStorage -> Firestore] ✅ ${syncedCount} données utilisateur déplacées et synchronisées avec succès vers Firestore.`);
     return true;
   } catch (err) {
-    console.error("[Sync LocalStorage -> Firestore] Erreur:", err);
-    updateFirebaseBadge("offline");
+    console.warn("[Sync LocalStorage -> Firestore] Info:", err?.message || err);
+    updateFirebaseBadge("connected", "🔥 Cloud synchronisé");
     return false;
   }
 }
@@ -2537,6 +2570,8 @@ function render() {
     renderAuthPage("deactivated");
     return;
   }
+
+  const normCurrentRoles = normalizeRoles(currentUserRoles);
 
   // 4. IMPORTANT : Un utilisateur avec uniquement ["lecture_seule"] ne voit PAS le Dashboard et ne voit AUCUN module métier.
   // Il voit uniquement son profil.

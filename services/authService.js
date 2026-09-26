@@ -266,20 +266,13 @@ export async function signUpWithEmailAndPasswordMethod({ nom, prenom, email, pas
       }
     }
   } catch (authErr) {
-    console.error("createUserWithEmailAndPassword Firebase error:", authErr?.code || authErr?.message);
     if (authErr?.code === 'auth/email-already-in-use') {
-      try {
-        const cred = await signInWithEmailAndPassword(auth, cleanEmail, firebaseAuthPass);
-        firebaseUser = cred.user;
-        if (firebaseUser && typeof firebaseUser.getIdToken === 'function') {
-          idToken = await firebaseUser.getIdToken(true);
-        }
-      } catch (loginErr) {
-        const err = new Error(`Un compte existe déjà pour « ${cleanEmail} ». Veuillez basculer sur « Pour Se Connecter » ou utiliser un autre email.`);
-        err.code = 'auth/email-already-in-use';
-        throw err;
-      }
+      console.warn(`[Inscription] Adresse e-mail déjà enregistrée : ${cleanEmail}`);
+      const err = new Error("Un compte existe déjà pour cette adresse e-mail. Veuillez vous connecter.");
+      err.code = 'auth/email-already-in-use';
+      throw err;
     } else {
+      console.error("createUserWithEmailAndPassword Firebase error:", authErr?.code || authErr?.message);
       // Interrompre immédiatement sans créer de compte local, sans session, sans Firestore
       const formattedMsg = formatAuthError(authErr) || authErr?.message || "Échec de création du compte dans Firebase Authentication.";
       const err = new Error(formattedMsg);
