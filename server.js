@@ -260,49 +260,6 @@ async function saveUserToFirestore(user) {
     }
 
     await setDoc(userDocRef, payload, { merge: true });
-
-    // Persist email index document for instant O(1) matching by email
-    if (payload.email) {
-      const cleanEmail = String(payload.email).trim().toLowerCase();
-      const safeEmailKey = cleanEmail.replace(/[^a-zA-Z0-9_-]/g, '_');
-      const emailIndexRef = doc(db, 'utilisateurs', 'usr_email_' + safeEmailKey);
-      await setDoc(emailIndexRef, {
-        id: 'usr_email_' + safeEmailKey,
-        targetId: docId,
-        uid: docId,
-        email: cleanEmail,
-        username: payload.username || '',
-        name: payload.name || `${payload.prenom || ''} ${payload.nom || ''}`.trim(),
-        role: payload.role || 'client',
-        roles: payload.roles || ['client'],
-        status: payload.status || 'actif',
-        statutCompte: payload.statutCompte || 'actif',
-        statutClient: payload.statutClient || 'client',
-        passwordHash: payload.passwordHash || '',
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
-    }
-
-    // Persist username lookup document for instant O(1) matching by username
-    if (payload.username) {
-      const cleanUname = String(payload.username).trim().toLowerCase().replace(/^@/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
-      const unameIndexRef = doc(db, 'utilisateurs', 'usr_uname_' + cleanUname);
-      await setDoc(unameIndexRef, {
-        id: 'usr_uname_' + cleanUname,
-        targetId: docId,
-        uid: docId,
-        username: cleanUname,
-        email: payload.email || '',
-        name: payload.name || `${payload.prenom || ''} ${payload.nom || ''}`.trim(),
-        role: payload.role || 'client',
-        roles: payload.roles || ['client'],
-        status: payload.status || 'actif',
-        statutCompte: payload.statutCompte || 'actif',
-        statutClient: payload.statutClient || 'client',
-        passwordHash: payload.passwordHash || '',
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
-    }
   } catch (err) {
     console.warn(`[Firestore Sync Warning] Error writing ${docId}:`, err.message);
   }
@@ -647,8 +604,8 @@ app.post('/api/auth/register', async (req, res) => {
     // Source d'autorité unique : le UID Firebase Authentication vérifié par Firebase Admin
     const uid = authenticatedUid;
 
-    const initialRole = isSuper ? 'admin' : 'client';
-    const initialRoles = isSuper ? ['admin'] : ['client'];
+    const initialRole = isSuper ? 'admin' : 'prospect';
+    const initialRoles = isSuper ? ['admin'] : ['prospect'];
 
     const newProfile = {
       id: uid,
@@ -673,9 +630,9 @@ app.post('/api/auth/register', async (req, res) => {
       role: initialRole,
       status: 'actif',
       statutCompte: 'actif',
-      statutClient: isSuper ? 'client' : 'client',
+      statutClient: isSuper ? 'client' : 'prospect',
       passwordHash: passHash,
-      notes: isSuper ? 'Administrateur Principal LAPERLE TOUR HT' : 'Client inscrit sur le site LAPERLE TOUR HT',
+      notes: isSuper ? 'Administrateur Principal LAPERLE TOUR HT' : 'Prospect inscrit sur le site LAPERLE TOUR HT',
       permissions: {},
       createdAt: now,
       updatedAt: now,
@@ -754,12 +711,12 @@ app.post('/api/auth/google', async (req, res) => {
         telephone: '',
         phone: '',
         photoURL: photoURL || '',
-        roles: isSuper ? ['admin'] : ['client'],
-        role: isSuper ? 'admin' : 'client',
+        roles: isSuper ? ['admin'] : ['prospect'],
+        role: isSuper ? 'admin' : 'prospect',
         status: 'actif',
         statutCompte: 'actif',
-        statutClient: 'client',
-        notes: isSuper ? 'Administrateur Principal LAPERLE TOUR HT' : 'Compte Google LAPERLE TOUR HT',
+        statutClient: isSuper ? 'client' : 'prospect',
+        notes: isSuper ? 'Administrateur Principal LAPERLE TOUR HT' : 'Prospect Google LAPERLE TOUR HT',
         permissions: {},
         createdAt: now,
         updatedAt: now,
@@ -1130,6 +1087,46 @@ app.patch('/api/auth/user/:id', async (req, res) => {
   } catch (err) {
     console.error('Erreur API PATCH /api/auth/user/:id:', err);
     return res.status(500).json({ error: 'Erreur lors de la mise à jour de l\'utilisateur.' });
+  }
+});
+
+// API AUTH : Transformation automatique PROSPECT -> CLIENT (suite à premier proforma)
+app.post('/api/auth/user/:id/upgrade-client', async (req, res) => {
+  try {
+    const rawId = req.params.id;
+    const users = loadUsers();
+    const idx = users.findIndex(u => u.id === rawId || u.uid === rawId || (u.email && u.email.toLowerCase() === rawId.toLowerCase()));
+    const now = new Date().toISOString();
+
+    if (idx >= 0) {
+      if (!isSuperAdminEmail(users[idx].email)) {
+        users[idx].role = 'client';
+        users[idx].roles = ['client'];
+        users[idx].statutClient = 'client';
+        users[idx].updatedAt = now;
+        await saveUserToFirestore(users[idx]);
+        saveUsers(users);
+      }
+      return res.json({ success: true, user: sanitizeUser(users[idx]) });
+    }
+
+    // Si non trouvé en mémoire, vérifier Firestore directement
+    const fsUser = await findUserInFirestore(rawId);
+    if (fsUser && !isSuperAdminEmail(fsUser.email)) {
+      fsUser.role = 'client';
+      fsUser.roles = ['client'];
+      fsUser.statutClient = 'client';
+      fsUser.updatedAt = now;
+      await saveUserToFirestore(fsUser);
+      users.push(fsUser);
+      saveUsers(users);
+      return res.json({ success: true, user: sanitizeUser(fsUser) });
+    }
+
+    return res.status(404).json({ error: 'Utilisateur introuvable.' });
+  } catch (err) {
+    console.error('Erreur API /api/auth/user/:id/upgrade-client:', err);
+    return res.status(500).json({ error: 'Erreur lors de l\'upgrade en client.' });
   }
 });
 

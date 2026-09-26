@@ -138,6 +138,10 @@ service cloud.firestore {
       return hasRole("client");
     }
 
+    function isProspect() {
+      return hasRole("prospect");
+    }
+
     function isLectureSeule() {
       return hasRole("lecture_seule");
     }
@@ -180,7 +184,7 @@ service cloud.firestore {
     }
 
     function isClientDoc(data) {
-      return isClient() && (
+      return (isClient() || isProspect()) && (
         (('clientId' in data) && data.clientId == request.auth.uid) ||
         (('uid' in data) && data.uid == request.auth.uid) ||
         (('email' in data) && data.email == request.auth.token.email)
@@ -354,14 +358,14 @@ service cloud.firestore {
           data.role.lower() in [
             "admin", "direction", "comptabilite", 
             "secretaire", "operations", "chauffeur", 
-            "client", "lecture_seule"
+            "client", "lecture_seule", "prospect"
           ]
         ))) &&
         (!('roles' in data) || (data.roles is list && data.roles.size() > 0 && data.roles.size() <= 10 &&
           data.roles.hasOnly([
             "admin", "direction", "comptabilite", 
             "secretaire", "operations", "chauffeur", 
-            "client", "lecture_seule"
+            "client", "lecture_seule", "prospect"
           ])
         ));
     }
@@ -482,11 +486,11 @@ service cloud.firestore {
     // 8. Réservations (/reservations and alias /bookings)
     match /reservations/{reservationId} {
       allow get, list: if canReadOperations() || 
-        (isClient() && isClientDoc(existing())) ||
+        ((isClient() || isProspect()) && isClientDoc(existing())) ||
         (isChauffeur() && isChauffeurDoc(existing()));
       allow create: if isValidId(reservationId) && isValidReservation(incoming()) && (
         canManageOperations() || (
-          isClient() &&
+          (isClient() || isProspect()) &&
           (
             (('clientId' in incoming()) && incoming().clientId == request.auth.uid) ||
             (('uid' in incoming()) && incoming().uid == request.auth.uid) ||
@@ -498,7 +502,7 @@ service cloud.firestore {
       allow delete: if (isAdmin() || canManageOperations()) && isValidId(reservationId);
     }
     match /bookings/{bookingId} {
-      allow get, list: if canReadOperations() || (isClient() && isClientDoc(existing())) || (isChauffeur() && isChauffeurDoc(existing()));
+      allow get, list: if canReadOperations() || ((isClient() || isProspect()) && isClientDoc(existing())) || (isChauffeur() && isChauffeurDoc(existing()));
       allow create, update: if canManageOperations() && isValidId(bookingId);
       allow delete: if (isAdmin() || canManageOperations()) && isValidId(bookingId);
     }
@@ -547,7 +551,7 @@ service cloud.firestore {
       allow list: if isAdmin() || isSecretaire() || isSignedIn();
       allow get: if isValidId(utilisateurId);
 
-      // Initial self-registration (MUST be role 'lecture_seule' or 'client', statutCompte 'actif', statutClient 'prospect' or 'client', unless super admin)
+      // Initial self-registration (MUST be role 'prospect', 'lecture_seule' or 'client', statutCompte 'actif', statutClient 'prospect' or 'client', unless super admin)
       // Or creation by ADMIN (any role) or SECRETAIRE (strictly non-admin roles)
       allow create: if isValidId(utilisateurId) && isValidUtilisateur(incoming()) && (
         isAdmin() || (
@@ -556,7 +560,7 @@ service cloud.firestore {
           !isTargetSuperAdminEmail(incoming().email) &&
           (!('roles' in incoming()) || (
             !("admin" in incoming().roles) &&
-            incoming().roles.hasOnly(["direction", "comptabilite", "secretaire", "operations", "chauffeur", "client", "lecture_seule"])
+            incoming().roles.hasOnly(["direction", "comptabilite", "secretaire", "operations", "chauffeur", "client", "prospect", "lecture_seule"])
           )) &&
           (!('role' in incoming()) || incoming().role.lower() != "admin")
         ) || (
@@ -567,8 +571,8 @@ service cloud.firestore {
               (!('role' in incoming()) || incoming().role.lower() == "admin")
             )) ||
             (!isSuperAdminEmail() && (
-              (!('roles' in incoming()) || incoming().roles == ["lecture_seule"] || incoming().roles == ["client"]) &&
-              (!('role' in incoming()) || incoming().role.lower() in ["lecture_seule", "client"]) &&
+              (!('roles' in incoming()) || incoming().roles == ["prospect"] || incoming().roles == ["lecture_seule"] || incoming().roles == ["client"]) &&
+              (!('role' in incoming()) || incoming().role.lower() in ["prospect", "lecture_seule", "client"]) &&
               (!('statutClient' in incoming()) || incoming().statutClient in ["prospect", "Prospect", "client", "Client"])
             ))
           ) &&
@@ -582,8 +586,8 @@ service cloud.firestore {
           (!('statutCompte' in incoming()) || incoming().statutCompte in ["actif", "Actif"])
         ) || (
           // Public web registration for new clients and prospects (no administrative privileges)
-          (!('roles' in incoming()) || incoming().roles == ["lecture_seule"] || incoming().roles == ["client"]) &&
-          (!('role' in incoming()) || incoming().role.lower() in ["lecture_seule", "client"]) &&
+          (!('roles' in incoming()) || incoming().roles == ["prospect"] || incoming().roles == ["lecture_seule"] || incoming().roles == ["client"]) &&
+          (!('role' in incoming()) || incoming().role.lower() in ["prospect", "lecture_seule", "client"]) &&
           (!('statutClient' in incoming()) || incoming().statutClient in ["prospect", "Prospect", "client", "Client"]) &&
           (!('status' in incoming()) || incoming().status in ["actif", "Actif"]) &&
           (!('statutCompte' in incoming()) || incoming().statutCompte in ["actif", "Actif"]) &&
@@ -594,8 +598,7 @@ service cloud.firestore {
       // Updates:
       // 1. ADMIN can update users, but cannot strip admin from super admin email
       // 2. SECRETAIRE can assign/remove allowed roles for other users, but can never assign ADMIN nor touch existing Admins
-      // 3. User can update personal fields; or upgrade from lecture_seule to client upon confirmed reservation
-      //    User CAN NEVER self-assign admin, direction, comptabilite, secretaire, operations, or chauffeur.
+      // 3. User can update ONLY their own personal contact info; CANNOT modify roles, status, or permissions
       allow update: if isValidId(utilisateurId) && isValidUtilisateur(incoming()) && (
         (
           isAdmin() &&
@@ -608,7 +611,7 @@ service cloud.firestore {
           !(("admin" in getUserRolesFor(existing())) || (('role' in existing()) && existing().role.lower() == "admin")) &&
           (!('roles' in incoming()) || (
             !("admin" in incoming().roles) &&
-            incoming().roles.hasOnly(["direction", "comptabilite", "secretaire", "operations", "chauffeur", "client", "lecture_seule"])
+            incoming().roles.hasOnly(["direction", "comptabilite", "secretaire", "operations", "chauffeur", "client", "prospect", "lecture_seule"])
           )) &&
           (!('role' in incoming()) || incoming().role.lower() != "admin") &&
           (!('uid' in incoming()) || incoming().uid == existing().uid) &&
@@ -624,18 +627,13 @@ service cloud.firestore {
           // Cannot modify status or statutCompte
           (!('status' in incoming()) || incoming().status == existing().status) &&
           (!('statutCompte' in incoming()) || incoming().statutCompte == existing().statutCompte) &&
-          // Cannot self-assign any administrative/staff roles
-          (!('roles' in incoming()) || !incoming().roles.hasAny(["admin", "direction", "comptabilite", "secretaire", "operations", "chauffeur"])) &&
-          (!('role' in incoming()) || !(["admin", "direction", "comptabilite", "secretaire", "operations", "chauffeur"].hasAny([incoming().role.lower()]))) &&
-          // Either updating personal contact info or promoting to client status
-          (
-            incoming().diff(existing()).affectedKeys().hasOnly(['name', 'nom', 'prenom', 'username', 'aliases', 'phone', 'telephone', 'photoURL', 'avatar', 'passwordHash', 'notes', 'updatedAt', 'updatedBy', 'lastLoginAt']) ||
-            (
-              incoming().diff(existing()).affectedKeys().hasOnly(['statutClient', 'roles', 'role', 'name', 'nom', 'prenom', 'username', 'aliases', 'phone', 'telephone', 'photoURL', 'avatar', 'passwordHash', 'updatedAt', 'updatedBy']) &&
-              incoming().statutClient in ['client', 'Client'] &&
-              incoming().roles.hasOnly(['client', 'lecture_seule'])
-            )
-          )
+          // Cannot self-assign or change any role or permissions
+          (!('roles' in incoming()) || incoming().roles == existing().roles) &&
+          (!('role' in incoming()) || incoming().role == existing().role) &&
+          (!('statutClient' in incoming()) || incoming().statutClient == existing().statutClient) &&
+          (!('permissions' in incoming()) || incoming().permissions == existing().permissions) &&
+          // Only personal contact details can be modified by the user
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'nom', 'prenom', 'username', 'aliases', 'phone', 'telephone', 'photoURL', 'avatar', 'passwordHash', 'notes', 'updatedAt', 'updatedBy', 'lastLoginAt'])
         ) ||
         (
           // Super admin email profile update

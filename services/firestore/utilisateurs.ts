@@ -31,7 +31,7 @@ export interface UtilisateurData {
 const COLLECTION_NAME = 'utilisateurs';
 
 export async function createUtilisateur(data: Omit<UtilisateurData, 'id'>, customId?: string): Promise<UtilisateurData> {
-  const id = customId || (data.email ? data.email.toLowerCase().replace(/[^a-zA-Z0-9]/g, '_') : `USR-${Date.now()}`);
+  const id = customId || (data as any).uid || (data as any).id || auth.currentUser?.uid || (data.email ? data.email.toLowerCase().replace(/[^a-zA-Z0-9]/g, '_') : `USR-${Date.now()}`);
   const now = new Date().toISOString();
   const userEmail = auth.currentUser?.email || 'admin';
   

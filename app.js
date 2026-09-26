@@ -741,23 +741,23 @@ function getInitialData() {
       { id: "FT-2026-09-19-001", number: "FT-2026-09-19-001", client: "Jean-Baptiste Valmé", date: d, proforma: "PT-2026-09-19-001", amount: 25000, status: "Payée", due: d, notes: "Facture acquittée" }
     ],
     utilisateurs: [
-      { id: "castimamoise_gmail_com", name: "Moïse Castima", username: "castima", email: "castimamoise@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Fondateur & Administrateur Principal" },
-      { id: "usr_admin_castimaklik", name: "Moïse Castima (Klik)", username: "castimaklik", email: "castimaklik@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Super Administrateur Studio" },
-      { id: "laperletourht_gmail_com", name: "Laperle Tour Admin", username: "laperle", email: "laperletourht@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Super Administrateur LAPERLE" },
-      { id: "usr_wilner", name: "Wilner Charles", email: "wilner.c@laperletour.ht", role: "CHAUFFEUR", roles: ["chauffeur"], status: "Actif", notes: "Chauffeur HiAce VH-001" },
-      { id: "usr_jeanmarc", name: "Jean-Marc Pierre", email: "jean.marc@laperletour.ht", role: "CHAUFFEUR", roles: ["chauffeur"], status: "Actif", notes: "Chauffeur Tucson VH-002" },
-      { id: "usr_mariefrance", name: "Marie-France Jean", email: "marie.france@laperletour.ht", role: "SECRETAIRE", roles: ["secretaire"], status: "Actif", notes: "Secrétariat & Réservations" },
-      { id: "usr_david", name: "Pierre-Louis David", email: "david.pl@laperletour.ht", role: "OPERATIONS", roles: ["operations"], status: "Actif", notes: "Responsable Flotte" },
-      { id: "usr_stephane", name: "Stéphane Delva", email: "stephane.d@laperletour.ht", role: "COMPTABILITE", roles: ["comptabilite"], status: "Actif", notes: "Responsable Trésorerie" },
-      { id: "usr_altidor", name: "Cabinet Altidor & Associés", email: "contact@altidor.ht", role: "CLIENT", roles: ["client"], status: "Actif", notes: "Compte Entreprise" }
+      { id: "usr_admin_castima", uid: "usr_admin_castima", name: "Moïse Castima", username: "castima", email: "castimamoise@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Fondateur & Administrateur Principal" },
+      { id: "usr_admin_castimaklik", uid: "usr_admin_castimaklik", name: "Moïse Castima (Klik)", username: "castimaklik", email: "castimaklik@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Super Administrateur Studio" },
+      { id: "usr_admin_laperle", uid: "usr_admin_laperle", name: "Laperle Tour Admin", username: "laperle", email: "laperletourht@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Super Administrateur LAPERLE" },
+      { id: "usr_wilner", uid: "usr_wilner", name: "Wilner Charles", email: "wilner.c@laperletour.ht", role: "CHAUFFEUR", roles: ["chauffeur"], status: "Actif", notes: "Chauffeur HiAce VH-001" },
+      { id: "usr_jeanmarc", uid: "usr_jeanmarc", name: "Jean-Marc Pierre", email: "jean.marc@laperletour.ht", role: "CHAUFFEUR", roles: ["chauffeur"], status: "Actif", notes: "Chauffeur Tucson VH-002" },
+      { id: "usr_mariefrance", uid: "usr_mariefrance", name: "Marie-France Jean", email: "marie.france@laperletour.ht", role: "SECRETAIRE", roles: ["secretaire"], status: "Actif", notes: "Secrétariat & Réservations" },
+      { id: "usr_david", uid: "usr_david", name: "Pierre-Louis David", email: "david.pl@laperletour.ht", role: "OPERATIONS", roles: ["operations"], status: "Actif", notes: "Responsable Flotte" },
+      { id: "usr_stephane", uid: "usr_stephane", name: "Stéphane Delva", email: "stephane.d@laperletour.ht", role: "COMPTABILITE", roles: ["comptabilite"], status: "Actif", notes: "Responsable Trésorerie" },
+      { id: "usr_altidor", uid: "usr_altidor", name: "Cabinet Altidor & Associés", email: "contact@altidor.ht", role: "CLIENT", roles: ["client"], status: "Actif", notes: "Compte Entreprise" }
     ]
   };
 }
 
 const DEFAULT_SYSTEM_USERS = [
-  { id: "castimamoise_gmail_com", name: "Moïse Castima", username: "castima", email: "castimamoise@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Fondateur & Administrateur Principal" },
-  { id: "usr_admin_castimaklik", name: "Moïse Castima (Klik)", username: "castimaklik", email: "castimaklik@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Super Administrateur Studio" },
-  { id: "laperletourht_gmail_com", name: "Laperle Tour Admin", username: "laperle", email: "laperletourht@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Super Administrateur LAPERLE" },
+  { id: "usr_admin_castima", uid: "usr_admin_castima", name: "Moïse Castima", username: "castima", email: "castimamoise@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Fondateur & Administrateur Principal" },
+  { id: "usr_admin_castimaklik", uid: "usr_admin_castimaklik", name: "Moïse Castima (Klik)", username: "castimaklik", email: "castimaklik@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Super Administrateur Studio" },
+  { id: "usr_admin_laperle", uid: "usr_admin_laperle", name: "Laperle Tour Admin", username: "laperle", email: "laperletourht@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Super Administrateur LAPERLE" },
   { id: "usr_wilner", name: "Wilner Charles", email: "wilner.c@laperletour.ht", role: "CHAUFFEUR", roles: ["chauffeur"], status: "Actif", notes: "Chauffeur HiAce VH-001" },
   { id: "usr_jeanmarc", name: "Jean-Marc Pierre", email: "jean.marc@laperletour.ht", role: "CHAUFFEUR", roles: ["chauffeur"], status: "Actif", notes: "Chauffeur Tucson VH-002" },
   { id: "usr_mariefrance", name: "Marie-France Jean", email: "marie.france@laperletour.ht", role: "SECRETAIRE", roles: ["secretaire"], status: "Actif", notes: "Secrétariat & Réservations" },
@@ -838,6 +838,37 @@ function buildNavigation() {
     b.innerHTML = `<span class="nav-icon">👤</span><span>Mon Profil & Statut</span><span class="chev">›</span>`;
     b.onclick = () => go("profile");
     nav.appendChild(b);
+
+    const bLogout = document.createElement("button");
+    bLogout.className = "nav-item";
+    bLogout.style.color = "#b91c1c";
+    bLogout.innerHTML = `<span class="nav-icon">🚪</span><span>Se déconnecter</span><span class="chev">›</span>`;
+    bLogout.onclick = () => logoutUser();
+    nav.appendChild(bLogout);
+    return;
+  }
+
+  // Utilisateur avec rôle PROSPECT : Espace dédié (Profil & Réservations)
+  const normCurrentRoles = normalizeRoles(currentUserRoles);
+  if (normCurrentRoles.length === 1 && normCurrentRoles[0] === ROLES.PROSPECT) {
+    const header = document.createElement("div");
+    header.className = "nav-section-title";
+    header.textContent = "Espace Prospect";
+    nav.appendChild(header);
+
+    const bProf = document.createElement("button");
+    bProf.className = "nav-item" + (current === "profile" ? " active" : "");
+    bProf.dataset.key = "profile";
+    bProf.innerHTML = `<span class="nav-icon">👤</span><span>Mon Profil & Statut</span><span class="chev">›</span>`;
+    bProf.onclick = () => go("profile");
+    nav.appendChild(bProf);
+
+    const bRes = document.createElement("button");
+    bRes.className = "nav-item" + (current === "reservations" ? " active" : "");
+    bRes.dataset.key = "reservations";
+    bRes.innerHTML = `<span class="nav-icon">🎫</span><span>Mes Réservations</span><span class="nav-badge" id="navBadge_reservations" style="display:none">0</span><span class="chev">›</span>`;
+    bRes.onclick = () => go("reservations");
+    nav.appendChild(bRes);
 
     const bLogout = document.createElement("button");
     bLogout.className = "nav-item";
@@ -1548,6 +1579,57 @@ function setupFirestoreListeners() {
     return;
   }
 
+  // 2b. PROSPECT ONLY: Read ONLY own reservations and own profile; react to role upgrades
+  const isProspectOnly = !hasStaffRole && !roles.includes('chauffeur') && !roles.includes('client') && roles.includes('prospect');
+  if (isProspectOnly) {
+    const prospectCols = [
+      { col: 'reservations', q: query(collection(db, 'reservations'), where('clientId', '==', currentUser.uid)) },
+      { col: 'notifications', q: query(collection(db, 'notifications'), where('targetUid', 'in', [currentUser.uid, 'all'])) }
+    ];
+
+    prospectCols.forEach(({ col, q }) => {
+      try {
+        const unsub = onSnapshot(q, (snap) => {
+          const items = [];
+          snap.forEach(d => items.push({ ...d.data(), id: d.id }));
+          state[col] = items;
+          save();
+          if (col === 'notifications') {
+            registerIncomingNotifications(items);
+            updateNotificationBadge();
+            if (isNotifDropdownOpen) renderNotificationDropdown();
+          }
+          if (current === col || canonicalCol(current) === col || current === "profile") render();
+        }, (err) => console.warn(`Lecture prospect [${col}]:`, err?.message));
+        firestoreUnsubscribers.push(unsub);
+      } catch (e) {
+        console.warn(`Erreur listener prospect [${col}]:`, e);
+      }
+    });
+
+    // Profile listener (own document only) - will automatically update and reconfigure listeners when upgraded to CLIENT!
+    try {
+      const unsubUser = onSnapshot(doc(db, 'utilisateurs', currentUser.uid), (snap) => {
+        if (snap.exists()) {
+          const prevRoles = normalizeRoles(currentUserRoles);
+          currentUserProfile = { ...snap.data(), id: snap.id };
+          currentUserRoles = normalizeRoles(currentUserProfile.roles || currentUserProfile.role || [ROLES.PROSPECT]);
+          currentRole = currentUserRoles[0] || ROLES.PROSPECT;
+          updateRoleBadge(currentUserRoles);
+          buildNavigation();
+          // Si le profil est passé de PROSPECT à CLIENT (après premier proforma)
+          if (!prevRoles.includes(ROLES.CLIENT) && currentUserRoles.includes(ROLES.CLIENT)) {
+            showToast("🎉 Félicitations ! Votre profil est passé à CLIENT suite à votre premier proforma.");
+            setupFirestoreListeners();
+          }
+          render();
+        }
+      });
+      firestoreUnsubscribers.push(unsubUser);
+    } catch (e) {}
+    return;
+  }
+
   // 3. STAFF (ADMIN, DIRECTION, COMPTABILITE, SECRETAIRE, OPERATIONS, LECTURE_SEULE):
   const canListUsers = roles.includes('admin') || roles.includes('secretaire');
   const canSeeFinances = roles.some(r => ['admin', 'direction', 'comptabilite', 'lecture_seule'].includes(r));
@@ -1565,10 +1647,22 @@ function setupFirestoreListeners() {
   modulesToListen.forEach(colName => {
     try {
       const unsub = onSnapshot(collection(db, colName), (snap) => {
-        const cloudItems = [];
+        let cloudItems = [];
         snap.forEach(d => {
           cloudItems.push({ ...d.data(), id: d.id });
         });
+
+        // Filtrer les index d'indexation O(1) de recherche (usr_email_..., usr_uname_...)
+        if (colName === 'utilisateurs') {
+          cloudItems = cloudItems.filter(u => u && typeof u.id === 'string' && !u.id.startsWith('usr_email_') && !u.id.startsWith('usr_uname_'));
+          const seen = new Set();
+          cloudItems = cloudItems.filter(u => {
+            const key = u.uid || u.id;
+            if (!key || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+        }
 
         if (cloudItems.length > 0 || !snap.empty) {
           state[colName] = cloudItems;
@@ -2068,12 +2162,19 @@ async function syncUserDataFromLocalStorageToFirestore(user, profile) {
     );
 
     // 2. Fusionner et préparer le profil utilisateur complet
+    // RÈGLE ABSOLUE : Utiliser EXCLUSIVEMENT le vrai Firebase UID de la session connectée
+    const targetDocId = activeUser?.uid || auth.currentUser?.uid;
+    if (!targetDocId) {
+      console.warn("[Sync LocalStorage -> Firestore] Aucun UID Firebase de session active, écriture ignorée.");
+      return false;
+    }
+
     const finalProfile = {
       ...(matchedLocalUser || {}),
       ...(storedSessionProfile || {}),
       ...activeProfile,
-      id: uid || matchedLocalUser?.id || matchedLocalUser?.uid || activeProfile?.id,
-      uid: uid || matchedLocalUser?.uid || matchedLocalUser?.id || activeProfile?.uid,
+      id: targetDocId,
+      uid: targetDocId,
       email: userEmail || matchedLocalUser?.email || '',
       updatedAt: now,
       lastLoginAt: now,
@@ -2081,60 +2182,23 @@ async function syncUserDataFromLocalStorageToFirestore(user, profile) {
       lastSyncAt: now
     };
 
-    const targetDocId = String(finalProfile.id || finalProfile.uid || userEmail.replace(/[^a-zA-Z0-9_-]/g, '_'));
-
     // Nettoyer les valeurs undefined
-    const cleanUserDoc = { ...finalProfile };
+    const cleanUserDoc = { ...finalProfile, id: targetDocId, uid: targetDocId };
+    const isSuper = isSuperAdminEmail(userEmail) || isSuperAdminIdentifier(userEmail);
+    if (!isSuper && cleanUserDoc.role !== 'admin') {
+      delete cleanUserDoc.permissions;
+    }
     Object.keys(cleanUserDoc).forEach(k => {
       if (cleanUserDoc[k] === undefined) delete cleanUserDoc[k];
     });
 
     // 3. Déplacer / persister le document utilisateur dans Cloud Firestore
-    await setDoc(doc(db, 'utilisateurs', targetDocId), cleanUserDoc, { merge: true });
-    syncedCount++;
-
-    // Indexation O(1) pour recherche instantanée par email
-    if (userEmail) {
-      const safeEmailKey = userEmail.replace(/[^a-zA-Z0-9_-]/g, '_');
-      await setDoc(doc(db, 'utilisateurs', 'usr_email_' + safeEmailKey), {
-        id: 'usr_email_' + safeEmailKey,
-        targetId: targetDocId,
-        uid: targetDocId,
-        email: userEmail,
-        username: finalProfile.username || '',
-        name: finalProfile.name || `${finalProfile.prenom || ''} ${finalProfile.nom || ''}`.trim(),
-        role: finalProfile.role || 'client',
-        roles: finalProfile.roles || ['client'],
-        status: finalProfile.status || 'actif',
-        statutCompte: finalProfile.statutCompte || 'actif',
-        statutClient: finalProfile.statutClient || 'client',
-        passwordHash: finalProfile.passwordHash || '',
-        updatedAt: now,
-        syncedAt: now
-      }, { merge: true });
+    // Sécurité stricte : n'écrire que si targetDocId correspond exactement à l'utilisateur connecté
+    if (activeUser?.uid && targetDocId === activeUser.uid) {
+      await setDoc(doc(db, 'utilisateurs', targetDocId), cleanUserDoc, { merge: true });
       syncedCount++;
-    }
-
-    // Indexation O(1) pour recherche instantanée par nom de profil / username
-    if (finalProfile.username) {
-      const safeUnameKey = String(finalProfile.username).trim().toLowerCase().replace(/^@/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
-      await setDoc(doc(db, 'utilisateurs', 'usr_uname_' + safeUnameKey), {
-        id: 'usr_uname_' + safeUnameKey,
-        targetId: targetDocId,
-        uid: targetDocId,
-        username: safeUnameKey,
-        email: userEmail,
-        name: finalProfile.name || `${finalProfile.prenom || ''} ${finalProfile.nom || ''}`.trim(),
-        role: finalProfile.role || 'client',
-        roles: finalProfile.roles || ['client'],
-        status: finalProfile.status || 'actif',
-        statutCompte: finalProfile.statutCompte || 'actif',
-        statutClient: finalProfile.statutClient || 'client',
-        passwordHash: finalProfile.passwordHash || '',
-        updatedAt: now,
-        syncedAt: now
-      }, { merge: true });
-      syncedCount++;
+    } else {
+      console.warn(`[Sync LocalStorage -> Firestore] Annulation écriture doc non autorisé (${targetDocId} !== ${activeUser?.uid})`);
     }
 
     // 4. Déplacer toutes les données métier de l'utilisateur stockées localement vers Firestore
@@ -2224,17 +2288,17 @@ function completeUserSignIn(user, profile, isNew = false) {
       currentUserProfile.statutClient = "client";
     }
   } else if (isNew) {
-    currentUserRoles = [ROLES.CLIENT];
-    currentRole = ROLES.CLIENT;
+    currentUserRoles = [ROLES.PROSPECT];
+    currentRole = ROLES.PROSPECT;
     if (currentUserProfile) {
-      currentUserProfile.roles = [ROLES.CLIENT];
-      currentUserProfile.role = ROLES.CLIENT;
+      currentUserProfile.roles = [ROLES.PROSPECT];
+      currentUserProfile.role = ROLES.PROSPECT;
       currentUserProfile.statutCompte = "actif";
-      currentUserProfile.statutClient = "client";
+      currentUserProfile.statutClient = "prospect";
     }
   } else {
-    currentUserRoles = normalizeRoles(currentUserProfile?.roles || currentUserProfile?.role || [ROLES.CLIENT]);
-    currentRole = currentUserRoles[0] || ROLES.CLIENT;
+    currentUserRoles = normalizeRoles(currentUserProfile?.roles || currentUserProfile?.role || [ROLES.PROSPECT]);
+    currentRole = currentUserRoles[0] || ROLES.PROSPECT;
     if (currentUserProfile && (!currentUserProfile.roles || currentUserProfile.roles.length === 0)) {
       currentUserProfile.roles = currentUserRoles;
       currentUserProfile.role = currentRole;
@@ -2263,9 +2327,10 @@ function completeUserSignIn(user, profile, isNew = false) {
   buildNavigation();
 
   // 4. Routage selon habilitations :
-  // - lecture_seule uniquement -> Page Profil uniquement (Pas de Dashboard, aucun module métier)
-  // - rôle métier ou client -> Dashboard ou espace client
-  if (!hasBusinessRole(currentUserRoles)) {
+  // - lecture_seule ou prospect -> Page Profil uniquement (Profil & Réservations)
+  // - client ou staff -> Dashboard ou Espace Client
+  const normCurrentRoles = normalizeRoles(currentUserRoles);
+  if (!hasBusinessRole(currentUserRoles) || (normCurrentRoles.length === 1 && normCurrentRoles[0] === ROLES.PROSPECT)) {
     current = "profile";
     location.hash = "profile";
   } else {
@@ -2504,6 +2569,12 @@ function render() {
         <button class="primary" onclick="go('dashboard')">Retour au Tableau de Bord</button>
       </div>
     `;
+    return;
+  }
+
+  const isSolelyProspect = normCurrentRoles.length === 1 && normCurrentRoles[0] === ROLES.PROSPECT;
+  if (canon === "profile" || (canon === "dashboard" && isSolelyProspect)) {
+    renderLectureSeuleProfilePage();
     return;
   }
 
@@ -3735,11 +3806,12 @@ function openForm(key, index = -1) {
         }
       }
 
-      // Attribution automatique des propriétés de rattachement pour Client et Chauffeur
+      // Attribution automatique des propriétés de rattachement pour Client, Prospect et Chauffeur
       if (currentUser) {
         const myRoles = normalizeRoles(currentUserRoles);
-        if (myRoles.includes(ROLES.CLIENT) && !myRoles.includes(ROLES.ADMIN)) {
+        if ((myRoles.includes(ROLES.CLIENT) || myRoles.includes(ROLES.PROSPECT)) && !myRoles.includes(ROLES.ADMIN)) {
           obj.clientId = currentUser.uid || currentUser.id;
+          obj.clientUid = currentUser.uid || currentUser.id;
           if (!obj.client) obj.client = currentUserProfile?.name || currentUserProfile?.nom || currentUser.displayName || "Client";
           if (!obj.email) obj.email = currentUser.email || currentUserProfile?.email || "";
         }
@@ -3752,46 +3824,55 @@ function openForm(key, index = -1) {
       rawList(canon).push(obj);
     }
 
-    // RÈGLE : lorsqu'un utilisateur effectue une réservation, il passe directement au rôle de CLIENT
+    // Le PROSPECT peut créer une réservation (son rôle reste PROSPECT jusqu'au premier proforma)
     if (canon === "reservations") {
-      if (currentUser) {
-        const myRoles = normalizeRoles(currentUserRoles);
-        if (!myRoles.includes(ROLES.ADMIN) && !myRoles.includes(ROLES.CLIENT)) {
-          try {
-            await upgradeProfileToClient(currentUser.uid || currentUser.id);
-            currentUserRoles = [ROLES.CLIENT];
-            currentRole = ROLES.CLIENT;
-            if (currentUserProfile) {
-              currentUserProfile.roles = [ROLES.CLIENT];
-              currentUserProfile.role = ROLES.CLIENT;
-              currentUserProfile.statutClient = 'client';
-            }
-            saveUserSession(currentUser, currentUserProfile);
-            updateRoleBadge(currentUserRoles);
-            buildNavigation();
-            showToast("🎉 Votre compte passe automatiquement au rôle de Client suite à cette réservation !");
-          } catch (autoErr) {
-            console.warn("Erreur auto-upgrade rôle client:", autoErr?.message);
-          }
-        }
-      }
+      showToast("✅ Réservation enregistrée !");
+    }
 
-      // Vérifier également si le client renseigné dans la réservation correspond à un utilisateur existant
-      const resEmail = (obj.email || "").toLowerCase().trim();
-      const resClient = (obj.client || obj.nom || "").toLowerCase().trim();
-      const matchedUser = (list("utilisateurs") || []).find(u => 
-        (resEmail && (u.email || "").toLowerCase().trim() === resEmail) ||
-        (resClient && (u.nom || u.name || "").toLowerCase().trim() === resClient)
+    // RÈGLE MÉTIER : Après son premier proforma, le rôle du prospect devient automatiquement CLIENT
+    if (canon === "proformas") {
+      const pClientEmail = (obj.email || "").toLowerCase().trim();
+      const pClientId = obj.clientId || obj.clientUid || "";
+      const pClientName = (obj.client || obj.nom || "").toLowerCase().trim();
+
+      const allUsers = list("utilisateurs") || [];
+      const matchedUser = allUsers.find(u => 
+        (pClientId && (u.id === pClientId || u.uid === pClientId)) ||
+        (pClientEmail && (u.email || "").toLowerCase().trim() === pClientEmail) ||
+        (pClientName && (u.name || u.nom || "").toLowerCase().trim() === pClientName)
       );
+
       if (matchedUser) {
         const uRoles = normalizeRoles(matchedUser.roles || matchedUser.role);
-        if (!uRoles.includes(ROLES.ADMIN) && !uRoles.includes(ROLES.CLIENT)) {
+        if (!uRoles.includes(ROLES.ADMIN) && (uRoles.includes(ROLES.PROSPECT) || matchedUser.statutClient === "prospect")) {
           matchedUser.roles = [ROLES.CLIENT];
           matchedUser.role = ROLES.CLIENT;
           matchedUser.statutClient = "client";
           try {
             await upgradeProfileToClient(matchedUser.id || matchedUser.uid);
-          } catch (e) {}
+          } catch (e) {
+            console.warn("Échec upgradeProfileToClient:", e?.message);
+          }
+        }
+      }
+
+      // Si l'utilisateur connecté est le prospect concerné par le proforma
+      if (currentUser) {
+        const myRoles = normalizeRoles(currentUserRoles);
+        const isTargetCurrentUser = (pClientId && (currentUser.uid === pClientId || currentUser.id === pClientId)) ||
+                                    (pClientEmail && (currentUser.email || "").toLowerCase().trim() === pClientEmail);
+        if (isTargetCurrentUser && myRoles.includes(ROLES.PROSPECT) && !myRoles.includes(ROLES.ADMIN)) {
+          currentUserRoles = [ROLES.CLIENT];
+          currentRole = ROLES.CLIENT;
+          if (currentUserProfile) {
+            currentUserProfile.roles = [ROLES.CLIENT];
+            currentUserProfile.role = ROLES.CLIENT;
+            currentUserProfile.statutClient = 'client';
+          }
+          saveUserSession(currentUser, currentUserProfile);
+          updateRoleBadge(currentUserRoles);
+          buildNavigation();
+          showToast("🎉 Félicitations ! Votre premier proforma a été établi. Votre compte passe officiellement au rôle de CLIENT !");
         }
       }
     }
@@ -4192,18 +4273,19 @@ async function handleConfirmClientReservation() {
     const uid = currentUser?.uid;
     if (!uid) throw new Error("Utilisateur non connecté ou session invalide.");
 
-    // 1. Mise à jour automatique du profil Firestore : statutClient: "client", roles: ["client"]
-    const updated = await upgradeProfileToClient(uid);
+    const prof = currentUserProfile || {};
 
-    // 2. Création de l'enregistrement de réservation dans la collection 'reservations'
+    // 1. Création de l'enregistrement de réservation dans la collection 'reservations'
+    // RÈGLE MÉTIER : Le PROSPECT peut créer une réservation mais RESTE PROSPECT jusqu'à son premier proforma
     const resId = "RES-" + Date.now().toString(36).toUpperCase();
     const resItem = {
       id: resId,
       code: resId,
-      nomClient: updated.nom || currentUser.displayName || "Client LAPERLE",
+      nomClient: prof.nom || prof.name || currentUser.displayName || "Client LAPERLE",
       clientUid: uid,
-      telephone: updated.telephone || currentUser.phoneNumber || "",
-      email: updated.email || currentUser.email || "",
+      clientId: uid,
+      telephone: prof.telephone || prof.phone || currentUser.phoneNumber || "",
+      email: prof.email || currentUser.email || "",
       trajet: dest,
       route: dest,
       typePrestation: service,
@@ -4218,34 +4300,23 @@ async function handleConfirmClientReservation() {
     };
 
     try {
-      if (typeof saveItemToFirestore === "function") {
-        await saveItemToFirestore("reservations", resItem);
-      }
+      await saveDocumentToFirestore("reservations", resItem);
     } catch (e) {
       console.warn("Enregistrement Firestore réservation:", e);
     }
 
     if (!Array.isArray(state["reservations"])) state["reservations"] = [];
     state["reservations"].unshift(resItem);
+    save();
 
-    // 3. Mettre à jour l'état mémoire & local
-    currentUserProfile = updated;
-    currentUserRoles = [ROLES.CLIENT];
-    currentRole = ROLES.CLIENT;
-    saveUserSession(currentUser, updated);
-    updateRoleBadge(currentUserRoles);
+    showToast("✅ Réservation enregistrée ! Un devis proforma vous sera transmis. Dès l'émission du premier proforma, votre compte deviendra CLIENT.");
 
-    // 4. Mettre à jour la navigation pour débloquer l'Espace Client
-    buildNavigation();
-
-    showToast("🎉 Félicitations ! Votre réservation est confirmée. Vous êtes maintenant CLIENT de LAPERLE TOUR HT.");
-
-    // 5. Rediriger immédiatement vers le Dashboard / Espace Client
+    // Rediriger vers l'espace de réservations
     setTimeout(() => {
-      current = "dashboard";
-      location.hash = "dashboard";
+      current = "reservations";
+      location.hash = "reservations";
       render();
-    }, 500);
+    }, 600);
 
   } catch (err) {
     console.error("Erreur confirmation réservation client:", err);
@@ -4282,8 +4353,7 @@ function renderLectureSeuleProfilePage() {
           <div style="flex: 1; min-width: 220px;">
             <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px;">
               <h2 style="margin: 0; font-size: 22px; font-weight: 800; color: #ffffff;">${esc(displayName)}</h2>
-              <span class="user-role-badge lecture_seule" style="font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 700; background: #e0e7ff; color: #3730a3;">Lecture Seule</span>
-              <span style="font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 700; background: #fef3c7; color: #92400e; border: 1px solid #fde68a;">Prospect</span>
+              <span class="user-role-badge prospect" style="font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 700; background: #fef3c7; color: #92400e; border: 1px solid #fde68a;">Prospect</span>
             </div>
             <div style="font-size: 13px; opacity: 0.9; margin-bottom: 8px;">
               ${email !== "—" ? `<span>✉️ ${esc(email)}</span>` : ""}
@@ -4304,11 +4374,11 @@ function renderLectureSeuleProfilePage() {
       <!-- Notice Stricte Règle Métier -->
       <div style="background: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 8px; padding: 16px; margin-bottom: 22px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
         <div style="font-weight: 700; color: #92400e; font-size: 14px; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
-          <span>🔒</span> Restriction d'accès en Lecture Seule
+          <span>ℹ️</span> Espace Prospect LAPERLE TOUR HT
         </div>
         <div style="font-size: 13px; color: #78350f; line-height: 1.5;">
-          <b>Lecture seule :</b> accès uniquement à votre propre profil.<br>
-          Aucun Dashboard, aucun module métier, aucune donnée des autres utilisateurs n'est accessible avant confirmation d'une première réservation.
+          <b>Rôle Prospect :</b> vous pouvez consulter et modifier votre propre profil, et créer des réservations.<br>
+          Dès que notre équipe commerciale vous aura émis votre <b>premier devis proforma</b>, votre compte basculera automatiquement en <b>CLIENT</b> officiel avec accès complet à votre espace et facturation.
         </div>
       </div>
 
@@ -4341,7 +4411,7 @@ function renderLectureSeuleProfilePage() {
 
           <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
             <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Rôles système (Verrouillé)</div>
-            <div style="color: #3730a3; font-weight: 700; font-size: 14px;">🔒 ["lecture_seule"]</div>
+            <div style="color: #92400e; font-weight: 700; font-size: 14px;">🔒 ["prospect"]</div>
           </div>
 
           <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
@@ -4351,19 +4421,19 @@ function renderLectureSeuleProfilePage() {
         </div>
       </div>
 
-      <!-- Action Métier : Première réservation pour devenir Client -->
+      <!-- Action Métier : Première réservation -->
       <div class="panel" style="margin-bottom: 22px; border-radius: 12px; padding: 22px; background: #ffffff; border: 2px solid #bbf7d0; box-shadow: 0 4px 16px rgba(34,197,94,0.08);">
         <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
           <div>
             <h3 style="margin: 0; color: #166534; font-size: 17px; font-weight: 800; display: flex; align-items: center; gap: 8px;">
-              <span>🎫</span> Réserver un trajet LAPERLE (Activer mon Espace Client)
+              <span>🎫</span> Réserver un trajet LAPERLE
             </h3>
             <p style="margin: 4px 0 0; font-size: 12px; color: #475569;">
-              Après une réservation confirmée : votre profil est automatiquement transformé en <b>client</b> (<code>statutClient: "client"</code>) avec accès complet à votre espace.
+              Créez votre réservation. Après son premier proforma, votre rôle devient automatiquement <b>CLIENT</b>.
             </p>
           </div>
           <span style="background: #dcfce7; color: #166534; font-weight: 700; font-size: 12px; padding: 4px 10px; border-radius: 20px;">
-            Accès Espace Client
+            Accès Réservations
           </span>
         </div>
 
@@ -5095,6 +5165,61 @@ function executeResetData() {
   closeModal();
   showToast("Données réinitialisées.");
   render();
+}
+
+async function createProformaFromReservation(index) {
+  const r = list("reservations")[index];
+  if (!r) return;
+
+  const quoteNumber = nextProformaNumber();
+  const targetUid = r.clientUid || r.clientId || "";
+  const clientName = r.nomClient || r.client || "Client";
+  const clientEmail = (r.email || "").toLowerCase().trim();
+
+  const newQuote = {
+    id: quoteNumber,
+    number: quoteNumber,
+    client: clientName,
+    clientId: targetUid,
+    clientUid: targetUid,
+    email: clientEmail,
+    telephone: r.telephone || "",
+    date: today(),
+    amount: Number(r.montantTotal || r.amount || 2500),
+    status: "Envoyée",
+    validUntil: today(),
+    archived: false,
+    notes: `Proforma générée automatiquement depuis la réservation ${r.code || r.id || ''} (${r.trajet || r.route || ''})`
+  };
+
+  list("proformas").push(newQuote);
+
+  // RÈGLE MÉTIER : Après son premier proforma, le rôle du prospect devient automatiquement CLIENT
+  const allUsers = list("utilisateurs") || [];
+  const matchedUser = allUsers.find(u => 
+    (targetUid && (u.id === targetUid || u.uid === targetUid)) ||
+    (clientEmail && (u.email || "").toLowerCase().trim() === clientEmail)
+  );
+
+  if (matchedUser) {
+    matchedUser.roles = [ROLES.CLIENT];
+    matchedUser.role = ROLES.CLIENT;
+    matchedUser.statutClient = "client";
+  }
+
+  const userToUpgradeId = targetUid || matchedUser?.id || matchedUser?.uid;
+  if (userToUpgradeId) {
+    try {
+      await upgradeProfileToClient(userToUpgradeId);
+    } catch (e) {
+      console.warn("Échec upgradeProfileToClient:", e?.message);
+    }
+  }
+
+  save();
+  await saveDocumentToFirestore("proformas", newQuote);
+  go("proformas");
+  showToast(`✅ Proforma ${quoteNumber} créée ! Le compte est officiellement devenu CLIENT.`);
 }
 
 async function createInvoiceFromQuote(index) {

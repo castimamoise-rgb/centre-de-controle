@@ -68,6 +68,30 @@ export async function createProforma(data, customNumber) {
 
   try {
     await setDoc(doc(db, COLLECTION_NAME, id), payload);
+
+    // Règle métier : Après son premier proforma, le rôle du prospect devient automatiquement CLIENT
+    const targetUserId = data.clientId || data.uid;
+    if (targetUserId) {
+      try {
+        const userRef = doc(db, 'utilisateurs', targetUserId);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          const uData = userSnap.data();
+          const currentRoles = Array.isArray(uData.roles) ? uData.roles : [uData.role || 'prospect'];
+          if (!currentRoles.includes('admin') && (currentRoles.includes('prospect') || uData.statutClient === 'prospect')) {
+            await setDoc(userRef, {
+              role: 'client',
+              roles: ['client'],
+              statutClient: 'client',
+              updatedAt: now
+            }, { merge: true });
+          }
+        }
+      } catch (upgErr) {
+        console.warn("Échec auto-upgrade prospect -> client dans createProforma:", upgErr?.message);
+      }
+    }
+
     return payload;
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, `${COLLECTION_NAME}/${id}`);

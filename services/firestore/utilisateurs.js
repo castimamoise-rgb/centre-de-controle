@@ -16,7 +16,7 @@ import {
 const COLLECTION_NAME = 'utilisateurs';
 
 export async function createUtilisateur(data, customId) {
-  const id = customId || (data.email ? data.email.toLowerCase().replace(/[^a-zA-Z0-9]/g, '_') : `USR-${Date.now()}`);
+  const id = customId || data.uid || data.id || auth.currentUser?.uid || (data.email ? data.email.toLowerCase().replace(/[^a-zA-Z0-9]/g, '_') : `USR-${Date.now()}`);
   const now = new Date().toISOString();
   const userEmail = auth.currentUser?.email || 'admin';
   

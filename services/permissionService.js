@@ -11,6 +11,7 @@ export const ROLES = {
   OPERATIONS: 'operations',
   CHAUFFEUR: 'chauffeur',
   CLIENT: 'client',
+  PROSPECT: 'prospect',
   LECTURE_SEULE: 'lecture_seule'
 };
 
@@ -22,6 +23,7 @@ export const ROLE_LABELS = {
   operations: 'Opérations Transport',
   chauffeur: 'Chauffeur',
   client: 'Espace Client',
+  prospect: 'Prospect',
   lecture_seule: 'Lecture Seule'
 };
 
@@ -72,6 +74,7 @@ export function normalizeRole(role) {
   if (r === 'operations' || r === 'opérations') return ROLES.OPERATIONS;
   if (r === 'chauffeur') return ROLES.CHAUFFEUR;
   if (r === 'client') return ROLES.CLIENT;
+  if (r === 'prospect') return ROLES.PROSPECT;
   return ROLES.LECTURE_SEULE;
 }
 
@@ -134,7 +137,8 @@ export const BUSINESS_ROLES = [
   ROLES.SECRETAIRE,
   ROLES.OPERATIONS,
   ROLES.CHAUFFEUR,
-  ROLES.CLIENT
+  ROLES.CLIENT,
+  ROLES.PROSPECT
 ];
 
 /**
@@ -195,6 +199,11 @@ function roleCanAccessModule(normRole, m) {
       'factures', 'proformas', 'paiements', 'notifications', 'profile'
     ];
     return allowed.includes(m);
+  }
+
+  if (normRole === ROLES.PROSPECT) {
+    // Le PROSPECT peut voir uniquement son propre profil et créer une réservation
+    return m === 'profile' || m === 'profil' || m === 'reservations';
   }
 
   if (normRole === ROLES.LECTURE_SEULE) {
@@ -287,6 +296,12 @@ function roleHasAction(normRole, m, act) {
   if (normRole === ROLES.CLIENT) {
     if (m === 'reservations' && act === 'create') return true;
     return act === 'read';
+  }
+
+  if (normRole === ROLES.PROSPECT) {
+    if (m === 'reservations' && (act === 'create' || act === 'read')) return true;
+    if ((m === 'profile' || m === 'profil') && (act === 'read' || act === 'update')) return true;
+    return false;
   }
 
   return false;
@@ -457,7 +472,15 @@ export function filterDataForUser(moduleKey, items, userProfile) {
     return [];
   }
 
-  // 7. LECTURE_SEULE strict : aucun accès aux modules métier
+  // 7. PROSPECT : voit UNIQUEMENT ses propres réservations et son profil
+  if (roles.includes(ROLES.PROSPECT)) {
+    if (m === 'reservations') {
+      return items.filter(matchesClientDoc);
+    }
+    return [];
+  }
+
+  // 8. LECTURE_SEULE strict : aucun accès aux modules métier
   return [];
 }
 

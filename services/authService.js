@@ -207,8 +207,8 @@ export async function signUpWithEmailAndPasswordMethod({ nom, prenom, email, pas
   const isSuperAdmin = isSuperAdminEmail(cleanEmail) || isSuperAdminIdentifier(cleanEmail);
   const now = new Date().toISOString();
   const passHash = await hashPassword(cleanPass);
-  const initialRoles = isSuperAdmin ? [ROLES.ADMIN] : [ROLES.CLIENT];
-  const initialRole = isSuperAdmin ? ROLES.ADMIN : ROLES.CLIENT;
+  const initialRoles = isSuperAdmin ? [ROLES.ADMIN] : [ROLES.PROSPECT];
+  const initialRole = isSuperAdmin ? ROLES.ADMIN : ROLES.PROSPECT;
 
   // 1. Authentification Firebase Authentication (Source unique de vérité)
   let firebaseUser = null;
@@ -221,6 +221,35 @@ export async function signUpWithEmailAndPasswordMethod({ nom, prenom, email, pas
     try {
       await updateProfile(firebaseUser, { displayName: fullName });
     } catch (e) {}
+
+    // Dès que createUserWithEmailAndPassword() réussit dans Firebase Auth,
+    // l'utilisateur est authentifié et détient son UID officiel.
+    // Le code écrit directement sa fiche dans Firestore avec son UID sous le rôle PROSPECT :
+    try {
+      const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
+      await setDoc(userDocRef, {
+        id: firebaseUser.uid,
+        uid: firebaseUser.uid,
+        name: fullName,
+        nom: cleanNom,
+        prenom: cleanPrenom,
+        email: cleanEmail,
+        username: username ? String(username).trim().toLowerCase().replace(/^@/, '') : `${cleanPrenom.toLowerCase()}_${cleanNom.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
+        telephone: telephone ? String(telephone).trim() : '',
+        phone: telephone ? String(telephone).trim() : '',
+        photoURL: '',
+        role: initialRole,
+        roles: initialRoles,
+        status: 'actif',
+        statutCompte: 'actif',
+        statutClient: isSuperAdmin ? 'client' : 'prospect',
+        createdAt: now,
+        updatedAt: now
+      }, { merge: true });
+    } catch (fsDirectErr) {
+      console.warn("Écriture directe Firestore utilisateur:", fsDirectErr?.message);
+    }
+
     // Récupérer le véritable Firebase ID Token depuis cred.user ou auth.currentUser
     if (firebaseUser && typeof firebaseUser.getIdToken === 'function') {
       try {
@@ -1037,8 +1066,8 @@ export async function createUserProfile(user) {
     return existing;
   }
 
-  const initialRoles = isSuperAdmin ? [ROLES.ADMIN] : [ROLES.CLIENT];
-  const initialRole = isSuperAdmin ? ROLES.ADMIN : ROLES.CLIENT;
+  const initialRoles = isSuperAdmin ? [ROLES.ADMIN] : [ROLES.PROSPECT];
+  const initialRole = isSuperAdmin ? ROLES.ADMIN : ROLES.PROSPECT;
   const displayName = user.displayName || (email ? email.split('@')[0] : "Utilisateur");
   const baseUsername = email ? email.split('@')[0].replace(/[^a-z0-9_]/gi, '') : `google_${uid.slice(0, 6)}`;
 
@@ -1055,7 +1084,7 @@ export async function createUserProfile(user) {
     role: initialRole,
     status: 'actif',
     statutCompte: 'actif',
-    statutClient: 'client',
+    statutClient: isSuperAdmin ? 'client' : 'prospect',
     telephone: user.phoneNumber || '',
     phone: user.phoneNumber || '',
     notes: isSuperAdmin ? 'Administrateur Principal LAPERLE TOUR HT' : 'Compte Google LAPERLE TOUR HT',
@@ -1164,7 +1193,7 @@ export async function loginWithGoogle(mode = 'login') {
 }
 
 /**
- * Transforme automatiquement le profil en "client" après une réservation confirmée
+ * Transforme automatiquement le profil en "client" après l'établissement du premier proforma
  */
 export async function upgradeProfileToClient(userId) {
   if (!userId) return null;
@@ -1181,8 +1210,19 @@ export async function upgradeProfileToClient(userId) {
     console.warn("upgradeProfileToClient Firestore fallback:", e?.message);
   }
 
+  // Synchronisation côté serveur pour mise à jour immédiate du stockage et de la mémoire
+  try {
+    await safeFetchJson(`/api/auth/user/${encodeURIComponent(userId)}/upgrade-client`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, role: ROLES.CLIENT, statutClient: 'client' })
+    });
+  } catch (srvErr) {
+    console.warn("upgradeProfileToClient Server sync warning:", srvErr?.message);
+  }
+
   const session = getUserSession();
-  if (session && session.profile) {
+  if (session && session.profile && (session.profile.id === userId || session.profile.uid === userId || session.user?.uid === userId)) {
     session.profile.statutClient = 'client';
     session.profile.roles = [ROLES.CLIENT];
     session.profile.role = ROLES.CLIENT;
