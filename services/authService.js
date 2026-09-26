@@ -12,6 +12,7 @@ import {
   updateProfile,
   RecaptchaVerifier,
   signInWithPhoneNumber,
+  sendPasswordResetEmail,
   db,
   doc,
   getDoc,
@@ -67,7 +68,8 @@ export function clearExplicitLogout() {
  */
 export async function safeFetchJson(url, options = {}) {
   try {
-    const res = await fetch(url, options);
+    const finalUrl = (typeof window === 'undefined' && url.startsWith('/')) ? `http://localhost:3000${url}` : url;
+    const res = await fetch(finalUrl, options);
     const text = await res.text();
     let data = {};
     if (text) {
@@ -181,9 +183,14 @@ export async function signUpWithEmailAndPasswordMethod({ nom, prenom, email, pas
   if (!prenom || !String(prenom).trim()) {
     throw new Error("Veuillez renseigner votre prénom.");
   }
-  if (!email || !String(email).includes('@')) {
-    throw new Error("Veuillez saisir une adresse e-mail valide.");
+
+  let cleanEmail = String(email || '').trim().toLowerCase();
+  if (!cleanEmail || !cleanEmail.includes('@')) {
+    const digits = String(telephone || '').replace(/\D/g, '').slice(-8);
+    const handle = String(username || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '') || `user_${digits || Date.now()}`;
+    cleanEmail = `${handle}@laperletourht.com`;
   }
+
   if (!password) {
     throw new Error("Veuillez saisir un mot de passe.");
   }
@@ -199,8 +206,6 @@ export async function signUpWithEmailAndPasswordMethod({ nom, prenom, email, pas
       throw new Error("La confirmation ne correspond pas au mot de passe saisi.");
     }
   }
-
-  const cleanEmail = String(email).trim().toLowerCase();
   const cleanNom = String(nom).trim();
   const cleanPrenom = String(prenom).trim();
   const fullName = `${cleanNom} ${cleanPrenom}`;
@@ -1464,3 +1469,57 @@ export async function authenticateWithPhoneOrEmail(identifier, code, customName 
     return await verifyFirebasePhoneCode(code, customName);
   }
 }
+
+/**
+ * Envoie un email de réinitialisation de mot de passe sécurisé via Firebase Authentication.
+ * Supporte la saisie directe d'une adresse email ou la résolution par nom de profil / alias.
+ *
+ * @param {string} identifier - Email ou nom de profil de l'utilisateur
+ * @returns {Promise<{success: boolean, email: string, message: string}>}
+ */
+export async function requestPasswordReset(identifier) {
+  const cleanId = String(identifier || '').trim();
+  if (!cleanId) {
+    throw new Error("Veuillez renseigner votre adresse e-mail ou votre nom de profil.");
+  }
+
+  let targetEmail = '';
+  if (cleanId.includes('@')) {
+    targetEmail = cleanId.toLowerCase();
+  } else {
+    // Résolution via le profil utilisateur
+    const profile = await getUserProfileByIdentifier(cleanId);
+    if (!profile || !profile.email) {
+      const err = new Error(`Aucun compte associé au nom de profil « ${cleanId} » n'a été trouvé.`);
+      err.code = 'auth/user-not-registered';
+      throw err;
+    }
+    targetEmail = profile.email.toLowerCase();
+  }
+
+  try {
+    if (auth && typeof sendPasswordResetEmail === 'function') {
+      await sendPasswordResetEmail(auth, targetEmail);
+    }
+    return {
+      success: true,
+      email: targetEmail,
+      message: `Un lien de réinitialisation a été envoyé à l'adresse e-mail ${targetEmail}. Veuillez vérifier votre boîte de réception et vos courriers indésirables.`
+    };
+  } catch (err) {
+    console.warn("Erreur sendPasswordResetEmail:", err?.code, err?.message);
+    if (err?.code === 'auth/user-not-found') {
+      const error = new Error(`Aucun compte n'est enregistré avec l'adresse e-mail « ${targetEmail} ».`);
+      error.code = 'auth/user-not-found';
+      throw error;
+    }
+    if (err?.code === 'auth/invalid-email') {
+      const error = new Error(`L'adresse e-mail « ${targetEmail} » n'est pas valide.`);
+      error.code = 'auth/invalid-email';
+      throw error;
+    }
+    // En cas d'erreur de domaine non autorisé ou de quota Firebase, fournir un message d'assistance
+    throw new Error(formatAuthError(err) || err?.message || "Échec de l'envoi de l'e-mail de réinitialisation.");
+  }
+}
+

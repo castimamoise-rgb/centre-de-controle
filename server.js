@@ -377,6 +377,13 @@ async function findUserInFirestore(identifier) {
       })) {
         return { ...data, id: d.id, uid: data.uid || d.id };
       }
+      const digits = cleanId.replace(/\D/g, '');
+      if (digits.length >= 8) {
+        const uPhoneDigits = String(data.telephone || data.phone || '').replace(/\D/g, '');
+        if (uPhoneDigits && (uPhoneDigits === digits || uPhoneDigits.endsWith(digits) || digits.endsWith(uPhoneDigits))) {
+          return { ...data, id: d.id, uid: data.uid || d.id };
+        }
+      }
     }
   } catch (e) {}
 
@@ -556,9 +563,15 @@ app.post('/api/auth/register', async (req, res) => {
     if (!prenom || !String(prenom).trim()) {
       return res.status(400).json({ error: 'Veuillez renseigner votre prénom.' });
     }
-    if (!email || !String(email).includes('@')) {
-      return res.status(400).json({ error: 'Veuillez saisir une adresse e-mail valide.' });
+
+    let cleanEmail = String(email || authenticatedEmail || '').trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      const cleanPhoneDigits = String(telephone || '').replace(/\D/g, '').slice(-8);
+      const cleanUname = String(username || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+      const handle = cleanUname || (cleanPhoneDigits ? `user_${cleanPhoneDigits}` : `user_${Date.now()}`);
+      cleanEmail = `${handle}@laperletourht.com`;
     }
+
     if (!password) {
       return res.status(400).json({ error: 'Veuillez saisir un mot de passe.' });
     }
@@ -576,12 +589,8 @@ app.post('/api/auth/register', async (req, res) => {
       }
     }
 
-    const cleanEmail = String(email).trim().toLowerCase();
     if (authenticatedEmail && authenticatedEmail !== cleanEmail) {
-      return res.status(400).json({
-        error: "L'e-mail du compte Firebase ne correspond pas à l'adresse e-mail saisie.",
-        code: "auth/email-mismatch"
-      });
+      cleanEmail = authenticatedEmail;
     }
 
     const cleanNom = String(nom).trim();

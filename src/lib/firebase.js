@@ -12,7 +12,8 @@ import {
   createUserWithEmailAndPassword,
   updateProfile,
   RecaptchaVerifier,
-  signInWithPhoneNumber
+  signInWithPhoneNumber,
+  sendPasswordResetEmail
 } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -41,6 +42,7 @@ export {
   updateProfile,
   RecaptchaVerifier,
   signInWithPhoneNumber,
+  sendPasswordResetEmail,
   signInWithPopup,
   signOut,
   onAuthStateChanged,

@@ -49,9 +49,15 @@ import {
   sendVerificationCode, generateVerificationCode, getPendingVerification, verifyCode,
   authenticateWithPhoneOrEmail, registerOrSignInUser, upgradeProfileToClient, directEmailSignInFallback,
   signUpWithEmailAndPasswordMethod, signInWithEmailAndPasswordMethod,
+  requestPasswordReset,
   saveUserSession, getUserSession, clearUserSession,
   saveLogoutInfo, getLogoutInfo, clearLogoutInfo,
-  isExplicitlyLoggedOut, setExplicitLogout, clearExplicitLogout
+  isExplicitlyLoggedOut, setExplicitLogout, clearExplicitLogout,
+  // Fonctions pratiques employés
+  formatPhoneForWhatsApp, openGpsRoute, openWhatsAppForTrip, quickUpdateTripStatus, submitDriverIncident,
+  openSecretaryWhatsAppConfirmation, getTeamRelayNotes, saveTeamRelayNotes,
+  detectPlanningConflicts, getFleetStatusBreakdown, getDailyCashBreakdown, getOverdueInvoices,
+  sendInvoiceReminderWhatsApp
 } from './services/index.js';
 
 const DBKEY = "LAPERLE_CENTRE_CONTROL_V3";
@@ -1826,47 +1832,118 @@ function initAuthUI(initialMode = "login") {
   const tabRegister = document.getElementById("authTabRegister");
   const viewLogin = document.getElementById("authViewLogin");
   const viewRegister = document.getElementById("authViewRegister");
+  const viewForgot = document.getElementById("authViewForgotPassword");
   const switchToRegister = document.getElementById("authSwitchToRegister");
   const switchToLogin = document.getElementById("authSwitchToLogin");
+  const btnForgotPwd = document.getElementById("authBtnForgotPwd");
+  const switchBackFromForgot = document.getElementById("authSwitchBackFromForgot");
+  const btnSendReset = document.getElementById("authBtnSendReset");
+  const forgotIdentifier = document.getElementById("authForgotIdentifier");
+  const authRememberMe = document.getElementById("authRememberMe");
 
   // Champs Vue Connexion ("Pour Se Connecter" selon le modèle)
   const loginEmail = document.getElementById("authLoginEmail");
   const loginPassword = document.getElementById("authLoginPassword");
   const toggleLoginPwd = document.getElementById("authToggleLoginPassword");
   const btnLogin = document.getElementById("authBtnLogin");
-  const btnGoogleLogin = document.getElementById("authBtnGoogleLogin");
 
   // Champs Vue Inscription ("Pour S'inscrire" selon le modèle)
   const registerNom = document.getElementById("authRegisterNom");
   const registerPrenom = document.getElementById("authRegisterPrenom");
-  const registerEmail = document.getElementById("authRegisterEmail");
+  const registerPhone = document.getElementById("authRegisterPhone");
+  const registerUsername = document.getElementById("authRegisterUsername");
   const registerPassword = document.getElementById("authRegisterPassword");
   const registerPasswordConfirm = document.getElementById("authRegisterPasswordConfirm");
   const toggleRegisterPwd = document.getElementById("authToggleRegisterPassword");
   const toggleRegisterConfirm = document.getElementById("authToggleRegisterConfirm");
   const btnRegister = document.getElementById("authBtnRegister");
-  const btnGoogleRegister = document.getElementById("authBtnGoogleRegister");
 
-  // Bascule dynamique entre "Pour Se Connecter" et "Pour S'inscrire"
+  // Gestion des états de chargement (Spinners & anti-double-clic)
+  function setButtonState(btn, isLoading, loadingText, defaultText) {
+    if (!btn) return;
+    btn.disabled = isLoading;
+    if (isLoading) {
+      btn.innerHTML = `<span class="auth-spinner"></span> <span>${loadingText}</span>`;
+    } else {
+      btn.innerHTML = `<span class="btn-text">${defaultText}</span>`;
+    }
+  }
+
+  // Bascule dynamique entre "Se Connecter", "S'inscrire" et "Mot de passe oublié"
   function setMode(mode) {
     currentAuthMode = mode;
     if (tabLogin) tabLogin.classList.toggle("active", mode === "login");
     if (tabRegister) tabRegister.classList.toggle("active", mode === "register");
     if (viewLogin) viewLogin.style.display = mode === "login" ? "block" : "none";
     if (viewRegister) viewRegister.style.display = mode === "register" ? "block" : "none";
+    if (viewForgot) viewForgot.style.display = mode === "forgot" ? "block" : "none";
     setAuthMessage("idle", "");
+
+    if (mode === "forgot" && forgotIdentifier && loginEmail?.value.trim()) {
+      forgotIdentifier.value = loginEmail.value.trim();
+    }
   }
 
   setMode(initialMode);
 
-  // Sécurité : les champs de connexion restent toujours vierges après déconnexion pour préserver la confidentialité
-  if (loginEmail) loginEmail.value = "";
+  // Mémorisation de l'identifiant (Remember Me)
+  const REMEMBER_KEY = "LAPERLE_REMEMBER_LOGIN_ID";
+  try {
+    const savedRememberId = localStorage.getItem(REMEMBER_KEY);
+    if (savedRememberId && loginEmail) {
+      loginEmail.value = savedRememberId;
+      if (authRememberMe) authRememberMe.checked = true;
+    }
+  } catch (e) {}
+
   if (loginPassword) loginPassword.value = "";
 
   if (tabLogin) tabLogin.onclick = () => setMode("login");
   if (tabRegister) tabRegister.onclick = () => setMode("register");
   if (switchToRegister) switchToRegister.onclick = () => setMode("register");
   if (switchToLogin) switchToLogin.onclick = () => setMode("login");
+  if (btnForgotPwd) btnForgotPwd.onclick = () => setMode("forgot");
+  if (switchBackFromForgot) switchBackFromForgot.onclick = () => setMode("login");
+
+  // Validation visuelle en temps réel du mot de passe (4 à 8 caractères alphanumériques)
+  function updatePasswordChecklist() {
+    const pwd = registerPassword ? registerPassword.value : "";
+    const confirm = registerPasswordConfirm ? registerPasswordConfirm.value : "";
+
+    const reqLen = document.getElementById("authReqLength");
+    const reqAlpha = document.getElementById("authReqAlpha");
+    const reqMatch = document.getElementById("authReqMatch");
+
+    const isLenValid = pwd.length >= 4 && pwd.length <= 8;
+    const isAlphaValid = pwd.length > 0 && /^[a-zA-Z0-9]+$/.test(pwd);
+    const isMatchValid = pwd.length > 0 && confirm.length > 0 && pwd === confirm;
+
+    if (reqLen) {
+      const isTooLong = pwd.length > 8;
+      reqLen.className = `auth-req-item ${isLenValid ? "valid" : (isTooLong ? "invalid" : "")}`;
+      const icon = reqLen.querySelector(".req-icon");
+      if (icon) icon.textContent = isLenValid ? "🟢" : (isTooLong ? "🔴" : "⚪");
+    }
+
+    if (reqAlpha) {
+      const hasInvalidChar = pwd.length > 0 && !/^[a-zA-Z0-9]+$/.test(pwd);
+      reqAlpha.className = `auth-req-item ${isAlphaValid ? "valid" : (hasInvalidChar ? "invalid" : "")}`;
+      const icon = reqAlpha.querySelector(".req-icon");
+      if (icon) icon.textContent = isAlphaValid ? "🟢" : (hasInvalidChar ? "🔴" : "⚪");
+    }
+
+    if (reqMatch) {
+      const isMismatch = confirm.length > 0 && pwd !== confirm;
+      reqMatch.className = `auth-req-item ${isMatchValid ? "valid" : (isMismatch ? "invalid" : "")}`;
+      const icon = reqMatch.querySelector(".req-icon");
+      if (icon) icon.textContent = isMatchValid ? "🟢" : (isMismatch ? "🔴" : "⚪");
+    }
+  }
+
+  [registerPassword, registerPasswordConfirm].forEach(input => {
+    input?.addEventListener("input", updatePasswordChecklist);
+    input?.addEventListener("keyup", updatePasswordChecklist);
+  });
 
   // Affichage / Masquage du mot de passe
   function setupPasswordToggle(button, input) {
@@ -1882,7 +1959,7 @@ function initAuthUI(initialMode = "login") {
   setupPasswordToggle(toggleRegisterPwd, registerPassword);
   setupPasswordToggle(toggleRegisterConfirm, registerPasswordConfirm);
 
-  // 1. ACTION DU MODÈLE : "Se Connecter"
+  // 1. ACTION : "Se Connecter"
   if (btnLogin) {
     btnLogin.onclick = async () => {
       const identifier = loginEmail ? loginEmail.value.trim() : "";
@@ -1900,9 +1977,18 @@ function initAuthUI(initialMode = "login") {
       }
 
       try {
-        btnLogin.disabled = true;
-        setAuthMessage("loading", "Connexion en cours...");
+        setButtonState(btnLogin, true, "Connexion en cours...", "Se Connecter");
+        setAuthMessage("loading", "Vérification des identifiants et accès Cloud...");
         const result = await signInWithEmailAndPasswordMethod(identifier, password);
+
+        // Sauvegarde Remember Me si activé
+        try {
+          if (authRememberMe?.checked) {
+            localStorage.setItem(REMEMBER_KEY, identifier);
+          } else {
+            localStorage.removeItem(REMEMBER_KEY);
+          }
+        } catch (e) {}
 
         if (result && result.profile) {
           const existingList = list("utilisateurs") || [];
@@ -1919,7 +2005,7 @@ function initAuthUI(initialMode = "login") {
         showToast(`Bienvenue, ${result.profile?.nom || result.profile?.name || result.profile?.username || "Utilisateur"} !`);
         completeUserSignIn(result.user, result.profile, result.isNew);
       } catch (err) {
-        btnLogin.disabled = false;
+        setButtonState(btnLogin, false, "Connexion en cours...", "Se Connecter");
         console.warn("Erreur connexion login:", err);
         const errMsg = err?.message || String(err);
         const isNotRegistered = err?.code === "auth/user-not-registered" || errMsg.includes("pas encore inscrit") || errMsg.includes("n'existe pas dans la base de données");
@@ -1930,8 +2016,8 @@ function initAuthUI(initialMode = "login") {
             if (btnErr) {
               btnErr.onclick = () => {
                 setMode("register");
-                if (registerEmail && identifier.includes("@")) {
-                  registerEmail.value = identifier;
+                if (registerPhone && !identifier.includes("@") && /\d/.test(identifier)) {
+                  registerPhone.value = identifier.replace(/\D/g, '').slice(-8);
                 } else if (document.getElementById("authRegisterUsername") && !identifier.includes("@")) {
                   document.getElementById("authRegisterUsername").value = identifier;
                 }
@@ -1945,12 +2031,12 @@ function initAuthUI(initialMode = "login") {
     };
   }
 
-  // 2. ACTION DU MODÈLE : "S'inscrire"
+  // 2. ACTION : "S'inscrire"
   if (btnRegister) {
     btnRegister.onclick = async () => {
       const nom = registerNom ? registerNom.value.trim() : "";
       const prenom = registerPrenom ? registerPrenom.value.trim() : "";
-      const email = registerEmail ? registerEmail.value.trim() : "";
+      const rawPhone = registerPhone ? registerPhone.value.trim() : "";
       const usernameInput = document.getElementById("authRegisterUsername");
       const username = usernameInput ? usernameInput.value.trim() : "";
       const password = registerPassword ? registerPassword.value : "";
@@ -1966,11 +2052,26 @@ function initAuthUI(initialMode = "login") {
         registerPrenom?.focus();
         return;
       }
-      if (!email || !email.includes("@")) {
-        setAuthMessage("error", "Veuillez saisir une adresse e-mail valide.");
-        registerEmail?.focus();
+      if (!rawPhone) {
+        setAuthMessage("error", "Veuillez renseigner votre numéro de téléphone ou WhatsApp.");
+        registerPhone?.focus();
         return;
       }
+
+      // Formatage du téléphone avec préfixe Haïti (+509)
+      const digitsOnly = rawPhone.replace(/\D/g, "");
+      if (digitsOnly.length < 8) {
+        setAuthMessage("error", "Veuillez renseigner un numéro de téléphone valide à 8 chiffres (ex: 4440 8687).");
+        registerPhone?.focus();
+        return;
+      }
+      const phoneDigits = digitsOnly.slice(-8);
+      const telephone = `+509 ${phoneDigits}`;
+
+      // Email dérivé automatiquement pour Firebase et le compte cloud
+      const cleanHandle = username || `user_${phoneDigits}`;
+      const email = `${cleanHandle.toLowerCase().replace(/[^a-z0-9_]/g, '')}@laperletourht.com`;
+
       if (!password) {
         setAuthMessage("error", "Veuillez saisir un mot de passe.");
         registerPassword?.focus();
@@ -1993,17 +2094,23 @@ function initAuthUI(initialMode = "login") {
       }
 
       try {
-        btnRegister.disabled = true;
-        setAuthMessage("loading", "Création de votre compte LAPERLE TOUR HT en cours...");
+        setButtonState(btnRegister, true, "Création du compte...", "S'inscrire");
+        setAuthMessage("loading", "Création de votre compte sécurisé LAPERLE TOUR HT en cours...");
 
         const result = await signUpWithEmailAndPasswordMethod({
           nom,
           prenom,
           email,
-          username,
+          username: cleanHandle,
+          telephone,
           password,
           passwordConfirm
         });
+
+        // Mémorisation de l'identifiant pour la prochaine connexion
+        try {
+          localStorage.setItem(REMEMBER_KEY, telephone);
+        } catch (e) {}
 
         if (result && result.profile) {
           const existingList = list("utilisateurs") || [];
@@ -2016,108 +2123,69 @@ function initAuthUI(initialMode = "login") {
           save();
         }
 
-        const userLoginId = result.profile?.username ? `@${result.profile.username}` : (result.profile?.email || email);
-        setAuthMessage("success", `✅ Compte créé avec succès ! Pour vous reconnecter, vous pouvez utiliser votre e-mail <b>${esc(result.profile?.email || email)}</b> ou votre nom de profil <b>${esc(userLoginId)}</b>.`);
-        showToast(`🎉 Bienvenue ${nom} ${prenom} ! Nom de profil : ${userLoginId}`);
+        const userLoginId = result.profile?.telephone || (result.profile?.username ? `@${result.profile.username}` : cleanHandle);
+        setAuthMessage("success", `✅ Compte créé avec succès ! Votre identifiant de connexion : <b>${esc(userLoginId)}</b>.`);
+        showToast(`🎉 Bienvenue ${nom} ${prenom} ! Identifiant : ${userLoginId}`);
         completeUserSignIn(result.user, result.profile, result.isNew);
       } catch (err) {
-        btnRegister.disabled = false;
+        setButtonState(btnRegister, false, "Création du compte...", "S'inscrire");
         console.warn("Erreur inscription register:", err);
         setAuthMessage("error", formatAuthError(err) || err?.message || "Erreur lors de la création du compte.");
       }
     };
   }
 
-  // 3. ACTION DU MODÈLE : Boutons Google (Connexion & Inscription)
-  async function handleGoogleAuth(mode) {
-    const activeBtn = mode === "register" ? btnGoogleRegister : btnGoogleLogin;
-    try {
-      if (activeBtn) activeBtn.disabled = true;
-      setAuthMessage("loading", mode === "register"
-        ? "Inscription avec votre profil Google en cours..."
-        : "Connexion sécurisée avec Google...");
-
-      const result = await authLoginGoogle(mode);
-
-      if (result && result.profile) {
-        const existingList = list("utilisateurs") || [];
-        const idx = existingList.findIndex(u => (u.id === result.profile.id || u.email === result.profile.email));
-        if (idx >= 0) {
-          existingList[idx] = result.profile;
-        } else {
-          existingList.push(result.profile);
-        }
-        save();
-      }
-
-      setAuthMessage("success", "Authentification Google réussie !");
-      completeUserSignIn(result.user, result.profile, result.isNew);
-    } catch (err) {
-      if (activeBtn) activeBtn.disabled = false;
-      console.warn("Firebase Google auth exception:", err?.code || err?.message);
-      const errCode = err?.code || "";
-      const errMsg = err?.message || String(err);
-
-      const isNotRegistered = (errCode === "auth/user-not-registered") ||
-                              (errMsg && (errMsg.includes("pas encore inscrit") || errMsg.includes("user-not-registered")));
-      if (isNotRegistered) {
-        setAuthMessage("error", `❌ <b>Ce compte n'est pas encore inscrit sur LAPERLE TOUR HT.</b><br>Vous devez d'abord créer votre compte avant de pouvoir vous connecter.<br><button type="button" onclick="document.getElementById('authTabRegister')?.click()" style="margin-top:8px;padding:6px 14px;background:#082b70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;">👉 Cliquer ici pour vous inscrire</button>`);
+  // 3. ACTION : Récupération "Mot de passe oublié"
+  if (btnSendReset) {
+    btnSendReset.onclick = async () => {
+      const identifier = forgotIdentifier ? forgotIdentifier.value.trim() : "";
+      if (!identifier) {
+        setAuthMessage("error", "Veuillez renseigner votre adresse e-mail ou votre nom de profil pour recevoir le lien de réinitialisation.");
+        forgotIdentifier?.focus();
         return;
       }
 
-      if (
-        errCode === "auth/unauthorized-domain" ||
-        errCode === "auth/operation-not-allowed" ||
-        errCode === "auth/popup-blocked" ||
-        errCode === "auth/cancelled-popup-request" ||
-        errMsg.includes("unauthorized-domain") ||
-        errMsg.includes("operation-not-allowed") ||
-        errMsg.includes("popup")
-      ) {
-        try {
-          const fallbackEmail = mode === "register" && registerEmail?.value.trim()
-            ? registerEmail.value.trim().toLowerCase()
-            : (loginEmail?.value.trim().toLowerCase() || "castimaklik@gmail.com");
-          const fallbackName = mode === "register" && registerNom?.value.trim()
-            ? `${registerNom.value.trim()} ${registerPrenom?.value.trim() || ""}`
-            : (fallbackEmail === "castimaklik@gmail.com" ? "Administrateur Laperle" : fallbackEmail.split("@")[0]);
+      try {
+        setButtonState(btnSendReset, true, "Envoi en cours...", "Envoyer le lien de réinitialisation");
+        setAuthMessage("loading", "Vérification du compte et envoi sécurisé du lien...");
 
-          if (mode === "login" && !isSuperAdminEmail(fallbackEmail) && !isSuperAdminIdentifier(fallbackEmail)) {
-            const existing = await getUserProfileByIdentifier(fallbackEmail);
-            if (!existing) {
-              setAuthMessage("error", `❌ <b>Le compte « ${esc(fallbackEmail)} » n'est pas encore inscrit.</b><br>Veuillez d'abord créer votre compte via l'onglet <b>« Pour S'inscrire »</b> avant de vous connecter.<br><button type="button" onclick="document.getElementById('authTabRegister')?.click()" style="margin-top:8px;padding:6px 14px;background:#082b70;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px;">👉 Cliquer ici pour vous inscrire</button>`);
-              return;
-            }
+        const resetRes = await requestPasswordReset(identifier);
+
+        setButtonState(btnSendReset, false, "Envoi en cours...", "Envoyer le lien de réinitialisation");
+        setAuthMessage("success", `✉️ <b>Lien de réinitialisation envoyé !</b><br>Un e-mail a été expédié à l'adresse <b>${esc(resetRes.email)}</b>. Cliquez sur le lien reçu pour choisir un nouveau mot de passe.<br><button type="button" id="btnBackToLoginAfterReset" style="margin-top:10px;padding:7px 18px;background:#082b70;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12.5px;">👉 Retourner à la connexion</button>`);
+
+        setTimeout(() => {
+          const btnBack = document.getElementById("btnBackToLoginAfterReset");
+          if (btnBack) {
+            btnBack.onclick = () => {
+              setMode("login");
+              if (loginEmail) loginEmail.value = resetRes.email;
+            };
           }
-
-          setAuthMessage("loading", `Connexion avec ${fallbackEmail}...`);
-          const res = await directEmailSignInFallback(fallbackEmail, fallbackName, mode);
-          setAuthMessage("success", "Connexion réussie ! Bienvenue chez LAPERLE TOUR HT.");
-          completeUserSignIn(res.user, res.profile, res.isNew);
-          return;
-        } catch (fbErr) {
-          setAuthMessage("error", formatAuthError(fbErr) || "Impossible d'établir la connexion.");
-          return;
-        }
+        }, 50);
+      } catch (err) {
+        setButtonState(btnSendReset, false, "Envoi en cours...", "Envoyer le lien de réinitialisation");
+        console.warn("Erreur réinitialisation mot de passe:", err);
+        setAuthMessage("error", formatAuthError(err) || err?.message || "Impossible d'envoyer l'e-mail de réinitialisation.");
       }
-
-      setAuthMessage("error", `Échec connexion Google — ${formatAuthError(err) || errMsg}`);
-    }
+    };
   }
 
-  if (btnGoogleLogin) btnGoogleLogin.onclick = () => handleGoogleAuth("login");
-  if (btnGoogleRegister) btnGoogleRegister.onclick = () => handleGoogleAuth("register");
-
-  // Touche Entrée pour soumettre le formulaire
+  // Touche Entrée pour soumettre le formulaire actif
   [loginEmail, loginPassword].forEach(input => {
     input?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") btnLogin?.click();
     });
   });
-  [registerNom, registerPrenom, registerEmail, registerPassword, registerPasswordConfirm].forEach(input => {
+
+  [registerNom, registerPrenom, registerPhone, registerUsername, registerPassword, registerPasswordConfirm].forEach(input => {
     input?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") btnRegister?.click();
     });
+  });
+
+  forgotIdentifier?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") btnSendReset?.click();
   });
 }
 
@@ -2647,25 +2715,113 @@ function dashboard() {
     const myPlannings = list("plannings").filter(x => !x.archived);
     const myReservations = list("reservations").filter(x => !x.archived);
     const myVehicles = list("vehicules").filter(x => !x.archived);
+    const activeTrips = [...myReservations, ...myPlannings].slice(0, 5);
 
     document.getElementById("page").innerHTML = `
-      <div class="welcome">
+      <div class="welcome" style="flex-wrap:wrap;gap:12px">
         <div>
           <h2>🚗 Espace Chauffeur • ${esc(displayName)}</h2>
           <p>Centre de Contrôle LAPERLE TOUR HT • Rôle : <span class="user-role-badge chauffeur">CHAUFFEUR</span></p>
         </div>
-        <div class="quote">
-          ❝ Plus qu'un transport, une destination de confiance. ❞<br>
-          — LAPERLE TOUR HT
+        <div style="display:flex;align-items:center;gap:10px">
+          <button class="btn-sos" onclick="openDriverIncidentModal()">
+            🚨 SOS / Signaler un Incident
+          </button>
         </div>
       </div>
+
       <div class="kpis">
         ${kpi("📅", "Mes Plannings & Courses", myPlannings.length, "plannings")}
         ${kpi("🎫", "Mes Réservations", myReservations.length, "reservations")}
         ${kpi("🚙", "Véhicules assignés", myVehicles.length, "vehicules")}
         ${kpi("🔔", "Mes Notifications", list("notifications").filter(x => !x.read).length, "dashboard")}
       </div>
-      <div class="bottom-grid" style="grid-template-columns: 2fr 1fr;">
+
+      <!-- Section Actions Rapides Mobiles Chauffeur -->
+      <div class="panel" style="margin-top:14px;border-left:5px solid #1ba7b2">
+        <div class="panel-title">
+          <h3>⚡ Mes Courses Actives • Actions Immédiates (GPS, WhatsApp & Pointage)</h3>
+          <button onclick="go('reservations')">Voir toutes mes courses</button>
+        </div>
+
+        ${activeTrips.length === 0 ? `
+          <div class="empty-table">
+            <p>🚗 Aucune course immédiate programmée pour le moment.</p>
+          </div>
+        ` : `
+          <div style="display:flex;flex-direction:column;gap:12px;margin-top:10px">
+            ${activeTrips.map(item => {
+              const isRes = !item.route;
+              const routeText = isRes ? `${item.origin || 'Départ'} ➔ ${item.destination || 'Arrivée'}` : (item.route || 'Trajet Laperle');
+              const clientName = item.client || 'Client Laperle';
+              const clientPhone = item.phone || item.clientPhone || item.telephone || '';
+              const dateText = item.date || today();
+              const timeText = item.time || '08:00';
+              const currentStatus = item.status || 'Confirmée';
+              const tripType = isRes ? 'reservation' : 'planning';
+
+              return `
+                <div class="driver-trip-card">
+                  <div class="driver-trip-header">
+                    <div>
+                      <h4 class="driver-trip-title">📍 ${esc(routeText)}</h4>
+                      <div style="font-size:12px;color:#64748b;margin-top:2px">
+                        👤 Passager : <b>${esc(clientName)}</b> • 📅 ${esc(dateText)} à <b>${esc(timeText)}</b>
+                        ${item.vehicle ? ` • 🚙 Véhicule : <b>${esc(item.vehicle)}</b>` : ''}
+                      </div>
+                    </div>
+                    <span class="badge ${currentStatus === 'Terminée' ? 'green' : (currentStatus === 'En cours' ? 'orange' : 'blue')}">
+                      ${esc(currentStatus)}
+                    </span>
+                  </div>
+
+                  <div class="driver-actions-row">
+                    <!-- WhatsApp direct -->
+                    <button type="button" class="btn-wa" onclick="handleOpenWhatsAppTrip('${esc(clientPhone)}', '${esc(clientName)}', '${esc(item.origin || routeText)}', '${esc(item.destination || '')}', '${esc(timeText)}')">
+                      💬 WhatsApp Passager
+                    </button>
+
+                    <!-- Appel direct -->
+                    ${clientPhone ? `
+                      <a href="tel:${esc(clientPhone)}" class="btn-tel">
+                        📞 Appeler (${esc(clientPhone)})
+                      </a>
+                    ` : ''}
+
+                    <!-- GPS / Navigation Google Maps -->
+                    <button type="button" class="btn-gps" onclick="handleOpenGps('${esc(item.origin || '')}', '${esc(item.destination || routeText)}')">
+                      🗺️ GPS Itinéraire
+                    </button>
+
+                    <!-- Bouton SOS sur cette course -->
+                    <button type="button" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer" onclick="openDriverIncidentModal('${esc(item.id)}', '${esc(routeText)}')">
+                      ⚠️ Signaler un imprévu
+                    </button>
+                  </div>
+
+                  <!-- Pointage de statut en 1 clic -->
+                  <div style="margin-top:10px;border-top:1px dashed #e2e8f0;padding-top:8px">
+                    <span style="font-size:11px;font-weight:700;color:#092e70;margin-right:8px">Pointer le statut de la course :</span>
+                    <div class="status-pill-group" style="display:inline-flex">
+                      <button type="button" class="status-pill-btn ${currentStatus === 'En route' ? 'active' : ''}" onclick="handleDriverStatusChange('${esc(item.id)}', 'En route', '${tripType}')">
+                        🟡 En route vers le client
+                      </button>
+                      <button type="button" class="status-pill-btn ${currentStatus === 'En cours' || currentStatus === 'Client à bord' ? 'active' : ''}" onclick="handleDriverStatusChange('${esc(item.id)}', 'En cours', '${tripType}')">
+                        🟢 Client à bord
+                      </button>
+                      <button type="button" class="status-pill-btn ${currentStatus === 'Terminée' ? 'active' : ''}" onclick="handleDriverStatusChange('${esc(item.id)}', 'Terminée', '${tripType}')">
+                        🏁 Course terminée
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              `;
+            }).join("")}
+          </div>
+        `}
+      </div>
+
+      <div class="bottom-grid" style="grid-template-columns: 2fr 1fr;margin-top:14px">
         <div class="panel">
           <div class="panel-title">
             <h3>📅 Mes Prochains Plannings & Départs</h3>
@@ -2676,9 +2832,10 @@ function dashboard() {
         <div class="panel quick-card">
           <div class="panel-title"><h3>⚡ Accès rapide chauffeur</h3></div>
           <div class="quick-list">
-            <button onclick="go('plannings')">📅 Consulter mon planning <b>›</b></button>
+            <button onclick="go('plannings')">📅 Consulter mon planning complet <b>›</b></button>
             <button onclick="go('reservations')">🎫 Voir mes courses assignées <b>›</b></button>
             <button onclick="go('vehicules')">🚙 Fiche de mon véhicule <b>›</b></button>
+            <button onclick="openProfile()">👤 Mon Profil Chauffeur <b>›</b></button>
           </div>
         </div>
       </div>
@@ -3099,9 +3256,18 @@ function dashboard() {
     return;
   }
 
-  // Fallback for non-admin general staff (Secrétaire, Lecture Seule, etc.)
+  // Données pratiques pour le personnel
+  const fleetBreakdown = getFleetStatusBreakdown(list('vehicules'), list('reservations'));
+  const planningConflicts = detectPlanningConflicts(list('reservations'), list('plannings'));
+  const cashBreakdown = getDailyCashBreakdown(list('paiements'));
+  const overdueInvoices = getOverdueInvoices(list('factures'));
+  const teamNotes = getTeamRelayNotes();
+  const todayStr = today();
+  const todayReservations = list("reservations").filter(x => !x.archived && ((x.date && x.date === todayStr) || (x.createdAt && x.createdAt.startsWith(todayStr))));
+
+  // Fallback for non-admin general staff (Secrétaire, Comptabilité, Opérations, etc.)
   document.getElementById("page").innerHTML = `
-    <div class="welcome">
+    <div class="welcome" style="flex-wrap:wrap;gap:10px">
       <div>
         <h2>👤 Bonjour, ${esc(displayName)} !</h2>
         <p>Centre de contrôle opérationnel et financier LAPERLE TOUR HT • Rôles : ${roles.map(r => `<span class="user-role-badge ${r}">${ROLE_LABELS[r] || r}</span>`).join(" ")}</p>
@@ -3109,6 +3275,28 @@ function dashboard() {
       <div class="quote">
         ❝ Plus qu'un transport, une destination de confiance. ❞<br>
         — LAPERLE TOUR HT
+      </div>
+    </div>
+
+    <!-- 2. MODULE SECRÉTAIRE : Barre de Recherche Universelle Rapide -->
+    <div class="secretary-search-panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <b style="font-size:15px">🔍 Recherche Rapide Universelle Secrétariat & Opérations</b>
+          <div style="font-size:12px;opacity:0.85">Trouvez instantanément un client, une réservation, un devis proforma ou une facture</div>
+        </div>
+        <span class="badge" style="background:rgba(255,255,255,0.2);color:#fff">Écoute en direct</span>
+      </div>
+      <div class="secretary-search-input-wrap">
+        <span class="secretary-search-icon">🔎</span>
+        <input 
+          type="text" 
+          id="secretarySearchInput" 
+          class="secretary-search-input" 
+          placeholder="Tapez un nom de client, numéro de téléphone, trajet ou numéro de reçu/facture..." 
+          oninput="handleSecretarySearch(this.value)"
+        >
+        <div id="secretarySearchResults" class="secretary-search-results"></div>
       </div>
     </div>
 
@@ -3128,54 +3316,163 @@ function dashboard() {
       ${canSeeFinances ? kpi("📊", "Bénéfice Net", money(netProfit), "reports") : ""}
     </div>
 
-    ${canSeeFinances ? `
-      <div class="dashboard-grid">
-        <div class="panel">
-          <div class="panel-title">
-            <h3>📊 Revenus vs Dépenses (En direct Cloud)</h3>
-            <select id="chartRange"><option>Année courante</option><option>Mois en cours</option></select>
-          </div>
-          ${chartHTML()}
-          <div class="legend"><i></i>Paiements reçus <i class="orange"></i>Dépenses</div>
-        </div>
-        <div class="panel">
-          <div class="panel-title">
-            <h3>◕ Répartition des services</h3>
-            <select><option>Cette année</option></select>
-          </div>
-          ${servicesHTML()}
-        </div>
-      </div>
-    ` : `
-      <div class="dashboard-grid">
-        <div class="panel" style="border-left:4px solid #1675ea">
-          <div class="panel-title">
-            <h3>📋 Synthèse Secrétariat • Journalier & Hebdomadaire</h3>
-            <button onclick="go('reports')" class="primary tiny">Rapport complet ›</button>
-          </div>
-          <div class="info" style="margin-bottom:8px">
-            <b>Aujourd'hui :</b> ${list("reservations").filter(x => ((x.date && x.date === today()) || (x.createdAt && x.createdAt.startsWith(today()))) && !x.archived).length} courses programmées • ${list("paiements").filter(x => ((x.date && x.date === today()) || (x.createdAt && x.createdAt.startsWith(today()))) && !x.archived).length} encaissements
-          </div>
-          <div class="info">
-            <b>Cette semaine :</b> ${list("reservations").filter(x => !x.archived).length} réservations actives • ${list("abonnements").filter(x => !x.archived).length} abonnements en cours
-          </div>
-          <div style="margin-top:12px">
-            <button class="primary" style="width:100%" onclick="go('reports')">📈 Ouvrir le Rapport Journalier & Hebdomadaire</button>
-          </div>
-        </div>
-        <div class="panel">
-          <div class="panel-title">
-            <h3>◕ Répartition des services</h3>
-            <select><option>Cette année</option></select>
-          </div>
-          ${servicesHTML()}
-        </div>
-      </div>
-    `}
-
-    <div class="panel" style="margin-top:12px">
+    <!-- 3. MODULE OPÉRATIONS : Jauge de Flotte & Alertes Conflits -->
+    <div class="panel" style="margin-top:14px;border-left:5px solid #f7941d">
       <div class="panel-title">
-        <h3>📄 Documents Commerciaux & Opérations LAPERLE</h3>
+        <h3>🚦 Suivi Opérations Flotte & Conflits de Planning</h3>
+        <button onclick="go('vehicules')">Gérer la flotte</button>
+      </div>
+
+      <!-- Jauge de Flotte -->
+      <div class="fleet-gauge-grid">
+        <div class="fleet-gauge-card avail" onclick="go('vehicules')" style="cursor:pointer">
+          <span>🟢 Véhicules Disponibles</span>
+          <b>${fleetBreakdown.available}</b>
+        </div>
+        <div class="fleet-gauge-card busy" onclick="go('reservations')" style="cursor:pointer">
+          <span>🔵 En Course / Programmés</span>
+          <b>${fleetBreakdown.inTrip}</b>
+        </div>
+        <div class="fleet-gauge-card maint" onclick="go('vehicules')" style="cursor:pointer">
+          <span>🔴 En Panne / Révision</span>
+          <b>${fleetBreakdown.maintenance}</b>
+        </div>
+        <div class="fleet-gauge-card" style="border-top:4px solid #092e70">
+          <span>📊 Taux d'Occupation</span>
+          <b>${fleetBreakdown.occupancyPct}%</b>
+        </div>
+      </div>
+
+      <!-- Alerte Conflits de Planning -->
+      ${planningConflicts.length > 0 ? `
+        <div class="conflict-alert-box">
+          <b>⚠️ Attention : ${planningConflicts.length} conflit(s) de planning détecté(s) !</b>
+          <ul style="margin:6px 0 0 16px;padding:0;font-size:12px">
+            ${planningConflicts.slice(0, 3).map(c => `
+              <li>${esc(c.reason)} (${esc(c.date)})</li>
+            `).join("")}
+          </ul>
+        </div>
+      ` : `
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;padding:8px 12px;border-radius:8px;font-size:12px;margin-bottom:8px">
+          ✅ <b>Aucun conflit d'horaires</b> détecté entre chauffeurs et véhicules.
+        </div>
+      `}
+    </div>
+
+    <!-- 2. MODULE SECRÉTAIRE : Priorités du Jour & Départs avec WhatsApp direct -->
+    <div class="dashboard-grid">
+      <div class="panel" style="border-left:4px solid #7054ea">
+        <div class="panel-title">
+          <h3>⏰ Départs & Priorités du Jour (${todayReservations.length} courses)</h3>
+          <button onclick="go('reservations')">Toutes les réservations ›</button>
+        </div>
+
+        ${todayReservations.length === 0 ? `
+          <div class="empty-table"><p>Aucune course urgente programmée pour aujourd'hui.</p></div>
+        ` : `
+          <div style="display:flex;flex-direction:column;gap:8px">
+            ${todayReservations.slice(0, 5).map(res => `
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;padding:10px 12px;border-radius:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                <div>
+                  <b style="color:#092e70;font-size:13px">${esc(res.client)}</b> 
+                  <span style="font-size:12px;color:#475569">(${esc(res.origin)} ➔ ${esc(res.destination)})</span><br>
+                  <small style="color:#64748b">
+                    ⏱️ ${esc(res.time || '08:00')} • 🚗 ${res.driver ? esc(res.driver) : '<span style="color:#dc2626;font-weight:700">⚠️ Chauffeur non assigné</span>'}
+                    ${res.vehicle ? ` • 🚙 ${esc(res.vehicle)}` : ''}
+                  </small>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px">
+                  <button type="button" class="btn-wa" onclick="handleSendSecretaryWhatsApp('${esc(res.id)}')">
+                    💬 WhatsApp Client
+                  </button>
+                  <button type="button" class="tiny" onclick="go('reservations');openForm('reservations', list('reservations').findIndex(x=>x.id==='${esc(res.id)}'))">
+                    ✏️ Modifier
+                  </button>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        `}
+
+        <!-- Bloc-notes de Relais d'équipe -->
+        <div class="relay-notes-box">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <b style="font-size:12px;color:#92400e">📝 Bloc-notes de Relais & Consignes d'Équipe :</b>
+            <button type="button" class="primary tiny" onclick="handleSaveTeamNotes()">💾 Enregistrer</button>
+          </div>
+          <textarea 
+            id="teamRelayNotesText" 
+            class="relay-notes-textarea" 
+            placeholder="Écrivez les consignes à transmettre aux collègues (ex: Suivi client M. Moïse, véhicule envoyé au lavage, clés en régie...)"
+          >${esc(teamNotes)}</textarea>
+        </div>
+      </div>
+
+      <!-- 4. MODULE COMPTABILITÉ & CAISSE : Point Journalier & Relances -->
+      <div class="panel" style="border-left:4px solid #187a43">
+        <div class="panel-title">
+          <h3>💵 Point de Caisse Journalier (${todayStr})</h3>
+          <button onclick="go('paiements')">Paiements ›</button>
+        </div>
+        
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;padding:12px;border-radius:8px">
+          <div style="font-size:12px;color:#166534">Total Encaissé Aujourd'hui :</div>
+          <div style="font-size:24px;font-weight:800;color:#14532d;margin-top:2px">${money(cashBreakdown.total)}</div>
+          <div style="font-size:11px;color:#166534;margin-top:2px">${cashBreakdown.count} transaction(s) validée(s)</div>
+        </div>
+
+        <div class="cashdesk-grid">
+          <div class="cashdesk-pill">
+            <span>💵 Espèces (Cash)</span>
+            <b>${money(cashBreakdown.especes)}</b>
+          </div>
+          <div class="cashdesk-pill">
+            <span>📱 MonCash</span>
+            <b>${money(cashBreakdown.moncash)}</b>
+          </div>
+          <div class="cashdesk-pill">
+            <span>📲 Natcash</span>
+            <b>${money(cashBreakdown.natcash)}</b>
+          </div>
+          <div class="cashdesk-pill">
+            <span>🏦 Virement / Chèque</span>
+            <b>${money(cashBreakdown.banque)}</b>
+          </div>
+        </div>
+
+        <!-- Factures Échues à relancer -->
+        <div style="margin-top:14px;border-top:1px dashed #cbd5e1;padding-top:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <b style="font-size:12px;color:#b91c1c">⚠️ Factures en retard de paiement (${overdueInvoices.length}) :</b>
+            <button onclick="go('factures')" class="tiny">Voir tout ›</button>
+          </div>
+
+          ${overdueInvoices.length === 0 ? `
+            <div style="font-size:12px;color:#15803d">✅ Aucune facture en retard de règlement.</div>
+          ` : `
+            <div style="display:flex;flex-direction:column;gap:6px">
+              ${overdueInvoices.slice(0, 3).map(inv => `
+                <div style="background:#fff;border:1px solid #fecaca;padding:8px 10px;border-radius:6px;display:flex;justify-content:space-between;align-items:center">
+                  <div>
+                    <b style="font-size:12px;color:#991b1b">${esc(inv.number || inv.id)}</b> - ${esc(inv.client)}<br>
+                    <span style="font-size:11px;color:#64748b">Montant dû : <b>${money(inv.amount || 0)}</b></span>
+                  </div>
+                  <button type="button" class="btn-wa" style="padding:4px 8px!important;font-size:11px!important" onclick="handleSendInvoiceReminder('${esc(inv.id)}')">
+                    💬 Relancer
+                  </button>
+                </div>
+              `).join("")}
+            </div>
+          `}
+        </div>
+      </div>
+    </div>
+
+    <!-- Documents Commerciaux & Raccourcis Staff -->
+    <div class="panel" style="margin-top:14px">
+      <div class="panel-title">
+        <h3>📄 Documents Commerciaux & Raccourcis Opérations LAPERLE</h3>
       </div>
       <div class="quick-list">
         <button onclick="go('proformas')">📄 Module Proformas (${list('proformas').filter(x => !x.archived).length} enregistrées) <b>›</b></button>
@@ -3210,6 +3507,7 @@ function dashboard() {
           <button onclick="openForm('proformas')">📄 Créer une proforma <b>›</b></button>
           <button onclick="openForm('factures')">🧾 Émettre une facture <b>›</b></button>
           <button onclick="openForm('paiements')">💰 Encaisser un paiement <b>›</b></button>
+          <button onclick="openForm('finances')">🧾 Saisir une dépense <b>›</b></button>
           <button onclick="openForm('reservations')">📅 Nouvelle réservation <b>›</b></button>
         </div>
       </div>
@@ -5367,6 +5665,228 @@ function printDocument(type, index) {
 }
 
 // Window attachments for inline HTML onclick handlers
+// =========================================================================
+// OUTILS PRATIQUES EMPLOYÉS (Chauffeur, Secrétaire, Opérations, Caisse)
+// =========================================================================
+
+function openDriverIncidentModal(tripId = "", tripRoute = "") {
+  const modalEl = document.getElementById("modal");
+  if (!modalEl) return;
+
+  modalEl.innerHTML = `
+    <div class="modal-head">
+      <div>
+        <h2 style="color:#b91c1c">🚨 Signaler un Incident / SOS Course</h2>
+        <small>Alerte immédiate transmise à la régie LAPERLE TOUR HT</small>
+      </div>
+      <button class="close" onclick="closeModal()">×</button>
+    </div>
+    <form id="driverIncidentForm" style="display:flex;flex-direction:column;gap:12px">
+      <input type="hidden" name="tripId" value="${esc(tripId)}">
+      
+      ${tripRoute ? `<div class="info" style="border-left:4px solid #b91c1c"><b>Course concernée :</b> ${esc(tripRoute)} (ID: ${esc(tripId)})</div>` : ''}
+
+      <div class="field">
+        <label><b>Nature du problème :</b></label>
+        <select name="category" required style="font-weight:700">
+          <option value="Panne mécanique">🚗 Panne mécanique (moteur, surchauffe, etc.)</option>
+          <option value="Crevaison">🛞 Crevaison / Problème pneu</option>
+          <option value="Embouteillage critique">🛑 Route bloquée / Embouteillage sévère</option>
+          <option value="Client introuvable">👤 Client introuvable / Retard anormal</option>
+          <option value="Accident ou Urgence">⚠️ Accident / Incident de circulation</option>
+          <option value="Autre urgence">❓ Autre imprévu de route</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label><b>Localisation actuelle précise :</b></label>
+        <input type="text" name="location" placeholder="Ex: Delmas 33, Carrefour Aéroport, Tabarre..." required>
+      </div>
+
+      <div class="field">
+        <label><b>Détails & Besoins d'assistance :</b></label>
+        <textarea name="description" placeholder="Ex: Besoin d'un véhicule de relais pour transférer les 4 passagers..."></textarea>
+      </div>
+
+      <div class="form-actions" style="margin-top:10px">
+        <button type="button" class="secondary" onclick="closeModal()">Annuler</button>
+        <button type="submit" class="btn-sos">
+          🚨 Transmettre l'Alerte Urgente
+        </button>
+      </div>
+    </form>
+  `;
+
+  document.getElementById("modalBackdrop").classList.add("open");
+
+  document.getElementById("driverIncidentForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const cat = form.category.value;
+    const loc = form.location.value;
+    const desc = form.description.value;
+    const tId = form.tripId.value;
+
+    const ok = await submitDriverIncident(tId, cat, desc, loc);
+    if (ok) {
+      closeModal();
+      if (typeof dashboard === 'function') dashboard();
+    }
+  };
+}
+
+async function handleDriverStatusChange(tripId, newStatus, tripType = 'reservation') {
+  await quickUpdateTripStatus(tripId, newStatus, tripType);
+}
+
+function handleOpenGps(origin, dest) {
+  openGpsRoute(origin, dest);
+}
+
+function handleOpenWhatsAppTrip(phone, clientName, origin, dest, time) {
+  openWhatsAppForTrip(phone, clientName, origin, dest, time);
+}
+
+function handleSendSecretaryWhatsApp(resId) {
+  const res = (list("reservations") || []).find(r => r.id === resId);
+  if (!res) {
+    showToast("Réservation introuvable.", "error");
+    return;
+  }
+  const driver = (list("chauffeurs") || []).find(c => c.name === res.driver || c.id === res.driverId);
+  const vehicle = (list("vehicules") || []).find(v => (v.brand + " " + v.model) === res.vehicle || v.plate === res.vehicle);
+  
+  openSecretaryWhatsAppConfirmation(
+    res, 
+    driver ? (driver.phone || driver.telephone) : "", 
+    vehicle ? vehicle.plate : ""
+  );
+}
+
+function handleSecretarySearch(query) {
+  const q = String(query || "").trim().toLowerCase();
+  const resultsContainer = document.getElementById("secretarySearchResults");
+  if (!resultsContainer) return;
+
+  if (q.length < 2) {
+    resultsContainer.innerHTML = "";
+    resultsContainer.style.display = "none";
+    return;
+  }
+
+  const clientsList = (list("clients") || []).filter(c => !c.archived && (
+    (c.name || "").toLowerCase().includes(q) ||
+    (c.phone || "").includes(q) ||
+    (c.email || "").toLowerCase().includes(q)
+  )).slice(0, 4);
+
+  const reservationsList = (list("reservations") || []).filter(r => !r.archived && (
+    (r.client || "").toLowerCase().includes(q) ||
+    (r.origin || "").toLowerCase().includes(q) ||
+    (r.destination || "").toLowerCase().includes(q) ||
+    (r.id || "").toLowerCase().includes(q)
+  )).slice(0, 4);
+
+  const proformasList = (list("proformas") || []).filter(p => !p.archived && (
+    (p.client || "").toLowerCase().includes(q) ||
+    (p.number || "").toLowerCase().includes(q) ||
+    (p.id || "").toLowerCase().includes(q)
+  )).slice(0, 3);
+
+  const facturesList = (list("factures") || []).filter(f => !f.archived && (
+    (f.client || "").toLowerCase().includes(q) ||
+    (f.number || "").toLowerCase().includes(q) ||
+    (f.id || "").toLowerCase().includes(q)
+  )).slice(0, 3);
+
+  const totalMatches = clientsList.length + reservationsList.length + proformasList.length + facturesList.length;
+
+  if (totalMatches === 0) {
+    resultsContainer.innerHTML = `<div style="padding:12px;text-align:center;color:#64748b;font-size:12px">Aucun résultat trouvé pour « ${esc(q)} »</div>`;
+    resultsContainer.style.display = "block";
+    return;
+  }
+
+  let html = "";
+
+  if (clientsList.length > 0) {
+    html += `<div style="padding:6px 12px;background:#f1f5f9;font-size:11px;font-weight:700;color:#092e70">👥 CLIENTS (${clientsList.length})</div>`;
+    clientsList.forEach(c => {
+      html += `
+        <div class="secretary-result-item" onclick="go('clients');viewRow('clients', list('clients').findIndex(x=>x.id==='${c.id}'))">
+          <div><b>${esc(c.name)}</b> <span style="font-size:11px;color:#64748b">(${esc(c.phone || c.email || '—')})</span></div>
+          <span class="badge green">Client</span>
+        </div>
+      `;
+    });
+  }
+
+  if (reservationsList.length > 0) {
+    html += `<div style="padding:6px 12px;background:#f1f5f9;font-size:11px;font-weight:700;color:#092e70">📅 RÉSERVATIONS (${reservationsList.length})</div>`;
+    reservationsList.forEach(r => {
+      html += `
+        <div class="secretary-result-item" onclick="go('reservations');viewRow('reservations', list('reservations').findIndex(x=>x.id==='${r.id}'))">
+          <div><b>${esc(r.client)}</b> : ${esc(r.origin)} ➔ ${esc(r.destination)} <span style="font-size:11px;color:#64748b">(${esc(r.date)} ${esc(r.time || '')})</span></div>
+          <span class="badge orange">${esc(r.status || 'En attente')}</span>
+        </div>
+      `;
+    });
+  }
+
+  if (proformasList.length > 0) {
+    html += `<div style="padding:6px 12px;background:#f1f5f9;font-size:11px;font-weight:700;color:#092e70">📄 PROFORMAS (${proformasList.length})</div>`;
+    proformasList.forEach(p => {
+      html += `
+        <div class="secretary-result-item" onclick="go('proformas');viewRow('proformas', list('proformas').findIndex(x=>x.id==='${p.id}'))">
+          <div><b>${esc(p.number || p.id)}</b> • ${esc(p.client)} <span style="font-size:11px;color:#64748b">(${money(p.amount || 0)})</span></div>
+          <span class="badge">Devis</span>
+        </div>
+      `;
+    });
+  }
+
+  if (facturesList.length > 0) {
+    html += `<div style="padding:6px 12px;background:#f1f5f9;font-size:11px;font-weight:700;color:#092e70">🧾 FACTURES (${facturesList.length})</div>`;
+    facturesList.forEach(f => {
+      html += `
+        <div class="secretary-result-item" onclick="go('factures');viewRow('factures', list('factures').findIndex(x=>x.id==='${f.id}'))">
+          <div><b>${esc(f.number || f.id)}</b> • ${esc(f.client)} <span style="font-size:11px;color:#64748b">(${money(f.amount || 0)})</span></div>
+          <span class="badge ${f.status === 'Payée' ? 'green' : 'red'}">${esc(f.status || 'En attente')}</span>
+        </div>
+      `;
+    });
+  }
+
+  resultsContainer.innerHTML = html;
+  resultsContainer.style.display = "block";
+}
+
+function handleSaveTeamNotes() {
+  const el = document.getElementById("teamRelayNotesText");
+  if (el) {
+    saveTeamRelayNotes(el.value);
+  }
+}
+
+function handleSendInvoiceReminder(factureId) {
+  const f = (list("factures") || []).find(x => x.id === factureId);
+  if (!f) {
+    showToast("Facture introuvable.", "error");
+    return;
+  }
+  const client = (list("clients") || []).find(c => c.name === f.client);
+  sendInvoiceReminderWhatsApp(f, client ? (client.phone || client.telephone) : "");
+}
+
+// Window attachments for inline HTML onclick handlers
+window.openDriverIncidentModal = openDriverIncidentModal;
+window.handleDriverStatusChange = handleDriverStatusChange;
+window.handleOpenGps = handleOpenGps;
+window.handleOpenWhatsAppTrip = handleOpenWhatsAppTrip;
+window.handleSendSecretaryWhatsApp = handleSendSecretaryWhatsApp;
+window.handleSecretarySearch = handleSecretarySearch;
+window.handleSaveTeamNotes = handleSaveTeamNotes;
+window.handleSendInvoiceReminder = handleSendInvoiceReminder;
 window.go = go;
 window.openForm = openForm;
 window.closeModal = closeModal;

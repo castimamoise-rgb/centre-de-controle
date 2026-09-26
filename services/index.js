@@ -15,3 +15,4 @@ export * from './settings.js';
 export * from './permissionService.js';
 export * from './authService.js';
 export * from './userService.js';
+export * from './employeePracticalService.js';

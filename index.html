@@ -97,12 +97,12 @@
             <p class="auth-login-sub">Saisissez votre e-mail ou votre nom de profil et votre mot de passe</p>
           </div>
 
-          <!-- Champ Email ou Nom de profil -->
+          <!-- Champ Email, Téléphone ou Nom de profil -->
           <div class="auth-field">
-            <label for="authLoginEmail">Email :</label>
+            <label for="authLoginEmail">Email, Téléphone ou Nom de profil :</label>
             <div class="auth-input-icon-wrap">
               <span class="auth-icon-prefix">👤</span>
-              <input type="text" id="authLoginEmail" placeholder="Votre email" autocomplete="off" required>
+              <input type="text" id="authLoginEmail" placeholder="Votre e-mail, téléphone (+509) ou pseudo" autocomplete="username" required>
             </div>
           </div>
 
@@ -111,14 +111,23 @@
             <label for="authLoginPassword">Password :</label>
             <div class="auth-input-icon-wrap">
               <span class="auth-icon-prefix">🔒</span>
-              <input type="password" id="authLoginPassword" class="has-pwd-toggle" placeholder="Votre mot de passe" autocomplete="new-password" required>
+              <input type="password" id="authLoginPassword" class="has-pwd-toggle" placeholder="Votre mot de passe" autocomplete="current-password" required>
               <button type="button" class="auth-pwd-toggle" id="authToggleLoginPassword" title="Afficher/Masquer le mot de passe" aria-label="Afficher le mot de passe">👁️</button>
             </div>
           </div>
 
+          <!-- Options Connexion : Se souvenir de moi + Mot de passe oublié -->
+          <div class="auth-options-row">
+            <label class="auth-remember-wrap" for="authRememberMe">
+              <input type="checkbox" id="authRememberMe">
+              <span class="auth-remember-text">Se souvenir de moi</span>
+            </label>
+            <button type="button" class="auth-forgot-pwd-btn" id="authBtnForgotPwd">Mot de passe oublié ?</button>
+          </div>
+
           <!-- Bouton Se Connecter -->
           <button class="auth-btn-primary" id="authBtnLogin" type="button">
-            <span>Se Connecter</span>
+            <span class="btn-text">Se Connecter</span>
           </button>
 
           <div class="auth-switch-prompt">
@@ -153,12 +162,20 @@
             </div>
           </div>
 
-          <!-- Email -->
+          <!-- Téléphone / WhatsApp (+509) -->
           <div class="auth-field">
-            <label for="authRegisterEmail">Email :</label>
-            <div class="auth-input-icon-wrap">
-              <span class="auth-icon-prefix">✉️</span>
-              <input type="email" id="authRegisterEmail" placeholder="nom@exemple.com" autocomplete="email" required>
+            <label for="authRegisterPhone">
+              Téléphone / WhatsApp :
+            </label>
+            <div class="auth-phone-group">
+              <div class="auth-phone-prefix">
+                <span class="auth-flag">🇭🇹</span>
+                <span class="auth-code">+509</span>
+              </div>
+              <input type="tel" id="authRegisterPhone" class="auth-phone-input" placeholder="Ex: 4440 8687" autocomplete="tel" required>
+            </div>
+            <div class="auth-field-hint">
+              Numéro de contact pour vos réservations, notifications et alertes circuits scolaires.
             </div>
           </div>
 
@@ -166,14 +183,11 @@
           <div class="auth-field">
             <label for="authRegisterUsername">
               Nom de profil :
-              <span class="auth-label-badge" style="background:#f1f5f9;color:#475569;border-color:#cbd5e1">Pseudo</span>
+              <span class="auth-label-badge" style="background:#f1f5f9;color:#475569;border-color:#cbd5e1">Optionnel</span>
             </label>
             <div class="auth-input-icon-wrap">
               <span class="auth-icon-prefix">🏷️</span>
               <input type="text" id="authRegisterUsername" placeholder="Ex: jean_dupont" autocomplete="nickname">
-            </div>
-            <div class="auth-field-hint">
-              
             </div>
           </div>
 
@@ -181,15 +195,12 @@
           <div class="auth-field">
             <label for="authRegisterPassword">
               Password :
-              <span class="auth-label-badge">4 et 8 caractères (chiffres ou lettres).</span>
+              <span class="auth-label-badge">4 à 8 caractères</span>
             </label>
             <div class="auth-input-icon-wrap">
               <span class="auth-icon-prefix">🔒</span>
               <input type="password" id="authRegisterPassword" class="has-pwd-toggle" minlength="4" maxlength="8" placeholder="4 à 8 chiffres ou lettres" autocomplete="new-password" required>
               <button type="button" class="auth-pwd-toggle" id="authToggleRegisterPassword" title="Afficher/Masquer le mot de passe" aria-label="Afficher le mot de passe">👁️</button>
-            </div>
-            <div class="auth-field-hint">
-              Le mot de passe doit comporter entre 4 et 8 caractères (chiffres ou lettres).
             </div>
           </div>
 
@@ -203,14 +214,64 @@
             </div>
           </div>
 
+          <!-- Indicateurs de conformité mot de passe en temps réel -->
+          <div class="auth-pwd-reqs" id="authPwdReqs">
+            <div class="auth-req-item" id="authReqLength">
+              <span class="req-icon">⚪</span> <span>Entre 4 et 8 caractères</span>
+            </div>
+            <div class="auth-req-item" id="authReqAlpha">
+              <span class="req-icon">⚪</span> <span>Chiffres ou lettres uniquement</span>
+            </div>
+            <div class="auth-req-item" id="authReqMatch">
+              <span class="req-icon">⚪</span> <span>Mots de passe identiques</span>
+            </div>
+          </div>
+
           <!-- Bouton S'inscrire -->
           <button class="auth-btn-primary" id="authBtnRegister" type="button">
-            <span>S'inscrire</span>
+            <span class="btn-text">S'inscrire</span>
           </button>
 
           <div class="auth-switch-prompt">
             Déjà inscrit ?
             <button type="button" class="auth-switch-btn" id="authSwitchToLogin">Se Connecter</button>
+          </div>
+        </div>
+
+        <!-- VUE 3 : MOT DE PASSE OUBLIÉ -->
+        <div id="authViewForgotPassword" style="display:none;">
+          <div class="auth-form-top">
+            <div class="auth-login-kicker">RÉCUPÉRATION DE COMPTE</div>
+            <h2 class="auth-login-heading">Mot de passe oublié</h2>
+            <p class="auth-login-sub">Recevez un lien de réinitialisation sécurisé sur votre adresse e-mail</p>
+          </div>
+
+          <div class="auth-field">
+            <label for="authForgotIdentifier">Email ou Nom de profil :</label>
+            <div class="auth-input-icon-wrap">
+              <span class="auth-icon-prefix">✉️</span>
+              <input type="text" id="authForgotIdentifier" placeholder="Votre email ou nom de profil" autocomplete="email">
+            </div>
+            <div class="auth-field-hint">
+              Saisissez l'adresse e-mail ou le nom de profil associé à votre compte Laperle.
+            </div>
+          </div>
+
+          <button class="auth-btn-primary" id="authBtnSendReset" type="button">
+            <span class="btn-text">Envoyer le lien de réinitialisation</span>
+          </button>
+
+          <div class="auth-support-card">
+            <div class="auth-support-title">Besoin d'assistance directe ?</div>
+            <p class="auth-support-sub">Notre équipe d'administration est disponible sur WhatsApp pour vous débloquer rapidement.</p>
+            <a href="https://wa.me/50944408687?text=Bonjour,%20j'ai%20besoin%20d'aide%20pour%20réinitialiser%20le%20mot%20de%20passe%20de%20mon%20compte%20Laperle%20Tour%20HT" target="_blank" rel="noopener noreferrer" class="auth-support-btn">
+              <span>💬</span> <span>Assistance WhatsApp (+509 4440 8687)</span>
+            </a>
+          </div>
+
+          <div class="auth-switch-prompt">
+            Vous vous souvenez de votre mot de passe ?
+            <button type="button" class="auth-switch-btn" id="authSwitchBackFromForgot">Retour à la connexion</button>
           </div>
         </div>
 

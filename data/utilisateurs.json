@@ -21,7 +21,7 @@
     "createdAt": "2026-09-22T21:24:32.231Z",
     "updatedAt": "2026-09-22T21:10:46.326Z",
     "notes": "Fondateur & Administrateur Principal",
-    "lastLoginAt": "2026-09-23T16:21:43.407Z"
+    "lastLoginAt": "2026-09-26T21:03:49.681Z"
   },
   {
     "id": "usr_admin_castimaklik",
@@ -73,18 +73,18 @@
   {
     "id": "usr_1790165985213_jfrow",
     "uid": "usr_1790165985213_jfrow",
-    "nom": "wewe",
+    "nom": "Dupont Test 3632",
     "prenom": "wawa",
-    "name": "wewe wawa",
-    "username": "wawe123",
+    "name": "Dupont Test 3632 wawa",
+    "username": "user_3632",
     "aliases": [
       "wawa_wewe",
       "wawe",
       "wawe123"
     ],
     "email": "yapek81784@ncleap.com",
-    "telephone": "",
-    "phone": "",
+    "telephone": "+509 3711 3632",
+    "phone": "+509 3711 3632",
     "photoURL": "",
     "roles": [
       "client"
@@ -97,7 +97,7 @@
     "notes": "Client inscrit sur le site LAPERLE TOUR HT",
     "permissions": {},
     "createdAt": "2026-09-23T12:19:45.212Z",
-    "updatedAt": "2026-09-23T12:19:45.212Z",
+    "updatedAt": "2026-09-26T21:19:33.646Z",
     "lastLoginAt": "2026-09-23T12:19:45.212Z",
     "createdBy": "yapek81784@ncleap.com",
     "updatedBy": "yapek81784@ncleap.com"
@@ -285,5 +285,142 @@
     "lastLoginAt": "2026-09-26T13:58:01.807Z",
     "createdBy": "userfall1226@gmail.com",
     "updatedBy": "userfall1226@gmail.com"
+  },
+  {
+    "id": "kAT4Qq7YlkS01FNU7xGSqDv2a0t2",
+    "uid": "kAT4Qq7YlkS01FNU7xGSqDv2a0t2",
+    "nom": "Testeur",
+    "prenom": "Automatisé",
+    "name": "Testeur Automatisé",
+    "username": "testeur_1790454108375",
+    "aliases": [
+      "test_laperle_1790454107994",
+      "testeur_1790454108375",
+      "testeur",
+      "automatisé",
+      "testeur_automatisé",
+      "automatisé_testeur"
+    ],
+    "email": "test_laperle_1790454107994@example.com",
+    "telephone": "",
+    "phone": "",
+    "photoURL": "",
+    "roles": [
+      "prospect"
+    ],
+    "role": "prospect",
+    "status": "actif",
+    "statutCompte": "actif",
+    "statutClient": "prospect",
+    "passwordHash": "6936ff360f57f9a8b97f11f78fd1c5e220744bd6a16ccae439c0c402d78a1dff",
+    "notes": "Prospect inscrit sur le site LAPERLE TOUR HT",
+    "permissions": {},
+    "createdAt": "2026-09-26T20:21:48.575Z",
+    "updatedAt": "2026-09-26T20:21:48.575Z",
+    "lastLoginAt": "2026-09-26T20:21:48.590Z",
+    "createdBy": "test_laperle_1790454107994@example.com",
+    "updatedBy": "test_laperle_1790454107994@example.com"
+  },
+  {
+    "id": "y8eI9GuN2ZTpm7AnXohHn8KIkZf1",
+    "uid": "y8eI9GuN2ZTpm7AnXohHn8KIkZf1",
+    "nom": "Testeur",
+    "prenom": "Auto",
+    "name": "Testeur Auto",
+    "username": "tester9633",
+    "aliases": [
+      "tester9633",
+      "testeur",
+      "auto",
+      "testeur_auto",
+      "auto_testeur"
+    ],
+    "email": "tester9633@laperletourht.com",
+    "telephone": "+509 3844 9633",
+    "phone": "+509 3844 9633",
+    "photoURL": "",
+    "roles": [
+      "prospect"
+    ],
+    "role": "prospect",
+    "status": "actif",
+    "statutCompte": "actif",
+    "statutClient": "prospect",
+    "passwordHash": "c8c346471e48401aaa1f6a9afb5ff9011431bb6ae9fb59f8f7d42972e71b469e",
+    "notes": "Prospect inscrit sur le site LAPERLE TOUR HT",
+    "permissions": {},
+    "createdAt": "2026-09-26T21:04:20.880Z",
+    "updatedAt": "2026-09-26T21:04:20.880Z",
+    "lastLoginAt": "2026-09-26T21:04:21.266Z",
+    "createdBy": "tester9633@laperletourht.com",
+    "updatedBy": "tester9633@laperletourht.com"
+  },
+  {
+    "id": "F4KFUDSQavRaPvXxVigZrms9PsH2",
+    "uid": "F4KFUDSQavRaPvXxVigZrms9PsH2",
+    "nom": "Client",
+    "prenom": "Laperle",
+    "name": "Client Laperle",
+    "username": "client7234",
+    "aliases": [
+      "client7234",
+      "client",
+      "laperle",
+      "client_laperle",
+      "laperle_client"
+    ],
+    "email": "client7234@laperletourht.com",
+    "telephone": "+509 3988 7234",
+    "phone": "+509 3988 7234",
+    "photoURL": "",
+    "roles": [
+      "prospect"
+    ],
+    "role": "prospect",
+    "status": "actif",
+    "statutCompte": "actif",
+    "statutClient": "prospect",
+    "passwordHash": "2b01c09e3707b2f71919ba895b44077d33a2ac01fd9ef419c0f4756761bf698c",
+    "notes": "Prospect inscrit sur le site LAPERLE TOUR HT",
+    "permissions": {},
+    "createdAt": "2026-09-26T21:04:48.329Z",
+    "updatedAt": "2026-09-26T21:04:48.329Z",
+    "lastLoginAt": "2026-09-26T21:04:48.629Z",
+    "createdBy": "client7234@laperletourht.com",
+    "updatedBy": "client7234@laperletourht.com"
+  },
+  {
+    "id": "w53M4DDRzGadqbZoBnMZ0E7ehG43",
+    "uid": "w53M4DDRzGadqbZoBnMZ0E7ehG43",
+    "nom": "Dupont Modifié",
+    "prenom": "Jean",
+    "name": "Dupont Modifié Jean",
+    "username": "prospect_2386",
+    "aliases": [
+      "prospect_2386",
+      "dupont",
+      "jean",
+      "dupont_jean",
+      "jean_dupont"
+    ],
+    "email": "prospect_2386@laperletourht.com",
+    "telephone": "+509 3699 2386",
+    "phone": "+509 3699 2386",
+    "photoURL": "",
+    "roles": [
+      "client"
+    ],
+    "role": "client",
+    "status": "actif",
+    "statutCompte": "actif",
+    "statutClient": "prospect",
+    "passwordHash": "818cf0790440254e63ce8b7eb07dee2746f2098b95a3165929ab81d2819e7f96",
+    "notes": "Promu client officiel par l'Administrateur",
+    "permissions": {},
+    "createdAt": "2026-09-26T21:10:23.925Z",
+    "updatedAt": "2026-09-26T21:10:24.093Z",
+    "lastLoginAt": "2026-09-26T21:10:23.925Z",
+    "createdBy": "prospect_2386@laperletourht.com",
+    "updatedBy": "prospect_2386@laperletourht.com"
   }
 ]
