@@ -5,7 +5,7 @@ import helmet from 'helmet';
 import compression from 'compression';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
-import { initializeApp as initAdminApp, getApps as getAdminApps } from 'firebase-admin/app';
+import { initializeApp as initAdminApp, getApps as getAdminApps, cert } from 'firebase-admin/app';
 import { getAuth as getAdminAuth } from 'firebase-admin/auth';
 import { getFirestore as getAdminFirestore, FieldValue } from 'firebase-admin/firestore';
 
@@ -43,8 +43,15 @@ const firebaseConfig = {
 let adminAuth = null;
 let adminDb = null;
 try {
-  const adminApp = getAdminApps().length ? getAdminApps()[0] : initAdminApp({
-    projectId: firebaseConfig.projectId
+  const existingAdminApps = getAdminApps();
+  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  const serviceAccount = serviceAccountJson ? JSON.parse(serviceAccountJson) : null;
+  if (process.env.VERCEL === '1' && !serviceAccount && existingAdminApps.length === 0) {
+    throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON is required on Vercel.');
+  }
+  const adminApp = existingAdminApps.length ? existingAdminApps[0] : initAdminApp({
+    projectId: serviceAccount?.project_id || firebaseConfig.projectId,
+    ...(serviceAccount ? { credential: cert(serviceAccount) } : {})
   });
   adminAuth = getAdminAuth(adminApp);
   adminDb = getAdminFirestore(adminApp, firebaseConfig.firestoreDatabaseId);
@@ -55,8 +62,12 @@ try {
 async function requireFirebaseUser(req, res) {
   const header = String(req.headers.authorization || '');
   const token = header.startsWith('Bearer ') ? header.slice(7) : '';
-  if (!token || !adminAuth) {
+  if (!token) {
     res.status(401).json({ error: 'Authentification Firebase requise.' });
+    return null;
+  }
+  if (!adminAuth) {
+    res.status(503).json({ error: 'Firebase Admin indisponible. Vérifiez FIREBASE_SERVICE_ACCOUNT_JSON sur Vercel.' });
     return null;
   }
   try {
@@ -290,30 +301,40 @@ app.post('/api/proforma-requests', async (req, res) => {
 
 // Retired endpoints: credentials, fabricated profiles and client-supplied role changes are not accepted.
 app.post(['/api/auth/login', '/api/auth/google', '/api/auth/reset-users', '/api/auth/user/:uid/upgrade-client'], (_req, res) => res.sendStatus(410));
-app.use(express.static(__dirname, {
-  setHeaders: (res, filePath) => {
-    if (filePath.endsWith('.html') || filePath.endsWith('.js')) {
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
+// Vercel serves the frontend files from its static output. Keep this Express
+// file server only for local/self-hosted runs, never expose the repository from
+// the serverless API function.
+if (process.env.VERCEL !== '1') {
+  app.use(express.static(__dirname, {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.html') || filePath.endsWith('.js')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+      }
     }
-  }
-}));
+  }));
 
-// SPA Fallback
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
+  // SPA Fallback
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+  });
+}
 
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n  Centre de Contrôle Laperle ready on http://0.0.0.0:${PORT}/\n`);
-  console.log(`Centre de Contrôle Laperle ready and listening on port ${PORT}`);
+export default app;
 
-});
+// A Vercel Function imports the Express app and manages the HTTP lifecycle.
+// Local and self-hosted deployments keep the traditional listener.
+if (process.env.VERCEL !== '1') {
+  const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n  Centre de Contrôle Laperle ready on http://0.0.0.0:${PORT}/\n`);
+    console.log(`Centre de Contrôle Laperle ready and listening on port ${PORT}`);
+  });
 
-process.on('SIGTERM', () => {
-  server.close(() => process.exit(0));
-});
-process.on('SIGINT', () => {
-  server.close(() => process.exit(0));
-});
+  process.on('SIGTERM', () => {
+    server.close(() => process.exit(0));
+  });
+  process.on('SIGINT', () => {
+    server.close(() => process.exit(0));
+  });
+}
