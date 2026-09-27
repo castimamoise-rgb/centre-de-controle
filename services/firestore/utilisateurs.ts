@@ -31,26 +31,7 @@ export interface UtilisateurData {
 const COLLECTION_NAME = 'utilisateurs';
 
 export async function createUtilisateur(data: Omit<UtilisateurData, 'id'>, customId?: string): Promise<UtilisateurData> {
-  const id = customId || (data as any).uid || (data as any).id || auth.currentUser?.uid || (data.email ? data.email.toLowerCase().replace(/[^a-zA-Z0-9]/g, '_') : `USR-${Date.now()}`);
-  const now = new Date().toISOString();
-  const userEmail = auth.currentUser?.email || 'admin';
-  
-  const payload: UtilisateurData = {
-    ...data,
-    id,
-    status: data.status || 'Actif',
-    createdBy: userEmail,
-    updatedBy: userEmail,
-    createdAt: now,
-    updatedAt: now
-  };
-
-  try {
-    await setDoc(doc(db, COLLECTION_NAME, id), payload);
-    return payload;
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, `${COLLECTION_NAME}/${id}`);
-  }
+  throw new Error('Les comptes doivent être créés via Firebase Authentication.');
 }
 
 export async function getUtilisateurs(): Promise<UtilisateurData[]> {
@@ -74,23 +55,16 @@ export async function getUtilisateur(id: string): Promise<UtilisateurData | null
   }
 }
 
-export async function getUtilisateurByEmail(email: string): Promise<UtilisateurData | null> {
-  try {
-    const q = query(collection(db, COLLECTION_NAME), where('email', '==', email.toLowerCase().trim()));
-    const snap = await getDocs(q);
-    if (snap.empty) return null;
-    const first = snap.docs[0];
-    return { ...first.data(), id: first.id } as UtilisateurData;
-  } catch (error) {
-    handleFirestoreError(error, OperationType.GET, COLLECTION_NAME);
-  }
-}
 
 export async function updateUtilisateur(id: string, updates: Partial<UtilisateurData>): Promise<void> {
-  const userEmail = auth.currentUser?.email || 'admin';
+  if (!auth.currentUser) throw new Error('Une session Firebase est requise.');
+  if (String(id) === auth.currentUser.uid && ('role' in updates || 'roles' in updates)) throw new Error('Vous ne pouvez pas modifier votre propre rôle.');
+
+  const user = auth.currentUser;
+  if (!user) throw new Error('Une session Firebase est requise.');
   const payload = {
     ...updates,
-    updatedBy: userEmail,
+    updatedBy: user.uid,
     updatedAt: new Date().toISOString()
   };
 

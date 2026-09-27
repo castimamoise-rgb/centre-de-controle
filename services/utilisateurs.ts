@@ -42,44 +42,12 @@ export const ROLES = {
   LECTURE_SEULE: 'LECTURE_SEULE'
 } as const;
 
-export const SUPER_ADMIN_EMAIL = 'castimamoise@gmail.com';
-
-export async function createOrUpdateUser(userObj: Partial<UtilisateurData>): Promise<UtilisateurData> {
-  const email = (userObj.email || '').toLowerCase().trim();
-  const id = userObj.id || (userObj.uid ? userObj.uid : email.replace(/[^a-zA-Z0-9]/g, '_'));
-  const now = new Date().toISOString();
-  const currentUserEmail = auth.currentUser?.email || 'system';
-
-  const isSuper = email === SUPER_ADMIN_EMAIL;
-  const role = isSuper ? ROLES.ADMIN : (userObj.role || ROLES.LECTURE_SEULE);
-
-  const payload: UtilisateurData = {
-    ...userObj,
-    id,
-    uid: userObj.uid || id,
-    email,
-    name: userObj.name || (isSuper ? 'Moïse Castima' : email.split('@')[0]),
-    role,
-    status: userObj.status || 'Actif',
-    archived: false,
-    updatedBy: currentUserEmail,
-    updatedAt: now,
-    createdAt: userObj.createdAt || now,
-    createdBy: userObj.createdBy || currentUserEmail
-  };
-
-  try {
-    await setDoc(doc(db, COLLECTION_NAME, id), payload, { merge: true });
-    if (userObj.uid && userObj.uid !== id) {
-      await setDoc(doc(db, COLLECTION_NAME, userObj.uid), payload, { merge: true });
-    }
-    return payload;
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, `${COLLECTION_NAME}/${id}`);
-  }
+export async function createOrUpdateUser(): Promise<UtilisateurData> {
+  throw new Error('Les comptes doivent être créés via Firebase Authentication.');
 }
 
 export async function getUtilisateurs(includeArchived = false): Promise<UtilisateurData[]> {
+  if (!auth.currentUser) return [];
   try {
     const q = includeArchived 
       ? collection(db, COLLECTION_NAME)
@@ -104,7 +72,9 @@ export async function getUtilisateur(id: string): Promise<UtilisateurData | null
 }
 
 export async function updateUtilisateur(id: string, updates: Partial<UtilisateurData>): Promise<Partial<UtilisateurData>> {
-  const currentUserEmail = auth.currentUser?.email || 'admin';
+  if (!auth.currentUser) throw new Error('Une session Firebase est requise.');
+  if (id === auth.currentUser.uid && ('role' in updates || 'roles' in updates)) throw new Error('Vous ne pouvez pas modifier votre propre rôle.');
+  const currentUserEmail = auth.currentUser.email || '';
   const payload = {
     ...updates,
     updatedBy: currentUserEmail,

@@ -5,7 +5,6 @@ import {
   doc, 
   getDoc, 
   getDocs, 
-  setDoc, 
   updateDoc, 
   deleteDoc, 
   onSnapshot, 
@@ -58,7 +57,8 @@ export function generateProformaNumber(existingList: ProformaData[] = []): strin
 
 export async function createProforma(data: Partial<ProformaData>, customNumber?: string): Promise<ProformaData> {
   const now = new Date().toISOString();
-  const userEmail = auth.currentUser?.email || 'admin';
+  const user = auth.currentUser;
+  if (!user) throw new Error('Une session Firebase est requise pour créer une proforma.');
   
   let number = customNumber || data.number;
   if (!number) {
@@ -80,18 +80,34 @@ export async function createProforma(data: Partial<ProformaData>, customNumber?:
     notes: data.notes || '',
     status: data.status || 'En attente',
     archived: false,
-    createdBy: userEmail,
-    updatedBy: userEmail,
+    ...(data.clientId || data.uid ? { clientId: String(data.clientId || data.uid), uid: String(data.uid || data.clientId) } : {}),
+    createdBy: user.uid,
+    updatedBy: user.uid,
     createdAt: data.createdAt || now,
     updatedAt: now
   };
 
-  try {
-    await setDoc(doc(db, COLLECTION_NAME, id), payload);
-    return payload;
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, `${COLLECTION_NAME}/${id}`);
-  }
+  const response = await fetch('/api/proformas', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` },
+    body: JSON.stringify({ proforma: payload })
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Création de la proforma refusée.');
+  return { ...payload, ...(result.proforma || {}), profile: result.profile };
+}
+
+export async function requestProforma(data: { client?: string; reservationId?: string; details?: string }) {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Une session Firebase est requise pour demander une proforma.');
+  const response = await fetch('/api/proforma-requests', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` },
+    body: JSON.stringify({ request: data })
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Demande de proforma refusée.');
+  return result.request;
 }
 
 export async function getProformas(includeArchived = false): Promise<ProformaData[]> {
@@ -119,10 +135,11 @@ export async function getProforma(id: string): Promise<ProformaData | null> {
 }
 
 export async function updateProforma(id: string, updates: Partial<ProformaData>): Promise<Partial<ProformaData>> {
-  const userEmail = auth.currentUser?.email || 'admin';
+  const user = auth.currentUser;
+  if (!user) throw new Error('Une session Firebase est requise pour modifier une proforma.');
   const payload: Record<string, unknown> = {
     ...updates,
-    updatedBy: userEmail,
+    updatedBy: user.uid,
     updatedAt: new Date().toISOString()
   };
   if (updates.amount !== undefined) {

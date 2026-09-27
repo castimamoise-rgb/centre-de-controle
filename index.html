@@ -94,15 +94,15 @@
           <div class="auth-form-top">
             <div class="auth-login-kicker">ESPACE SÉCURISÉ</div>
             <h2 class="auth-login-heading">Se Connecter</h2>
-            <p class="auth-login-sub">Saisissez votre e-mail ou votre nom de profil et votre mot de passe</p>
+            <p class="auth-login-sub">Saisissez votre adresse e-mail et votre mot de passe</p>
           </div>
 
           <!-- Champ Email, Téléphone ou Nom de profil -->
           <div class="auth-field">
-            <label for="authLoginEmail">Email, Téléphone ou Nom de profil :</label>
+            <label for="authLoginEmail">Adresse e-mail :</label>
             <div class="auth-input-icon-wrap">
               <span class="auth-icon-prefix">👤</span>
-              <input type="text" id="authLoginEmail" placeholder="Votre e-mail, téléphone (+509) ou pseudo" autocomplete="username" required>
+              <input type="email" id="authLoginEmail" placeholder="nom@exemple.com" autocomplete="username" required>
             </div>
           </div>
 
@@ -162,6 +162,14 @@
             </div>
           </div>
 
+          <div class="auth-field">
+            <label for="authRegisterEmail">Adresse e-mail :</label>
+            <div class="auth-input-icon-wrap">
+              <span class="auth-icon-prefix">✉️</span>
+              <input type="email" id="authRegisterEmail" placeholder="nom@exemple.com" autocomplete="email" required>
+            </div>
+          </div>
+
           <!-- Téléphone / WhatsApp (+509) -->
           <div class="auth-field">
             <label for="authRegisterPhone">
@@ -195,11 +203,11 @@
           <div class="auth-field">
             <label for="authRegisterPassword">
               Password :
-              <span class="auth-label-badge">4 à 8 caractères</span>
+              <span class="auth-label-badge">8 caractères minimum</span>
             </label>
             <div class="auth-input-icon-wrap">
               <span class="auth-icon-prefix">🔒</span>
-              <input type="password" id="authRegisterPassword" class="has-pwd-toggle" minlength="4" maxlength="8" placeholder="4 à 8 chiffres ou lettres" autocomplete="new-password" required>
+              <input type="password" id="authRegisterPassword" class="has-pwd-toggle" minlength="8" maxlength="128" placeholder="Au moins 8 caractères" autocomplete="new-password" required>
               <button type="button" class="auth-pwd-toggle" id="authToggleRegisterPassword" title="Afficher/Masquer le mot de passe" aria-label="Afficher le mot de passe">👁️</button>
             </div>
           </div>
@@ -209,7 +217,7 @@
             <label for="authRegisterPasswordConfirm">Password Confirmation :</label>
             <div class="auth-input-icon-wrap">
               <span class="auth-icon-prefix">🔑</span>
-              <input type="password" id="authRegisterPasswordConfirm" class="has-pwd-toggle" minlength="4" maxlength="8" placeholder="Confirmez votre mot de passe" autocomplete="new-password" required>
+              <input type="password" id="authRegisterPasswordConfirm" class="has-pwd-toggle" minlength="8" maxlength="128" placeholder="Confirmez votre mot de passe" autocomplete="new-password" required>
               <button type="button" class="auth-pwd-toggle" id="authToggleRegisterConfirm" title="Afficher/Masquer le mot de passe" aria-label="Afficher le mot de passe">👁️</button>
             </div>
           </div>
@@ -217,10 +225,10 @@
           <!-- Indicateurs de conformité mot de passe en temps réel -->
           <div class="auth-pwd-reqs" id="authPwdReqs">
             <div class="auth-req-item" id="authReqLength">
-              <span class="req-icon">⚪</span> <span>Entre 4 et 8 caractères</span>
+              <span class="req-icon">⚪</span> <span>Entre 8 et 128 caractères</span>
             </div>
             <div class="auth-req-item" id="authReqAlpha">
-              <span class="req-icon">⚪</span> <span>Chiffres ou lettres uniquement</span>
+              <span class="req-icon">⚪</span> <span>Les caractères spéciaux sont acceptés</span>
             </div>
             <div class="auth-req-item" id="authReqMatch">
               <span class="req-icon">⚪</span> <span>Mots de passe identiques</span>
@@ -247,10 +255,10 @@
           </div>
 
           <div class="auth-field">
-            <label for="authForgotIdentifier">Email ou Nom de profil :</label>
+            <label for="authForgotIdentifier">Adresse e-mail :</label>
             <div class="auth-input-icon-wrap">
               <span class="auth-icon-prefix">✉️</span>
-              <input type="text" id="authForgotIdentifier" placeholder="Votre email ou nom de profil" autocomplete="email">
+              <input type="email" id="authForgotIdentifier" placeholder="nom@exemple.com" autocomplete="email">
             </div>
             <div class="auth-field-hint">
               Saisissez l'adresse e-mail ou le nom de profil associé à votre compte Laperle.

@@ -5,7 +5,6 @@ import {
   doc, 
   getDoc, 
   getDocs, 
-  setDoc, 
   updateDoc, 
   deleteDoc, 
   onSnapshot, 
@@ -38,7 +37,8 @@ export function generateProformaNumber(existingList = []) {
 
 export async function createProforma(data, customNumber) {
   const now = new Date().toISOString();
-  const userEmail = auth.currentUser?.email || 'admin';
+  const user = auth.currentUser;
+  if (!user) throw new Error('Une session Firebase est requise pour créer une proforma.');
   
   let number = customNumber || data.number;
   if (!number) {
@@ -60,42 +60,34 @@ export async function createProforma(data, customNumber) {
     notes: data.notes || '',
     status: data.status || 'En attente',
     archived: false,
-    createdBy: userEmail,
-    updatedBy: userEmail,
+    ...(data.clientId || data.uid ? { clientId: data.clientId || data.uid, uid: data.uid || data.clientId } : {}),
+    createdBy: user.uid,
+    updatedBy: user.uid,
     createdAt: data.createdAt || now,
     updatedAt: now
   };
 
-  try {
-    await setDoc(doc(db, COLLECTION_NAME, id), payload);
+  const response = await fetch('/api/proformas', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` },
+    body: JSON.stringify({ proforma: payload })
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Création de la proforma refusée.');
+  return { ...payload, ...(result.proforma || {}), profile: result.profile };
+}
 
-    // Règle métier : Après son premier proforma, le rôle du prospect devient automatiquement CLIENT
-    const targetUserId = data.clientId || data.uid;
-    if (targetUserId) {
-      try {
-        const userRef = doc(db, 'utilisateurs', targetUserId);
-        const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
-          const uData = userSnap.data();
-          const currentRoles = Array.isArray(uData.roles) ? uData.roles : [uData.role || 'prospect'];
-          if (!currentRoles.includes('admin') && (currentRoles.includes('prospect') || uData.statutClient === 'prospect')) {
-            await setDoc(userRef, {
-              role: 'client',
-              roles: ['client'],
-              statutClient: 'client',
-              updatedAt: now
-            }, { merge: true });
-          }
-        }
-      } catch (upgErr) {
-        console.warn("Échec auto-upgrade prospect -> client dans createProforma:", upgErr?.message);
-      }
-    }
-
-    return payload;
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, `${COLLECTION_NAME}/${id}`);
-  }
+export async function requestProforma(data = {}) {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Une session Firebase est requise pour demander une proforma.');
+  const response = await fetch('/api/proforma-requests', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` },
+    body: JSON.stringify({ request: data })
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Demande de proforma refusée.');
+  return result.request;
 }
 
 export async function getProformas(includeArchived = false) {
@@ -123,11 +115,12 @@ export async function getProforma(id) {
 }
 
 export async function updateProforma(id, updates) {
-  const userEmail = auth.currentUser?.email || 'admin';
+  const user = auth.currentUser;
+  if (!user) throw new Error('Une session Firebase est requise pour modifier une proforma.');
   const payload = {
     ...updates,
     amount: updates.amount !== undefined ? Number(updates.amount) || 0 : undefined,
-    updatedBy: userEmail,
+    updatedBy: user.uid,
     updatedAt: new Date().toISOString()
   };
   Object.keys(payload).forEach(key => payload[key] === undefined && delete payload[key]);

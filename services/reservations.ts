@@ -40,13 +40,16 @@ export interface ReservationData {
 const COLLECTION_NAME = 'reservations';
 
 export async function createReservation(data: Partial<ReservationData>, customId?: string): Promise<ReservationData> {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Une session Firebase est requise pour créer une réservation.');
   const id = customId || `RES-${Date.now().toString().slice(-6)}`;
   const now = new Date().toISOString();
-  const userEmail = auth.currentUser?.email || 'admin';
   
   const payload: ReservationData = {
     ...data,
     id,
+    clientId: user.uid,
+    uid: user.uid,
     client: data.client || '',
     origin: data.origin || '',
     destination: data.destination || '',
@@ -59,8 +62,8 @@ export async function createReservation(data: Partial<ReservationData>, customId
     notes: data.notes || '',
     status: data.status || 'Confirmée',
     archived: false,
-    createdBy: userEmail,
-    updatedBy: userEmail,
+    createdBy: user.uid,
+    updatedBy: user.uid,
     createdAt: data.createdAt || now,
     updatedAt: now
   };
@@ -98,10 +101,11 @@ export async function getReservation(id: string): Promise<ReservationData | null
 }
 
 export async function updateReservation(id: string, updates: Partial<ReservationData>): Promise<Partial<ReservationData>> {
-  const userEmail = auth.currentUser?.email || 'admin';
+  const user = auth.currentUser;
+  if (!user) throw new Error('Une session Firebase est requise pour modifier une réservation.');
   const payload: Record<string, unknown> = {
     ...updates,
-    updatedBy: userEmail,
+    updatedBy: user.uid,
     updatedAt: new Date().toISOString()
   };
   if (updates.amount !== undefined) {

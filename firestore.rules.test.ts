@@ -5,33 +5,23 @@
 
 describe('Firestore Security Rules - LAPERLE TOUR HT', () => {
   // Helpers matching firestore.rules logic
-  const SUPER_ADMIN_EMAIL = 'castimamoise@gmail.com';
-
   const isValidId = (id: string) =>
     typeof id === 'string' && id.length > 0 && id.length <= 128 && /^[a-zA-Z0-9_\-]+$/.test(id);
 
-  const isVerified = (auth: any) =>
-    auth != null && (
-      auth.token?.email_verified === true ||
-      auth.token?.email === SUPER_ADMIN_EMAIL ||
-      auth.token?.firebase?.sign_in_provider === 'google.com'
-    );
+  const isVerified = (auth: any) => auth != null;
 
   const isUserActive = (auth: any, userDoc: any) =>
-    auth != null && (
-      auth.token?.email === SUPER_ADMIN_EMAIL ||
-      (userDoc != null && ['actif', 'Actif', 'ACTIF'].includes(userDoc.status))
-    );
+    auth != null && userDoc != null &&
+      (['actif', 'Actif', 'ACTIF'].includes(userDoc.status) ||
+       ['actif', 'Actif', 'ACTIF'].includes(userDoc.statutCompte));
 
   const getUserRole = (auth: any, userDoc: any) => {
-    if (auth?.token?.email === SUPER_ADMIN_EMAIL) return 'admin';
     if (userDoc && typeof userDoc.role === 'string') return userDoc.role.toLowerCase();
     return 'none';
   };
 
   const isAdmin = (auth: any, userDoc: any) =>
     isVerified(auth) && isUserActive(auth, userDoc) && (
-      auth?.token?.email === SUPER_ADMIN_EMAIL ||
       getUserRole(auth, userDoc) === 'admin'
     );
 
@@ -68,11 +58,17 @@ describe('Firestore Security Rules - LAPERLE TOUR HT', () => {
     ));
 
   const isClientDoc = (auth: any, data: any): boolean =>
-    Boolean(auth != null && (
-      data.clientId === auth.uid ||
-      data.uid === auth.uid ||
-      (data.email && data.email === auth.token?.email)
-    ));
+    Boolean(auth != null &&
+      (data.clientId === auth.uid || data.uid === auth.uid) &&
+      (!data.clientId || data.clientId === auth.uid) &&
+      (!data.uid || data.uid === auth.uid) &&
+      (!data.email || data.email === auth.token?.email));
+
+  const canSelfUpdateProfile = (auth: any, existing: any, incoming: any): boolean =>
+    Boolean(auth && existing && incoming && auth.uid === existing.uid &&
+      incoming.uid === existing.uid && incoming.role === existing.role &&
+      JSON.stringify(incoming.roles) === JSON.stringify(existing.roles) &&
+      incoming.status === existing.status && incoming.permissions === existing.permissions);
 
   // -------------------------------------------------------------
   // Suite 1: Dirty Dozen Attack Vectors
@@ -88,9 +84,11 @@ describe('Firestore Security Rules - LAPERLE TOUR HT', () => {
       expect(isVerified(auth)).toBe(false);
     });
 
-    it('3. Rejects email spoofing with unverified email token', () => {
+    it('3. Firebase Auth identity does not grant a role based on email alone', () => {
       const auth = { uid: 'attacker', token: { email: 'victim@gmail.com', email_verified: false } };
-      expect(isVerified(auth)).toBe(false);
+      const unrelatedProfile = { role: 'prospect', status: 'actif', uid: 'victim_uid' };
+      expect(isVerified(auth)).toBe(true);
+      expect(isAdmin(auth, unrelatedProfile)).toBe(false);
     });
 
     it('4. Rejects ID poisoning attacks with malformed ID', () => {
@@ -106,7 +104,7 @@ describe('Firestore Security Rules - LAPERLE TOUR HT', () => {
       const userDoc = { role: 'lecture_seule', status: 'actif' };
       const incomingUpdate = { role: 'admin', status: 'actif' };
       // User is not allowed to change their role
-      const canSelfEscalate = isAdmin(auth, userDoc) || (auth.uid === 'user_1' && incomingUpdate.role === userDoc.role);
+      const canSelfEscalate = isAdmin(auth, userDoc) || canSelfUpdateProfile(auth, { ...userDoc, uid: auth.uid }, { ...incomingUpdate, uid: auth.uid, roles: ['admin'], permissions: {}, statutClient: 'client' });
       expect(canSelfEscalate).toBe(false);
     });
 
@@ -155,7 +153,7 @@ describe('Firestore Security Rules - LAPERLE TOUR HT', () => {
   // Suite 2: Role Access Control & Mandatory Tests (Requirement 13)
   // -------------------------------------------------------------
   describe('Role-Based Access Control Scenarios', () => {
-    const adminAuth = { uid: 'admin_1', token: { email: SUPER_ADMIN_EMAIL, email_verified: true } };
+    const adminAuth = { uid: 'admin_1', token: { email: 'admin@laperle.ht', email_verified: true } };
     const adminDoc = { role: 'admin', status: 'actif' };
 
     const directionAuth = { uid: 'dir_1', token: { email: 'dir@laperle.ht', email_verified: true } };
@@ -240,8 +238,10 @@ describe('Firestore Security Rules - LAPERLE TOUR HT', () => {
     it('CLIENT -> accesses strictly their own reservations, invoices, and profile', () => {
       const ownReservation = { id: 'r1', clientId: 'client_1', date: '2026-09-25' };
       const otherReservation = { id: 'r2', clientId: 'client_2', date: '2026-09-25' };
+      const spoofedReservation = { id: 'r3', clientId: 'client_2', email: clientAuth.token.email };
       expect(isClientDoc(clientAuth, ownReservation)).toBe(true);
       expect(isClientDoc(clientAuth, otherReservation)).toBe(false);
+      expect(isClientDoc(clientAuth, spoofedReservation)).toBe(false);
     });
 
     it('Deactivated user -> rejected from reading and writing', () => {
@@ -255,10 +255,10 @@ describe('Firestore Security Rules - LAPERLE TOUR HT', () => {
       expect(isUserActive(normalUserAuth, nonExistentDoc)).toBe(false);
     });
 
-    it('New Google Auth user -> role strictly initialized to lecture_seule', () => {
+    it('New Google Auth user -> server initializes the profile as prospect', () => {
       const newAuth = { uid: 'brand_new', token: { email: 'newbie@gmail.com', email_verified: true } };
-      const initialRole = newAuth.token.email === SUPER_ADMIN_EMAIL ? 'admin' : 'lecture_seule';
-      expect(initialRole).toBe('lecture_seule');
+      const initialRole = newAuth.uid ? 'prospect' : 'lecture_seule';
+      expect(initialRole).toBe('prospect');
     });
 
     it('Normal user cannot modify their permissions map', () => {

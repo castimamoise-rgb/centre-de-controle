@@ -23,82 +23,19 @@ const COLLECTION_NAME = 'utilisateurs';
  * Récupère la liste de tous les utilisateurs
  */
 export async function getAllUsers() {
-  if (auth.currentUser) {
-    try {
-      const snap = await getDocs(collection(db, COLLECTION_NAME));
-      const list = [];
-      snap.forEach(d => {
-        list.push({ ...d.data(), id: d.id });
-      });
-      if (list.length > 0) return list;
-    } catch (error) {
-      console.warn("Firestore getAllUsers fallback:", error?.message);
-    }
-  }
-
-  // Fallback via API serveur
-  try {
-    const apiRes = await safeFetchJson('/api/auth/users');
-    if (apiRes.ok && Array.isArray(apiRes.data?.users) && apiRes.data.users.length > 0) {
-      return apiRes.data.users;
-    }
-  } catch (e) {}
-
-  // Fallback stockage local
-  for (const storageKey of ["LAPERLE_CENTRE_CONTROL_V3", "CENTRE_LAPERLE_DATA_V3"]) {
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed.utilisateurs) && parsed.utilisateurs.length > 0) {
-          return parsed.utilisateurs;
-        }
-      }
-    } catch (e) {}
-  }
-
-  return [];
+  if (!auth.currentUser) return [];
+  const snap = await getDocs(collection(db, COLLECTION_NAME));
+  return snap.docs.map(d => ({ ...d.data(), id: d.id, uid: d.id }));
 }
 
 /**
  * Récupère un utilisateur par son ID (UID ou email document ID)
  */
 export async function getUserById(id) {
-  if (!id) return null;
-  const cleanId = String(id).trim();
-
-  // 1. Tenter depuis Firestore si l'utilisateur est connecté à Firebase
-  if (auth.currentUser) {
-    try {
-      const d = await getDoc(doc(db, COLLECTION_NAME, cleanId));
-      if (d.exists()) {
-        return { ...d.data(), id: d.id };
-      }
-    } catch (error) {
-      console.warn("Firestore getUserById fallback:", error?.message);
-    }
-  }
-
-  // 2. Recherche via l'API partagée du serveur
-  try {
-    const apiRes = await safeFetchJson(`/api/auth/user/${encodeURIComponent(cleanId)}`);
-    if (apiRes.ok && apiRes.data?.user) return apiRes.data.user;
-  } catch (e) {}
-
-  // 3. Fallback stockage local
-  for (const storageKey of ["LAPERLE_CENTRE_CONTROL_V3", "CENTRE_LAPERLE_DATA_V3"]) {
-    try {
-      const rawData = localStorage.getItem(storageKey);
-      if (rawData) {
-        const parsed = JSON.parse(rawData);
-        const localUsers = parsed.utilisateurs || [];
-        const match = localUsers.find(u => u.id === cleanId || u.uid === cleanId || u.email === cleanId);
-        if (match) return match;
-      }
-    } catch (e) {}
-  }
-
-  return null;
+  if (!auth.currentUser || !id) return null;
+  const uid = String(id).trim();
+  const snap = await getDoc(doc(db, COLLECTION_NAME, uid));
+  return snap.exists() ? { ...snap.data(), id: snap.id, uid: snap.id } : null;
 }
 
 /**
@@ -108,140 +45,23 @@ export async function getUserById(id) {
  * - Si le créateur est SECRÉTAIRE : l'utilisateur créé aura obligatoirement le rôle LECTURE_SEULE
  *   (car seul l'Administrateur peut attribuer ou modifier les rôles).
  */
-export async function createManagedUser(userData, callerProfile = null) {
-  const callerRoles = normalizeRoles(callerProfile || auth.currentUser);
-  const callerEmail = callerProfile?.email || auth.currentUser?.email || '';
-  const callerIsAdmin = callerRoles.includes(ROLES.ADMIN) || isSuperAdminEmail(callerEmail);
-  const callerIsSecretaire = callerRoles.includes(ROLES.SECRETAIRE);
-
-  if (!callerIsAdmin && !callerIsSecretaire) {
-    throw new Error("Seuls les Administrateurs et les Secrétaires peuvent ajouter un utilisateur.");
-  }
-
-  const email = (userData.email || '').trim().toLowerCase();
-  const nom = (userData.name || userData.nom || (email ? email.split('@')[0] : 'Nouvel Utilisateur')).trim();
-  const phone = (userData.phone || userData.telephone || '').trim();
-  const cleanId = (userData.id || (email ? 'usr_' + email.replace(/[^a-zA-Z0-9]/g, '_') : 'usr_' + Date.now())).trim();
-
-  // Seul l'Administrateur peut choisir le rôle; sinon rôle Lecture Seule automatique
-  let assignedRoles = [ROLES.LECTURE_SEULE];
-  if (callerIsAdmin && userData.roles) {
-    assignedRoles = normalizeRoles(userData.roles);
-  }
-
-  const now = new Date().toISOString();
-  const newUser = {
-    id: cleanId,
-    uid: cleanId,
-    nom: nom,
-    name: nom,
-    email: email,
-    telephone: phone,
-    phone: phone,
-    roles: assignedRoles,
-    role: assignedRoles[0] || ROLES.LECTURE_SEULE,
-    status: userData.status || 'actif',
-    statutCompte: userData.status || 'actif',
-    statutClient: userData.statutClient || 'prospect',
-    createdAt: now,
-    updatedAt: now,
-    createdBy: callerEmail || 'system'
-  };
-
-  // Synchronisation serveur
-  try {
-    await fetch('/api/auth/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ users: [newUser] })
-    });
-  } catch (e) {}
-
-  // Sauvegarde Firestore si Firebase Auth est connecté
-  if (auth.currentUser) {
-    try {
-      await setDoc(doc(db, COLLECTION_NAME, cleanId), newUser);
-    } catch (error) {
-      console.warn("Firestore createManagedUser non bloquant:", error?.message);
-    }
-  }
-
-  return newUser;
+export async function createManagedUser() {
+  throw new Error('Les comptes utilisateurs doivent être créés via Firebase Authentication.');
 }
 
 /**
  * Met à jour les rôles d'un utilisateur
  * Règle stricte LAPERLE :
  * - SEUL l'Administrateur peut changer le rôle d'un utilisateur.
- * - Le Super Admin (castimamoise@gmail.com) reste obligatoirement ADMIN.
+ * - Les rôles sensibles restent attribués uniquement par un administrateur autorisé côté Firestore.
  */
-export async function updateUserRoles(userId, newRolesInput, callerProfile = null) {
+export async function updateUserRoles(userId, newRolesInput) {
+  if (!auth.currentUser || !userId || String(userId) === auth.currentUser.uid) {
+    throw new Error('Un administrateur ne peut modifier que le rôle d’un autre compte.');
+  }
   const cleanRoles = normalizeRoles(newRolesInput);
-  const currentUserEmail = auth.currentUser?.email || callerProfile?.email || 'admin';
-  const now = new Date().toISOString();
-
-  // Identifier les rôles de la personne qui effectue la modification
-  const callerRoles = normalizeRoles(callerProfile || auth.currentUser);
-  const callerIsAdmin = callerRoles.includes(ROLES.ADMIN) || isSuperAdminEmail(currentUserEmail);
-
-  if (!callerIsAdmin) {
-    throw new Error("Seul l'Administrateur peut modifier le rôle des utilisateurs.");
-  }
-
-  // Récupérer le document utilisateur existant
-  const existing = await getUserById(userId);
-
-  // Sécurité Super Admin : ne jamais retirer ADMIN
-  if (existing && existing.email && isSuperAdminEmail(existing.email)) {
-    if (!cleanRoles.includes(ROLES.ADMIN)) {
-      throw new Error("Impossible de rétrograder le compte Super Administrateur principal.");
-    }
-  }
-
-  const updates = {
-    roles: cleanRoles,
-    role: cleanRoles[0] || ROLES.LECTURE_SEULE, // Rétro-compatibilité
-    updatedAt: now,
-    updatedBy: currentUserEmail
-  };
-
-  // 1. Sauvegarde sur le serveur centralisé
-  try {
-    await fetch(`/api/auth/user/${encodeURIComponent(userId)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates)
-    });
-  } catch (e) {
-    console.warn("Mise à jour serveur user roles:", e?.message);
-  }
-
-  // 2. Mise à jour cache local
-  for (const storageKey of ["LAPERLE_CENTRE_CONTROL_V3", "CENTRE_LAPERLE_DATA_V3"]) {
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed.utilisateurs) {
-          const idx = parsed.utilisateurs.findIndex(u => u.id === userId || u.uid === userId || (existing && u.email === existing.email));
-          if (idx >= 0) {
-            parsed.utilisateurs[idx] = { ...parsed.utilisateurs[idx], ...updates };
-            localStorage.setItem(storageKey, JSON.stringify(parsed));
-          }
-        }
-      }
-    } catch (e) {}
-  }
-
-  // 3. Sauvegarde dans Firestore si Firebase Auth est connecté
-  if (auth.currentUser) {
-    try {
-      await setDoc(doc(db, COLLECTION_NAME, String(userId)), updates, { merge: true });
-    } catch (error) {
-      console.warn("Firestore updateUserRoles non bloquant:", error?.message);
-    }
-  }
-
+  const updates = { roles: cleanRoles, role: cleanRoles[0] || ROLES.LECTURE_SEULE, updatedAt: new Date().toISOString() };
+  await updateDoc(doc(db, COLLECTION_NAME, String(userId)), updates);
   return { id: userId, ...updates };
 }
 
@@ -255,63 +75,13 @@ export async function updateUserRole(userId, newRole, callerProfile = null) {
 /**
  * Active ou désactive un utilisateur (réservé à ADMIN ou SECRÉTAIRE)
  */
-export async function updateUserStatus(userId, newStatus, callerProfile = null) {
-  const normStatus = normalizeStatus(newStatus);
-  const currentUserEmail = auth.currentUser?.email || 'admin';
-  const now = new Date().toISOString();
-
-  // Ne pas désactiver le Super Admin
-  const existing = await getUserById(userId);
-  if (existing && existing.email && isSuperAdminEmail(existing.email)) {
-    if (normStatus === 'inactif') {
-      throw new Error("Impossible de désactiver le compte Super Administrateur principal.");
-    }
+export async function updateUserStatus(userId, newStatus) {
+  if (!auth.currentUser || !userId || String(userId) === auth.currentUser.uid) {
+    throw new Error('Un administrateur ne peut modifier que le statut d’un autre compte.');
   }
-
-  const updates = {
-    status: normStatus,
-    statutCompte: normStatus,
-    updatedAt: now,
-    updatedBy: currentUserEmail
-  };
-
-  // 1. Sauvegarde sur le serveur centralisé
-  try {
-    await fetch(`/api/auth/user/${encodeURIComponent(userId)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates)
-    });
-  } catch (e) {
-    console.warn("Mise à jour serveur user status:", e?.message);
-  }
-
-  // 2. Mise à jour cache local
-  for (const storageKey of ["LAPERLE_CENTRE_CONTROL_V3", "CENTRE_LAPERLE_DATA_V3"]) {
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed.utilisateurs) {
-          const idx = parsed.utilisateurs.findIndex(u => u.id === userId || u.uid === userId || (existing && u.email === existing.email));
-          if (idx >= 0) {
-            parsed.utilisateurs[idx] = { ...parsed.utilisateurs[idx], ...updates };
-            localStorage.setItem(storageKey, JSON.stringify(parsed));
-          }
-        }
-      }
-    } catch (e) {}
-  }
-
-  // 3. Sauvegarde dans Firestore si Firebase Auth est connecté
-  if (auth.currentUser) {
-    try {
-      await setDoc(doc(db, COLLECTION_NAME, String(userId)), updates, { merge: true });
-    } catch (error) {
-      console.warn("Firestore updateUserStatus non bloquant:", error?.message);
-    }
-  }
-
+  const status = normalizeStatus(newStatus);
+  const updates = { status, statutCompte: status, updatedAt: new Date().toISOString() };
+  await updateDoc(doc(db, COLLECTION_NAME, String(userId)), updates);
   return { id: userId, ...updates };
 }
 
@@ -319,32 +89,11 @@ export async function updateUserStatus(userId, newStatus, callerProfile = null) 
  * Met à jour les permissions individuelles d'un utilisateur (réservé à ADMIN)
  */
 export async function updateUserPermissions(userId, permissionsObj) {
-  const currentUserEmail = auth.currentUser?.email || 'admin';
-  const now = new Date().toISOString();
-
-  const updates = {
-    permissions: permissionsObj || {},
-    updatedAt: now,
-    updatedBy: currentUserEmail
-  };
-
-  // Sauvegarde sur le serveur centralisé
-  try {
-    await fetch(`/api/auth/user/${encodeURIComponent(userId)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates)
-    });
-  } catch (e) {}
-
-  if (auth.currentUser) {
-    try {
-      await updateDoc(doc(db, COLLECTION_NAME, String(userId)), updates);
-    } catch (error) {
-      console.warn("Firestore updateUserPermissions non bloquant:", error?.message);
-    }
+  if (!auth.currentUser || !userId || String(userId) === auth.currentUser.uid) {
+    throw new Error('Modification du profil autorisée uniquement par un administrateur.');
   }
-
+  const updates = { permissions: permissionsObj || {}, updatedAt: new Date().toISOString() };
+  await updateDoc(doc(db, COLLECTION_NAME, String(userId)), updates);
   return { id: userId, ...updates };
 }
 
@@ -370,135 +119,30 @@ export function subscribeAllUsers(callback) {
  * - Tous les utilisateurs ont accès à modifier leur profil personnel (username, password, photoURL, nom, prénom, téléphone)
  * - SAUF L'ACCÈS AUX RÔLES (roles et role restent strictement inchangés et protégés)
  */
-export async function updateUserProfile(profileUpdates) {
-  const { id, uid, email, username, nom, prenom, name, telephone, phone, photoURL, newPassword, newPasswordConfirm } = profileUpdates || {};
-  const targetId = id || uid || email || auth.currentUser?.uid || auth.currentUser?.email;
-
-  if (!targetId) {
-    throw new Error("Identifiant utilisateur manquant pour la mise à jour du profil.");
-  }
-
-  // 1. Appel vers l'API serveur sécurisée (qui applique la protection stricte sur les rôles)
-  let serverData = null;
-  try {
-    const apiRes = await safeFetchJson('/api/auth/profile/update', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: targetId,
-        uid: uid || targetId,
-        email: email,
-        username,
-        nom,
-        prenom,
-        name,
-        telephone: telephone || phone,
-        phone: phone || telephone,
-        photoURL,
-        newPassword,
-        newPasswordConfirm
-      })
-    });
-    if (!apiRes.ok && apiRes.data?.error) {
-      throw new Error(apiRes.data.error || "Erreur lors de la mise à jour du profil.");
-    }
-    if (apiRes.ok && apiRes.data) {
-      serverData = apiRes.data;
-    }
-  } catch (err) {
-    if (err.message && !err.message.includes('fetch') && !err.message.includes('réseau')) {
-      throw err;
-    }
-    console.warn("Serveur indisponible, application locale du profil:", err?.message);
-  }
-
-  const updatedProfile = serverData?.profile || serverData?.user || {};
-  const now = new Date().toISOString();
-
-  // 2. Hash du mot de passe pour Firestore si nouveau mot de passe
-  let passHash = undefined;
-  if (newPassword) {
-    try {
-      if (typeof crypto !== 'undefined' && crypto.subtle) {
-        const encoder = new TextEncoder();
-        const data = encoder.encode(newPassword + "_laperle_salt_2026");
-        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        passHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-      }
-    } catch (e) {}
-  }
-
-  // 3. Mise à jour de Firestore si connecté
-  if (auth.currentUser) {
-    try {
-      const fsDocId = String(uid || id || auth.currentUser.uid);
-      const fsUpdates = {
-        updatedAt: now,
-        updatedBy: auth.currentUser.email || 'self'
-      };
-      if (username) fsUpdates.username = String(username).trim().toLowerCase();
-      if (nom) fsUpdates.nom = String(nom).trim();
-      if (prenom) fsUpdates.prenom = String(prenom).trim();
-      if (name || (nom && prenom)) fsUpdates.name = name || `${nom} ${prenom}`.trim();
-      if (telephone || phone) {
-        fsUpdates.telephone = telephone || phone;
-        fsUpdates.phone = phone || telephone;
-      }
-      if (photoURL !== undefined) fsUpdates.photoURL = photoURL;
-      if (passHash) fsUpdates.passwordHash = passHash;
-
-      // Note: rôles délibérément exclus pour respecter les règles de sécurité
-      await setDoc(doc(db, COLLECTION_NAME, fsDocId), fsUpdates, { merge: true });
-    } catch (fsErr) {
-      console.warn("Firestore updateUserProfile non bloquant:", fsErr?.message);
-    }
-  }
-
-  // 4. Mise à jour des sessions et caches locaux
-  for (const storageKey of ["LAPERLE_CENTRE_CONTROL_V3", "CENTRE_LAPERLE_DATA_V3"]) {
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed.utilisateurs) {
-          const idx = parsed.utilisateurs.findIndex(u => u.id === targetId || u.uid === targetId || (email && u.email === email));
-          if (idx >= 0) {
-            const currentObj = parsed.utilisateurs[idx];
-            parsed.utilisateurs[idx] = {
-              ...currentObj,
-              ...(username ? { username } : {}),
-              ...(nom ? { nom } : {}),
-              ...(prenom ? { prenom } : {}),
-              ...(name ? { name } : {}),
-              ...(telephone ? { telephone, phone: telephone } : {}),
-              ...(photoURL !== undefined ? { photoURL } : {}),
-              ...(passHash ? { passwordHash: passHash } : {}),
-              // Préservation stricte des rôles
-              role: currentObj.role,
-              roles: currentObj.roles,
-              updatedAt: now
-            };
-            localStorage.setItem(storageKey, JSON.stringify(parsed));
-          }
-        }
-      }
-    } catch (e) {}
-  }
-
-  return serverData || { success: true, profile: updatedProfile };
+export async function updateUserProfile(profileUpdates = {}) {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Une session Firebase Authentication est requise.');
+  if (profileUpdates.newPassword) throw new Error('Utilisez le lien de réinitialisation Firebase pour changer votre mot de passe.');
+  const updates = { updatedAt: new Date().toISOString() };
+  for (const [key, value] of Object.entries({
+    username: profileUpdates.username,
+    nom: profileUpdates.nom,
+    prenom: profileUpdates.prenom,
+    name: profileUpdates.name,
+    telephone: profileUpdates.telephone || profileUpdates.phone,
+    phone: profileUpdates.phone || profileUpdates.telephone,
+    photoURL: profileUpdates.photoURL
+  })) if (value !== undefined) updates[key] = typeof value === 'string' ? value.trim() : value;
+  await updateDoc(doc(db, COLLECTION_NAME, user.uid), updates);
+  const profile = { ...(await getUserById(user.uid)), ...updates };
+  return { success: true, profile };
 }
 
 /**
  * Réinitialise la base de données des utilisateurs
- * Tous les administrateurs se connectent avec le mot de passe Admin26
  */
 export async function resetUsersDatabase() {
-  const apiRes = await safeFetchJson('/api/auth/reset-users', { method: 'POST' });
-  if (!apiRes.ok) {
-    throw new Error(apiRes.data?.error || "Erreur réinitialisation utilisateurs.");
-  }
-  return apiRes.data;
+  throw new Error('La réinitialisation de comptes via des identifiants locaux est désactivée.');
 }
 
 

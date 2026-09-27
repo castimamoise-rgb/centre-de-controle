@@ -28,7 +28,7 @@ import {
   createPlanning, getPlannings, updatePlanning, archivePlanning, deletePlanning, subscribePlannings,
   createPaiement, getPaiements, updatePaiement, archivePaiement, deletePaiement, subscribePaiements,
   createReservation, getReservations, updateReservation, archiveReservation, deleteReservation, subscribeReservations,
-  createProforma, getProformas, updateProforma, archiveProforma, deleteProforma, subscribeProformas, generateProformaNumber,
+  createProforma, requestProforma, getProformas, updateProforma, archiveProforma, deleteProforma, subscribeProformas, generateProformaNumber,
   createFacture, getFactures, updateFacture, archiveFacture, deleteFacture, subscribeFactures, generateFactureNumber,
   createFinance, getFinances, updateFinance, archiveFinance, deleteFinance, subscribeFinances, calculateFinancialSummary,
   createOrUpdateUser, getUtilisateurs, updateUtilisateur, deleteUtilisateur, subscribeUtilisateurs, checkUserPermission,
@@ -40,7 +40,7 @@ import {
   BUSINESS_ROLES, hasBusinessRole,
   canAccessModule, hasActionPermission, filterDataForUser,
   loginWithGoogle as authLoginGoogle, logoutUser as authLogout, subscribeAuthState,
-  ensureUserProfile, getUserProfile, getUserProfileByIdentifier, createUserProfile, updateUserLastLogin, formatAuthError, signInWithGoogleOnly,
+  ensureUserProfile, getUserProfile, createUserProfile, updateUserLastLogin, formatAuthError, signInWithGoogleOnly,
   getAllUsers, getUserById, updateUserRole, updateUserRoles, updateUserStatus, updateUserPermissions,
   createManagedUser, updateUserProfile, resetUsersDatabase,
   // Authentification Firebase sans mot de passe & Téléphone
@@ -62,27 +62,12 @@ import {
 
 const DBKEY = "LAPERLE_CENTRE_CONTROL_V3";
 
-const DEFAULT_USER = {
-  uid: "admin_castima",
-  id: "admin_castima",
-  nom: "Moïse Castima",
-  name: "Moïse Castima",
-  email: "castimamoise@gmail.com",
-  telephone: "+509 4440 8687",
-  phone: "+509 4440 8687",
-  role: ROLES.ADMIN,
-  roles: [ROLES.ADMIN],
-  status: "actif",
-  statutCompte: "actif",
-  statutClient: "client"
-};
-
 // Restaurer la session utilisateur sauvegardée ou afficher la page de reconnexion si déconnecté
-const initialSavedSession = isExplicitlyLoggedOut() ? null : getUserSession();
-let currentUser = (initialSavedSession && initialSavedSession.user) ? initialSavedSession.user : null;
-let currentUserProfile = (initialSavedSession && initialSavedSession.profile) ? initialSavedSession.profile : null;
-let currentRole = currentUserProfile ? (currentUserProfile.role || ROLES.LECTURE_SEULE) : null;
-let currentUserRoles = currentUserProfile ? normalizeRoles(currentUserProfile.roles || currentUserProfile.role || [ROLES.LECTURE_SEULE]) : [];
+// Une session locale est un cache d’affichage, jamais une preuve d’identité.
+let currentUser = null;
+let currentUserProfile = null;
+let currentRole = null;
+let currentUserRoles = [];
 let firestoreUnsubscribers = [];
 let isAuthInitialized = false;
 let pendingUnregisteredGoogleUser = null;
@@ -286,7 +271,16 @@ async function syncAllToFirestore() {
 
 async function loginWithGoogle() {
   closeModal();
-  await handleGoogleLoginFlow();
+  isAuthProcessing = true;
+  try {
+    // Un nouveau compte Google est lui aussi provisionné comme prospect via le serveur.
+    const result = await authLoginGoogle('register');
+    completeUserSignIn(result.user, result.profile, result.isNew);
+  } catch (error) {
+    showToast(formatAuthError(error) || error?.message || 'Connexion Google impossible.');
+  } finally {
+    isAuthProcessing = false;
+  }
 }
 
 async function logoutUser() {
@@ -402,7 +396,7 @@ function openFirebaseModal() {
       </div>
       <button class="close" onclick="closeModal()">×</button>
     </div>
-    
+
     <div style="background:#f8fafc;border:1px solid #dce4ee;border-radius:10px;padding:16px;margin-bottom:14px">
       <div style="display:flex;align-items:center;gap:12px">
         <div style="font-size:32px">🔥</div>
@@ -746,31 +740,9 @@ function getInitialData() {
     factures: [
       { id: "FT-2026-09-19-001", number: "FT-2026-09-19-001", client: "Jean-Baptiste Valmé", date: d, proforma: "PT-2026-09-19-001", amount: 25000, status: "Payée", due: d, notes: "Facture acquittée" }
     ],
-    utilisateurs: [
-      { id: "usr_admin_castima", uid: "usr_admin_castima", name: "Moïse Castima", username: "castima", email: "castimamoise@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Fondateur & Administrateur Principal" },
-      { id: "usr_admin_castimaklik", uid: "usr_admin_castimaklik", name: "Moïse Castima (Klik)", username: "castimaklik", email: "castimaklik@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Super Administrateur Studio" },
-      { id: "usr_admin_laperle", uid: "usr_admin_laperle", name: "Laperle Tour Admin", username: "laperle", email: "laperletourht@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Super Administrateur LAPERLE" },
-      { id: "usr_wilner", uid: "usr_wilner", name: "Wilner Charles", email: "wilner.c@laperletour.ht", role: "CHAUFFEUR", roles: ["chauffeur"], status: "Actif", notes: "Chauffeur HiAce VH-001" },
-      { id: "usr_jeanmarc", uid: "usr_jeanmarc", name: "Jean-Marc Pierre", email: "jean.marc@laperletour.ht", role: "CHAUFFEUR", roles: ["chauffeur"], status: "Actif", notes: "Chauffeur Tucson VH-002" },
-      { id: "usr_mariefrance", uid: "usr_mariefrance", name: "Marie-France Jean", email: "marie.france@laperletour.ht", role: "SECRETAIRE", roles: ["secretaire"], status: "Actif", notes: "Secrétariat & Réservations" },
-      { id: "usr_david", uid: "usr_david", name: "Pierre-Louis David", email: "david.pl@laperletour.ht", role: "OPERATIONS", roles: ["operations"], status: "Actif", notes: "Responsable Flotte" },
-      { id: "usr_stephane", uid: "usr_stephane", name: "Stéphane Delva", email: "stephane.d@laperletour.ht", role: "COMPTABILITE", roles: ["comptabilite"], status: "Actif", notes: "Responsable Trésorerie" },
-      { id: "usr_altidor", uid: "usr_altidor", name: "Cabinet Altidor & Associés", email: "contact@altidor.ht", role: "CLIENT", roles: ["client"], status: "Actif", notes: "Compte Entreprise" }
-    ]
+    utilisateurs: []
   };
 }
-
-const DEFAULT_SYSTEM_USERS = [
-  { id: "usr_admin_castima", uid: "usr_admin_castima", name: "Moïse Castima", username: "castima", email: "castimamoise@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Fondateur & Administrateur Principal" },
-  { id: "usr_admin_castimaklik", uid: "usr_admin_castimaklik", name: "Moïse Castima (Klik)", username: "castimaklik", email: "castimaklik@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Super Administrateur Studio" },
-  { id: "usr_admin_laperle", uid: "usr_admin_laperle", name: "Laperle Tour Admin", username: "laperle", email: "laperletourht@gmail.com", role: "ADMIN", roles: ["admin"], status: "Actif", notes: "Super Administrateur LAPERLE" },
-  { id: "usr_wilner", name: "Wilner Charles", email: "wilner.c@laperletour.ht", role: "CHAUFFEUR", roles: ["chauffeur"], status: "Actif", notes: "Chauffeur HiAce VH-001" },
-  { id: "usr_jeanmarc", name: "Jean-Marc Pierre", email: "jean.marc@laperletour.ht", role: "CHAUFFEUR", roles: ["chauffeur"], status: "Actif", notes: "Chauffeur Tucson VH-002" },
-  { id: "usr_mariefrance", name: "Marie-France Jean", email: "marie.france@laperletour.ht", role: "SECRETAIRE", roles: ["secretaire"], status: "Actif", notes: "Secrétariat & Réservations" },
-  { id: "usr_david", name: "Pierre-Louis David", email: "david.pl@laperletour.ht", role: "OPERATIONS", roles: ["operations"], status: "Actif", notes: "Responsable Flotte" },
-  { id: "usr_stephane", name: "Stéphane Delva", email: "stephane.d@laperletour.ht", role: "COMPTABILITE", roles: ["comptabilite"], status: "Actif", notes: "Responsable Trésorerie" },
-  { id: "usr_altidor", name: "Cabinet Altidor & Associés", email: "contact@altidor.ht", role: "CLIENT", roles: ["client"], status: "Actif", notes: "Compte Entreprise" }
-];
 
 function loadState() {
   try {
@@ -778,9 +750,7 @@ function loadState() {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) {
-        if (!Array.isArray(parsed.utilisateurs) || parsed.utilisateurs.length < 3) {
-          parsed.utilisateurs = DEFAULT_SYSTEM_USERS;
-        }
+        parsed.utilisateurs = [];
         return parsed;
       }
     }
@@ -1850,6 +1820,7 @@ function initAuthUI(initialMode = "login") {
   // Champs Vue Inscription ("Pour S'inscrire" selon le modèle)
   const registerNom = document.getElementById("authRegisterNom");
   const registerPrenom = document.getElementById("authRegisterPrenom");
+  const registerEmail = document.getElementById("authRegisterEmail");
   const registerPhone = document.getElementById("authRegisterPhone");
   const registerUsername = document.getElementById("authRegisterUsername");
   const registerPassword = document.getElementById("authRegisterPassword");
@@ -1905,7 +1876,7 @@ function initAuthUI(initialMode = "login") {
   if (btnForgotPwd) btnForgotPwd.onclick = () => setMode("forgot");
   if (switchBackFromForgot) switchBackFromForgot.onclick = () => setMode("login");
 
-  // Validation visuelle en temps réel du mot de passe (4 à 8 caractères alphanumériques)
+  // Validation visuelle du mot de passe Firebase (8 caractères minimum).
   function updatePasswordChecklist() {
     const pwd = registerPassword ? registerPassword.value : "";
     const confirm = registerPasswordConfirm ? registerPasswordConfirm.value : "";
@@ -1914,19 +1885,19 @@ function initAuthUI(initialMode = "login") {
     const reqAlpha = document.getElementById("authReqAlpha");
     const reqMatch = document.getElementById("authReqMatch");
 
-    const isLenValid = pwd.length >= 4 && pwd.length <= 8;
-    const isAlphaValid = pwd.length > 0 && /^[a-zA-Z0-9]+$/.test(pwd);
+    const isLenValid = pwd.length >= 8 && pwd.length <= 128;
+    const isAlphaValid = pwd.length > 0;
     const isMatchValid = pwd.length > 0 && confirm.length > 0 && pwd === confirm;
 
     if (reqLen) {
-      const isTooLong = pwd.length > 8;
+      const isTooLong = pwd.length > 128;
       reqLen.className = `auth-req-item ${isLenValid ? "valid" : (isTooLong ? "invalid" : "")}`;
       const icon = reqLen.querySelector(".req-icon");
       if (icon) icon.textContent = isLenValid ? "🟢" : (isTooLong ? "🔴" : "⚪");
     }
 
     if (reqAlpha) {
-      const hasInvalidChar = pwd.length > 0 && !/^[a-zA-Z0-9]+$/.test(pwd);
+      const hasInvalidChar = pwd.length > 128;
       reqAlpha.className = `auth-req-item ${isAlphaValid ? "valid" : (hasInvalidChar ? "invalid" : "")}`;
       const icon = reqAlpha.querySelector(".req-icon");
       if (icon) icon.textContent = isAlphaValid ? "🟢" : (hasInvalidChar ? "🔴" : "⚪");
@@ -1966,7 +1937,7 @@ function initAuthUI(initialMode = "login") {
       const password = loginPassword ? loginPassword.value : "";
 
       if (!identifier) {
-        setAuthMessage("error", "Veuillez saisir votre adresse e-mail ou votre nom de profil.");
+        setAuthMessage("error", "Veuillez saisir votre adresse e-mail.");
         loginEmail?.focus();
         return;
       }
@@ -1976,9 +1947,10 @@ function initAuthUI(initialMode = "login") {
         return;
       }
 
+      isAuthProcessing = true;
       try {
         setButtonState(btnLogin, true, "Connexion en cours...", "Se Connecter");
-        setAuthMessage("loading", "Vérification des identifiants et accès Cloud...");
+        setAuthMessage("loading", "Vérification par Firebase Authentication...");
         const result = await signInWithEmailAndPasswordMethod(identifier, password);
 
         // Sauvegarde Remember Me si activé
@@ -1990,21 +1962,12 @@ function initAuthUI(initialMode = "login") {
           }
         } catch (e) {}
 
-        if (result && result.profile) {
-          const existingList = list("utilisateurs") || [];
-          const idx = existingList.findIndex(u => (u.id === result.profile.id || u.email === result.profile.email));
-          if (idx >= 0) {
-            existingList[idx] = result.profile;
-          } else {
-            existingList.push(result.profile);
-          }
-          save();
-        }
 
         setAuthMessage("success", "Connexion réussie ! Bienvenue chez LAPERLE TOUR HT.");
         showToast(`Bienvenue, ${result.profile?.nom || result.profile?.name || result.profile?.username || "Utilisateur"} !`);
         completeUserSignIn(result.user, result.profile, result.isNew);
       } catch (err) {
+        isAuthProcessing = false;
         setButtonState(btnLogin, false, "Connexion en cours...", "Se Connecter");
         console.warn("Erreur connexion login:", err);
         const errMsg = err?.message || String(err);
@@ -2027,6 +1990,8 @@ function initAuthUI(initialMode = "login") {
         } else {
           setAuthMessage("error", formatAuthError(err) || errMsg);
         }
+      } finally {
+        isAuthProcessing = false;
       }
     };
   }
@@ -2037,6 +2002,7 @@ function initAuthUI(initialMode = "login") {
       const nom = registerNom ? registerNom.value.trim() : "";
       const prenom = registerPrenom ? registerPrenom.value.trim() : "";
       const rawPhone = registerPhone ? registerPhone.value.trim() : "";
+      const email = registerEmail ? registerEmail.value.trim().toLowerCase() : "";
       const usernameInput = document.getElementById("authRegisterUsername");
       const username = usernameInput ? usernameInput.value.trim() : "";
       const password = registerPassword ? registerPassword.value : "";
@@ -2050,6 +2016,11 @@ function initAuthUI(initialMode = "login") {
       if (!prenom) {
         setAuthMessage("error", "Veuillez renseigner votre prénom.");
         registerPrenom?.focus();
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        setAuthMessage("error", "Veuillez saisir une adresse e-mail valide.");
+        registerEmail?.focus();
         return;
       }
       if (!rawPhone) {
@@ -2068,22 +2039,15 @@ function initAuthUI(initialMode = "login") {
       const phoneDigits = digitsOnly.slice(-8);
       const telephone = `+509 ${phoneDigits}`;
 
-      // Email dérivé automatiquement pour Firebase et le compte cloud
       const cleanHandle = username || `user_${phoneDigits}`;
-      const email = `${cleanHandle.toLowerCase().replace(/[^a-z0-9_]/g, '')}@laperletourht.com`;
 
       if (!password) {
         setAuthMessage("error", "Veuillez saisir un mot de passe.");
         registerPassword?.focus();
         return;
       }
-      if (password.length < 4 || password.length > 8) {
-        setAuthMessage("error", "Le mot de passe doit comporter entre 4 et 8 caractères.");
-        registerPassword?.focus();
-        return;
-      }
-      if (!/^[a-zA-Z0-9]+$/.test(password)) {
-        setAuthMessage("error", "Le mot de passe doit être composé uniquement de chiffres ou de lettres (alphanumérique).");
+      if (password.length < 8 || password.length > 128) {
+        setAuthMessage("error", "Le mot de passe doit comporter au moins 8 caractères.");
         registerPassword?.focus();
         return;
       }
@@ -2093,6 +2057,7 @@ function initAuthUI(initialMode = "login") {
         return;
       }
 
+      isAuthProcessing = true;
       try {
         setButtonState(btnRegister, true, "Création du compte...", "S'inscrire");
         setAuthMessage("loading", "Création de votre compte sécurisé LAPERLE TOUR HT en cours...");
@@ -2109,28 +2074,21 @@ function initAuthUI(initialMode = "login") {
 
         // Mémorisation de l'identifiant pour la prochaine connexion
         try {
-          localStorage.setItem(REMEMBER_KEY, telephone);
+          localStorage.setItem(REMEMBER_KEY, email);
         } catch (e) {}
 
-        if (result && result.profile) {
-          const existingList = list("utilisateurs") || [];
-          const idx = existingList.findIndex(u => (u.id === result.profile.id || u.email === result.profile.email));
-          if (idx >= 0) {
-            existingList[idx] = result.profile;
-          } else {
-            existingList.push(result.profile);
-          }
-          save();
-        }
 
-        const userLoginId = result.profile?.telephone || (result.profile?.username ? `@${result.profile.username}` : cleanHandle);
+        const userLoginId = result.profile?.email || email;
         setAuthMessage("success", `✅ Compte créé avec succès ! Votre identifiant de connexion : <b>${esc(userLoginId)}</b>.`);
         showToast(`🎉 Bienvenue ${nom} ${prenom} ! Identifiant : ${userLoginId}`);
         completeUserSignIn(result.user, result.profile, result.isNew);
       } catch (err) {
+        isAuthProcessing = false;
         setButtonState(btnRegister, false, "Création du compte...", "S'inscrire");
         console.warn("Erreur inscription register:", err);
         setAuthMessage("error", formatAuthError(err) || err?.message || "Erreur lors de la création du compte.");
+      } finally {
+        isAuthProcessing = false;
       }
     };
   }
@@ -2189,174 +2147,6 @@ function initAuthUI(initialMode = "login") {
   });
 }
 
-/**
- * Synchronise et déplace les données utilisateur du localStorage vers Cloud Firestore
- * immédiatement après une authentification réussie.
- *
- * @param {object} user - Utilisateur authentifié (Firebase user ou session)
- * @param {object} profile - Profil utilisateur (rôles, métadonnées, etc.)
- * @returns {Promise<boolean>} Succès de la synchronisation
- */
-async function syncUserDataFromLocalStorageToFirestore(user, profile) {
-  if (!db) {
-    console.warn("[Sync LocalStorage -> Firestore] Firestore non initialisé.");
-    return false;
-  }
-
-  const activeUser = user || currentUser || auth.currentUser;
-  const activeProfile = profile || currentUserProfile || {};
-  const uid = activeUser?.uid || activeProfile?.uid || activeProfile?.id;
-  const userEmail = (activeUser?.email || activeProfile?.email || '').toLowerCase().trim();
-
-  if (!uid && !userEmail) {
-    console.warn("[Sync LocalStorage -> Firestore] Aucun identifiant utilisateur trouvé.");
-    return false;
-  }
-
-  console.log(`[Sync LocalStorage -> Firestore] 🚀 Début synchronisation pour ${userEmail || uid}...`);
-  updateFirebaseBadge("syncing", "🔄 Synchronisation Firestore...");
-
-  try {
-    let syncedCount = 0;
-    const now = new Date().toISOString();
-
-    // 1. Récupération des données utilisateur présentes dans le localStorage
-    let storedSessionProfile = null;
-    try {
-      const rawSession = localStorage.getItem("LAPERLE_AUTH_SESSION");
-      if (rawSession) {
-        const parsed = JSON.parse(rawSession);
-        if (parsed?.profile) storedSessionProfile = parsed.profile;
-      }
-    } catch (e) {}
-
-    // Vérifier les données dans DBKEY (LAPERLE_CENTRE_CONTROL_V3)
-    let rawLocalDb = null;
-    try {
-      const rawDb = localStorage.getItem(DBKEY);
-      if (rawDb) rawLocalDb = JSON.parse(rawDb);
-    } catch (e) {}
-
-    const localUsers = (rawLocalDb && Array.isArray(rawLocalDb.utilisateurs))
-      ? rawLocalDb.utilisateurs
-      : (Array.isArray(state?.utilisateurs) ? state.utilisateurs : []);
-
-    const matchedLocalUser = localUsers.find(u =>
-      (uid && (u.id === uid || u.uid === uid)) ||
-      (userEmail && u.email && u.email.toLowerCase().trim() === userEmail)
-    );
-
-    // 2. Fusionner et préparer le profil utilisateur complet
-    // RÈGLE ABSOLUE : Utiliser EXCLUSIVEMENT le vrai Firebase UID de la session connectée
-    const targetDocId = activeUser?.uid || auth.currentUser?.uid;
-    if (!targetDocId) {
-      console.warn("[Sync LocalStorage -> Firestore] Aucun UID Firebase de session active, écriture ignorée.");
-      return false;
-    }
-
-    const finalProfile = {
-      ...(matchedLocalUser || {}),
-      ...(storedSessionProfile || {}),
-      ...activeProfile,
-      id: targetDocId,
-      uid: targetDocId,
-      email: userEmail || matchedLocalUser?.email || '',
-      updatedAt: now,
-      lastLoginAt: now,
-      syncedToFirestore: true,
-      lastSyncAt: now
-    };
-
-    // Nettoyer les valeurs undefined
-    const cleanUserDoc = { ...finalProfile, id: targetDocId, uid: targetDocId };
-    const isSuper = isSuperAdminEmail(userEmail) || isSuperAdminIdentifier(userEmail);
-    if (!isSuper && cleanUserDoc.role !== 'admin') {
-      delete cleanUserDoc.permissions;
-    }
-    Object.keys(cleanUserDoc).forEach(k => {
-      if (cleanUserDoc[k] === undefined) delete cleanUserDoc[k];
-    });
-
-    // 3. Déplacer / persister le document utilisateur dans Cloud Firestore
-    // Sécurité stricte : n'écrire que si targetDocId correspond exactement à l'utilisateur connecté
-    if (activeUser?.uid && targetDocId === activeUser.uid) {
-      try {
-        await setDoc(doc(db, 'utilisateurs', targetDocId), cleanUserDoc, { merge: true });
-        syncedCount++;
-      } catch (userDocErr) {
-        console.warn("[Sync LocalStorage -> Firestore] Mise à jour profil utilisateur:", userDocErr?.message || userDocErr);
-      }
-    } else {
-      console.warn(`[Sync LocalStorage -> Firestore] Annulation écriture doc non autorisé (${targetDocId} !== ${activeUser?.uid})`);
-    }
-
-    // 4. Déplacer toutes les données métier de l'utilisateur stockées localement vers Firestore
-    // Adapter selon les privilèges effectifs de l'utilisateur pour éviter les rejets de sécurité
-    const effectiveRoles = normalizeRoles(activeProfile?.roles || activeProfile?.role || currentUserRoles || []);
-    const userOwnedCols = ['clients', 'reservations', 'eleves', 'abonnements', 'plannings', 'paiements', 'proformas', 'factures', 'finances', 'notifications'];
-    for (const col of userOwnedCols) {
-      const canonCol = canonicalCol(col);
-      const isAllowedCol = (col === 'reservations') || 
-                           (col === 'notifications') ||
-                           canAccessModule(effectiveRoles, canonCol, activeProfile?.permissions);
-      if (!isAllowedCol) continue;
-
-      const items = list(col) || [];
-      for (const it of items) {
-        const isUserItem = (it.clientId && it.clientId === uid) ||
-                           (it.chauffeurId && it.chauffeurId === uid) ||
-                           (it.targetUid && it.targetUid === uid) ||
-                           (it.userId && it.userId === uid) ||
-                           (it.email && userEmail && it.email.toLowerCase() === userEmail) ||
-                           (it.createdBy && userEmail && it.createdBy.toLowerCase() === userEmail);
-
-        if (isUserItem && (it._local === true || !it.syncedToFirestore || it.syncedAt === undefined)) {
-          const docId = String(it.number || it.id || Date.now());
-          const cleanItem = { ...it, syncedToFirestore: true, syncedAt: now };
-          delete cleanItem._local;
-          try {
-            await setDoc(doc(db, col, docId), cleanItem, { merge: true });
-            it.syncedToFirestore = true;
-            it.syncedAt = now;
-            delete it._local;
-            syncedCount++;
-          } catch (itemErr) {
-            console.warn(`[Sync LocalStorage -> Firestore] Synchro différée pour ${col}/${docId}:`, itemErr?.message || itemErr);
-          }
-        }
-      }
-    }
-
-    // 5. Supprimer / nettoyer les données temporaires locales (déplacement effectif du localStorage vers Firestore)
-    const tempKeys = [
-      'LAPERLE_PENDING_USER_DATA',
-      'LAPERLE_OFFLINE_USER_DATA',
-      'LAPERLE_LOCAL_USER_CHANGES',
-      `LAPERLE_USER_CACHE_${uid}`,
-      `LAPERLE_PENDING_${uid}`
-    ];
-    tempKeys.forEach(k => {
-      try { localStorage.removeItem(k); } catch (e) {}
-    });
-
-    // Mettre à jour l'entrée correspondante dans le state local
-    if (matchedLocalUser) {
-      Object.assign(matchedLocalUser, finalProfile);
-    }
-    save();
-
-    updateFirebaseBadge("connected", "🔥 Cloud synchronisé");
-    console.log(`[Sync LocalStorage -> Firestore] ✅ ${syncedCount} données utilisateur déplacées et synchronisées avec succès vers Firestore.`);
-    return true;
-  } catch (err) {
-    console.warn("[Sync LocalStorage -> Firestore] Info:", err?.message || err);
-    updateFirebaseBadge("connected", "🔥 Cloud synchronisé");
-    return false;
-  }
-}
-
-window.syncUserDataFromLocalStorageToFirestore = syncUserDataFromLocalStorageToFirestore;
-
 function completeUserSignIn(user, profile, isNew = false) {
   clearExplicitLogout();
   currentUser = user;
@@ -2372,40 +2162,12 @@ function completeUserSignIn(user, profile, isNew = false) {
     return;
   }
 
-  // 2. Résolution des rôles :
-  // - Super Admin par email ou téléphone -> [ROLES.ADMIN]
-  // - Nouvelle inscription sur le site -> [ROLES.CLIENT] (Client / Espace Client Laperle)
-  // - Utilisateur existant -> conserve ses rôles
-  const isSuperAdmin = isSuperAdminIdentifier(user.email) || isSuperAdminIdentifier(user.phoneNumber) ||
-                       isSuperAdminIdentifier(profile?.email) || isSuperAdminIdentifier(profile?.telephone);
-
-  if (isSuperAdmin) {
-    currentUserRoles = [ROLES.ADMIN];
-    currentRole = ROLES.ADMIN;
-    if (currentUserProfile) {
-      currentUserProfile.roles = [ROLES.ADMIN];
-      currentUserProfile.role = ROLES.ADMIN;
-      currentUserProfile.statutCompte = "actif";
-      currentUserProfile.statutClient = "client";
-    }
-  } else if (isNew) {
-    currentUserRoles = [ROLES.PROSPECT];
-    currentRole = ROLES.PROSPECT;
-    if (currentUserProfile) {
-      currentUserProfile.roles = [ROLES.PROSPECT];
-      currentUserProfile.role = ROLES.PROSPECT;
-      currentUserProfile.statutCompte = "actif";
-      currentUserProfile.statutClient = "prospect";
-    }
-  } else {
-    currentUserRoles = normalizeRoles(currentUserProfile?.roles || currentUserProfile?.role || [ROLES.PROSPECT]);
-    currentRole = currentUserRoles[0] || ROLES.PROSPECT;
-    if (currentUserProfile && (!currentUserProfile.roles || currentUserProfile.roles.length === 0)) {
-      currentUserProfile.roles = currentUserRoles;
-      currentUserProfile.role = currentRole;
-    }
+  // Les rôles proviennent exclusivement du profil Firestore associé au Firebase UID.
+  if (!currentUserProfile || currentUserProfile.uid !== user.uid || currentUserProfile.id !== user.uid) {
+    throw new Error("Profil Firebase invalide : le document doit correspondre au Firebase UID.");
   }
-
+  currentUserRoles = normalizeRoles(currentUserProfile.roles || currentUserProfile.role || [ROLES.PROSPECT]);
+  currentRole = currentUserRoles[0] || ROLES.PROSPECT;
   saveUserSession(user, currentUserProfile);
 
   const avatarEl = document.getElementById("headerAvatar");
@@ -2449,14 +2211,6 @@ function completeUserSignIn(user, profile, isNew = false) {
     seedInitialDataToFirestoreIfEmpty();
   }
 
-  // 7. Déplacement et synchronisation immédiate des données utilisateur du localStorage vers Firestore
-  // Un utilisateur nouvellement enregistré (isNew === true) a déjà été persisté dans Firestore par le flux d'inscription.
-  // Déclencher cette synchronisation redondante réécrivait des champs non autorisés (statut, email, timestamps) entraînant un rejet de sécurité Firestore.
-  if (!isNew) {
-    syncUserDataFromLocalStorageToFirestore(user, currentUserProfile).catch(err => {
-      console.warn("[Sync LocalStorage -> Firestore]:", err?.message);
-    });
-  }
 
   render();
 }
@@ -2529,12 +2283,19 @@ try {
       return;
     }
 
+    if (!user) {
+      currentUser = null;
+      currentUserProfile = null;
+      currentUserRoles = [];
+      currentRole = null;
+      clearUserSession();
+      renderAuthPage("unauthenticated");
+      return;
+    }
+
     if (user && !currentUser) {
       try {
-        let profile = await getUserProfile(user.uid, user.email);
-        if (!profile && user.email) {
-          profile = await getUserProfileByIdentifier(user.email);
-        }
+        let profile = await getUserProfile(user.uid);
         if (!profile) {
           profile = await ensureUserProfile(user, 'login');
         }
@@ -2553,67 +2314,16 @@ try {
 } catch (e) {}
 
 // Initialisation de la session utilisateur au démarrage ou après rafraîchissement (F5)
-async function initSessionAtStartup() {
-  // 0. Si l'utilisateur s'est explicitement déconnecté, la page de reconnexion reste active
-  if (isExplicitlyLoggedOut()) {
-    currentUser = null;
-    currentUserProfile = null;
-    currentUserRoles = [];
-    currentRole = null;
-    try { await signOut(auth); } catch (e) {}
-    renderAuthPage("unauthenticated");
-    return;
-  }
-
-  // 1. Détection automatique du lien de connexion sans mot de passe Firebase
-  if (checkIsSignInWithEmailLink(window.location.href)) {
-    renderAuthPage("unauthenticated");
-    setAuthMessage("loading", "Validation de votre lien d'authentification Firebase en cours...");
-    try {
-      const result = await completeEmailLinkSignIn();
-      if (result && result.needsEmailPrompt) {
-        // Le lien a été ouvert sur un autre navigateur ou appareil où l'e-mail n'était pas mémorisé
-        const stepId = document.getElementById("authStepIdentifier");
-        const stepEmailSent = document.getElementById("authStepEmailSent");
-        const stepCode = document.getElementById("authStepCode");
-        const stepConfirm = document.getElementById("authStepConfirmEmail");
-        if (stepId) stepId.style.display = "none";
-        if (stepEmailSent) stepEmailSent.style.display = "none";
-        if (stepCode) stepCode.style.display = "none";
-        if (stepConfirm) stepConfirm.style.display = "block";
-        setAuthMessage("warning", "Veuillez confirmer votre adresse e-mail pour finaliser la connexion sécurisée.");
-        return;
-      }
-
-      if (result && result.user) {
-        setAuthMessage("success", "Authentification Firebase réussie ! Bienvenue.");
-        setTimeout(() => {
-          completeUserSignIn(result.user, result.profile, result.isNew);
-        }, 300);
-        return;
-      }
-    } catch (err) {
-      console.error("Erreur validation lien Firebase:", err);
-      setAuthMessage("error", formatAuthError(err) || "Ce lien d'authentification a expiré ou a déjà été utilisé.");
-      return;
-    }
-  }
-
-  // 2. Restauration de la session existante
-  const session = getUserSession();
-  if (session && session.user) {
-    completeUserSignIn(session.user, session.profile || session.user, false);
-  } else {
-    currentUser = null;
-    currentUserProfile = null;
-    currentUserRoles = [];
-    currentRole = null;
-    renderAuthPage("unauthenticated");
-  }
+function initSessionAtStartup() {
+  // Firebase Auth listener above is the only authority allowed to restore a session.
+  currentUser = null;
+  currentUserProfile = null;
+  currentUserRoles = [];
+  currentRole = null;
+  renderAuthPage('unauthenticated');
 }
 
 initSessionAtStartup();
-
 function go(k) {
   document.getElementById("sidebar")?.classList.remove("open");
   document.getElementById("sidebarBackdrop")?.classList.remove("open");
@@ -3553,7 +3263,7 @@ function openUserRoleModal(indexOrId) {
   }
 
   const roles = normalizeRoles(currentUserRoles);
-  const callerIsAdmin = roles.includes(ROLES.ADMIN) || isSuperAdminEmail(currentUser?.email);
+  const callerIsAdmin = roles.includes(ROLES.ADMIN);
   const callerIsSecretaire = roles.includes(ROLES.SECRETAIRE);
 
   if (!callerIsAdmin && !callerIsSecretaire) {
@@ -3571,7 +3281,7 @@ function openUserRoleModal(indexOrId) {
   const secretaryBlockedOnAdmin = callerIsSecretaire && !callerIsAdmin && isTargetAdmin;
   // 2. A secretaire cannot modify her own account
   const secretaryBlockedOnSelf = callerIsSecretaire && !callerIsAdmin && isSelf;
-  const isBlocked = secretaryBlockedOnAdmin || secretaryBlockedOnSelf;
+  const isBlocked = secretaryBlockedOnAdmin || secretaryBlockedOnSelf || isSelf;
 
   const availableRoles = [
     { key: ROLES.ADMIN, label: "Administrateur", desc: "Supervision complète et attribution des habilitations", restricted: true, icon: "👑" },
@@ -3990,7 +3700,7 @@ function drawTable(key) {
               <tr style="${isArchived ? 'opacity:0.6;background:#f9fafb;' : ''}">
                 ${cols.map(x => `<td>${formatCell(o[x[0]], x[2])}</td>`).join("")}
                 <td class="action-cell">
-                  ${canEdit ? (canon === "utilisateurs" ? (normalizeRoles(currentUserRoles).includes(ROLES.ADMIN) || isSuperAdminEmail(currentUser?.email) ? `<button class="tiny edit role-assign-btn" onclick="openUserRoleModal(${i})">🛡️ Rôles & Accès</button>` : `<span class="badge" style="background:#f1f5f9;color:#64748b;font-size:11px" title="Modification réservée à l'Administrateur">🔒 Rôle géré par Admin</span>`) : `<button class="tiny edit" onclick="openForm('${canon}',${i})">Modifier</button>`) : ""}
+                  ${canEdit ? (canon === "utilisateurs" ? ((normalizeRoles(currentUserRoles).includes(ROLES.ADMIN) || normalizeRoles(currentUserRoles).includes(ROLES.SECRETAIRE)) && o.uid !== currentUser?.uid && o.id !== currentUser?.uid ? `<button class="tiny edit role-assign-btn" onclick="openUserRoleModal(${i})">🛡️ Rôles & Accès</button>` : `<span class="badge" style="background:#f1f5f9;color:#64748b;font-size:11px" title="Rôle protégé ou modification réservée à l'Administrateur">🔒 Rôle protégé</span>`) : `<button class="tiny edit" onclick="openForm('${canon}',${i})">Modifier</button>`) : ""}
                   <button class="tiny" onclick="viewRow('${canon}',${i})">Voir</button>
                   ${canon === "proformas" ? `
                     <button class="tiny" onclick="createInvoiceFromQuote(${i})">Facture</button>
@@ -4084,6 +3794,7 @@ function openForm(key, index = -1) {
     let obj = {};
     new FormData(e.target).forEach((v, k) => obj[k] = v.trim());
 
+    const previousItem = index >= 0 ? { ...list(canon)[index] } : null;
     if (index >= 0) {
       const old = list(canon)[index];
       obj.id = old.id;
@@ -4117,26 +3828,8 @@ function openForm(key, index = -1) {
       }
       else if (canon === "prospects") obj.id = nextNumber("PR", "prospects");
       else if (canon === "utilisateurs") {
-        const callerRoles = normalizeRoles(currentUserRoles);
-        const callerIsAdmin = callerRoles.includes(ROLES.ADMIN) || isSuperAdminEmail(currentUser?.email);
-        
-        // Seul l'Admin peut choisir le rôle, sinon 'lecture_seule' par défaut
-        const assigned = (callerIsAdmin && obj.roles) ? obj.roles : ROLES.LECTURE_SEULE;
-        obj.roles = Array.isArray(assigned) ? assigned : [assigned];
-        obj.role = obj.roles[0] || ROLES.LECTURE_SEULE;
-        obj.id = (obj.email || "").toLowerCase().replace(/[^a-zA-Z0-9]/g, "_") || ("usr_" + Date.now());
-        obj.uid = obj.id;
-        obj.status = obj.status || "actif";
-        obj.statutCompte = obj.status;
-        obj.statutClient = "prospect";
-        obj.createdAt = new Date().toISOString();
-        obj.createdBy = currentUser?.email || "system";
-
-        try {
-          await createManagedUser(obj, currentUserProfile);
-        } catch (uErr) {
-          console.warn("createManagedUser Firestore warning:", uErr?.message);
-        }
+        showToast("Les comptes doivent être créés avec Firebase Authentication.");
+        return;
       }
 
       // Attribution automatique des propriétés de rattachement pour Client, Prospect et Chauffeur
@@ -4157,64 +3850,52 @@ function openForm(key, index = -1) {
       rawList(canon).push(obj);
     }
 
-    // Le PROSPECT peut créer une réservation (son rôle reste PROSPECT jusqu'au premier proforma)
-    if (canon === "reservations") {
-      showToast("✅ Réservation enregistrée !");
-    }
-
-    // RÈGLE MÉTIER : Après son premier proforma, le rôle du prospect devient automatiquement CLIENT
-    if (canon === "proformas") {
-      const pClientEmail = (obj.email || "").toLowerCase().trim();
-      const pClientId = obj.clientId || obj.clientUid || "";
-      const pClientName = (obj.client || obj.nom || "").toLowerCase().trim();
-
-      const allUsers = list("utilisateurs") || [];
-      const matchedUser = allUsers.find(u => 
-        (pClientId && (u.id === pClientId || u.uid === pClientId)) ||
-        (pClientEmail && (u.email || "").toLowerCase().trim() === pClientEmail) ||
-        (pClientName && (u.name || u.nom || "").toLowerCase().trim() === pClientName)
-      );
-
-      if (matchedUser) {
-        const uRoles = normalizeRoles(matchedUser.roles || matchedUser.role);
-        if (!uRoles.includes(ROLES.ADMIN) && (uRoles.includes(ROLES.PROSPECT) || matchedUser.statutClient === "prospect")) {
-          matchedUser.roles = [ROLES.CLIENT];
-          matchedUser.role = ROLES.CLIENT;
-          matchedUser.statutClient = "client";
-          try {
-            await upgradeProfileToClient(matchedUser.id || matchedUser.uid);
-          } catch (e) {
-            console.warn("Échec upgradeProfileToClient:", e?.message);
-          }
-        }
-      }
-
-      // Si l'utilisateur connecté est le prospect concerné par le proforma
-      if (currentUser) {
-        const myRoles = normalizeRoles(currentUserRoles);
-        const isTargetCurrentUser = (pClientId && (currentUser.uid === pClientId || currentUser.id === pClientId)) ||
-                                    (pClientEmail && (currentUser.email || "").toLowerCase().trim() === pClientEmail);
-        if (isTargetCurrentUser && myRoles.includes(ROLES.PROSPECT) && !myRoles.includes(ROLES.ADMIN)) {
-          currentUserRoles = [ROLES.CLIENT];
-          currentRole = ROLES.CLIENT;
-          if (currentUserProfile) {
-            currentUserProfile.roles = [ROLES.CLIENT];
-            currentUserProfile.role = ROLES.CLIENT;
-            currentUserProfile.statutClient = 'client';
-          }
-          saveUserSession(currentUser, currentUserProfile);
-          updateRoleBadge(currentUserRoles);
-          buildNavigation();
-          showToast("🎉 Félicitations ! Votre premier proforma a été établi. Votre compte passe officiellement au rôle de CLIENT !");
-        }
-      }
-    }
-
-    save();
     const savedItem = index >= 0 ? list(canon)[index] : list(canon)[list(canon).length - 1];
-    
-    // Direct cloud save
-    await saveDocumentToFirestore(canon, savedItem);
+    const needsAuthoritativeWrite = canon === "reservations" || (canon === "proformas" && index < 0);
+    if (!needsAuthoritativeWrite) save();
+
+    try {
+      // Les créations officielles de proforma passent par le serveur autorisé.
+      if (canon === "proformas" && index < 0) {
+        const created = await createProforma(savedItem, savedItem.number);
+        Object.assign(savedItem, created);
+        if (created.profile && currentUser?.uid === created.profile.uid) {
+          currentUserProfile = created.profile;
+          currentUserRoles = normalizeRoles(created.profile.roles || created.profile.role);
+          currentRole = currentUserRoles[0];
+          saveUserSession(currentUser, currentUserProfile);
+        }
+      } else if (canon === "reservations") {
+        const uid = auth.currentUser?.uid;
+        if (!db || !uid) throw new Error("Une session Firebase est requise pour enregistrer la réservation.");
+        await setDoc(doc(db, "reservations", String(savedItem.id)), {
+          ...savedItem,
+          ...(savedItem.clientId || savedItem.uid ? { clientId: savedItem.clientId || savedItem.uid, uid: savedItem.uid || savedItem.clientId } : {}),
+          createdBy: savedItem.createdBy || uid,
+          updatedBy: uid,
+          createdAt: savedItem.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          archived: savedItem.archived === true
+        });
+      } else {
+        await saveDocumentToFirestore(canon, savedItem);
+      }
+    } catch (err) {
+      if (needsAuthoritativeWrite) {
+        const items = rawList(canon);
+        const itemIndex = items.indexOf(savedItem);
+        if (index >= 0 && itemIndex >= 0 && previousItem) items[itemIndex] = previousItem;
+        else if (itemIndex >= 0) items.splice(itemIndex, 1);
+        save();
+        showToast(canon === "reservations"
+          ? "Réservation non enregistrée dans Firestore. Vérifiez votre connexion et réessayez."
+          : "Proforma non enregistrée dans Firestore. Vérifiez vos droits et réessayez.", "error");
+        return;
+      }
+      throw err;
+    }
+
+    if (needsAuthoritativeWrite) save();
 
     closeModal();
     go(canon);
@@ -4632,17 +4313,34 @@ async function handleConfirmClientReservation() {
       createdAt: new Date().toISOString()
     };
 
+    if (!db || !auth.currentUser || auth.currentUser.uid !== uid) {
+      throw new Error("Session Firebase invalide ou Firestore indisponible.");
+    }
+    await setDoc(doc(db, "reservations", resId), {
+      ...resItem,
+      uid,
+      clientId: uid,
+      createdBy: uid,
+      updatedBy: uid,
+      archived: false,
+      updatedAt: new Date().toISOString()
+    });
+
+    let proformaRequestSaved = true;
     try {
-      await saveDocumentToFirestore("reservations", resItem);
-    } catch (e) {
-      console.warn("Enregistrement Firestore réservation:", e);
+      await requestProforma({ client: resItem.nomClient, reservationId: resId, details: `${service} • ${dest} • ${date} • ${passengers} passager(s)` });
+    } catch (requestError) {
+      proformaRequestSaved = false;
+      console.error("Demande de proforma non transmise:", requestError);
     }
 
     if (!Array.isArray(state["reservations"])) state["reservations"] = [];
     state["reservations"].unshift(resItem);
     save();
 
-    showToast("✅ Réservation enregistrée ! Un devis proforma vous sera transmis. Dès l'émission du premier proforma, votre compte deviendra CLIENT.");
+    showToast(proformaRequestSaved
+      ? "✅ Réservation enregistrée et demande de proforma transmise. Votre compte deviendra CLIENT après émission officielle d'une proforma valide."
+      : "✅ Réservation enregistrée. La demande de proforma n’a pas pu être transmise; veuillez contacter l’équipe.", proformaRequestSaved ? "success" : "error");
 
     // Rediriger vers l'espace de réservations
     setTimeout(() => {
@@ -4657,7 +4355,7 @@ async function handleConfirmClientReservation() {
       btn.disabled = false;
       btn.innerHTML = `<span>🎫</span> <span>Confirmer ma réservation et activer mon Espace Client</span>`;
     }
-    showToast("Erreur: " + (err.message || "Impossible de valider la réservation"));
+    showToast("Réservation non enregistrée dans Firestore. Vérifiez votre connexion et réessayez.", "error");
   }
 }
 window.handleConfirmClientReservation = handleConfirmClientReservation;
@@ -4981,7 +4679,6 @@ function openProfile() {
           </button>
           <button type="button" class="secondary" onclick="closeModal()">Fermer</button>
           ${isAdmin ? `<button type="button" class="secondary" onclick="closeModal();go('utilisateurs')">🛡️ Administration Utilisateurs</button>` : ''}
-          ${isAdmin ? `<button type="button" class="secondary" style="color:#b45309;border-color:#fde68a;background:#fffbeb;" onclick="triggerResetUsersFromProfile()">🔄 Réinitialiser Base Users (Admin26)</button>` : ''}
           <button type="button" class="secondary" style="color:#b42318;border-color:#fca5a5;margin-left:auto;" onclick="closeModal();logoutUser()">🚪 Déconnexion</button>
         </div>
       </form>
@@ -5158,21 +4855,6 @@ function openProfile() {
   }
 }
 window.openProfile = openProfile;
-
-window.triggerResetUsersFromProfile = async function() {
-  if (!confirm("⚠️ Voulez-vous vraiment réinitialiser la base de données des utilisateurs ?\nTous les comptes administrateurs seront réinitialisés avec le mot de passe : Admin26.")) {
-    return;
-  }
-  try {
-    showToast("Réinitialisation de la base utilisateurs en cours...");
-    await resetUsersDatabase();
-    showToast("✅ Base réinitialisée ! Tous les administrateurs se connectent avec le mot de passe : Admin26.");
-    closeModal();
-    setTimeout(() => location.reload(), 1200);
-  } catch (err) {
-    showToast("Erreur réinitialisation: " + (err.message || err));
-  }
-};
 
 function showToast(msg) {
   const t = document.getElementById("toast");
@@ -5525,34 +5207,23 @@ async function createProformaFromReservation(index) {
     notes: `Proforma générée automatiquement depuis la réservation ${r.code || r.id || ''} (${r.trajet || r.route || ''})`
   };
 
-  list("proformas").push(newQuote);
-
-  // RÈGLE MÉTIER : Après son premier proforma, le rôle du prospect devient automatiquement CLIENT
-  const allUsers = list("utilisateurs") || [];
-  const matchedUser = allUsers.find(u => 
-    (targetUid && (u.id === targetUid || u.uid === targetUid)) ||
-    (clientEmail && (u.email || "").toLowerCase().trim() === clientEmail)
-  );
-
-  if (matchedUser) {
-    matchedUser.roles = [ROLES.CLIENT];
-    matchedUser.role = ROLES.CLIENT;
-    matchedUser.statutClient = "client";
-  }
-
-  const userToUpgradeId = targetUid || matchedUser?.id || matchedUser?.uid;
-  if (userToUpgradeId) {
-    try {
-      await upgradeProfileToClient(userToUpgradeId);
-    } catch (e) {
-      console.warn("Échec upgradeProfileToClient:", e?.message);
+  try {
+    const createdQuote = await createProforma(newQuote, quoteNumber);
+    Object.assign(newQuote, createdQuote);
+    if (createdQuote.profile && currentUser?.uid === createdQuote.profile.uid) {
+      currentUserProfile = createdQuote.profile;
+      currentUserRoles = normalizeRoles(createdQuote.profile.roles || createdQuote.profile.role);
+      currentRole = currentUserRoles[0];
+      saveUserSession(currentUser, currentUserProfile);
     }
-  }
 
-  save();
-  await saveDocumentToFirestore("proformas", newQuote);
-  go("proformas");
-  showToast(`✅ Proforma ${quoteNumber} créée ! Le compte est officiellement devenu CLIENT.`);
+    list("proformas").push(newQuote);
+    save();
+    go("proformas");
+    showToast(`✅ Proforma ${quoteNumber} créée.`);
+  } catch (error) {
+    showToast(error?.message || "La proforma n’a pas été créée.", "error");
+  }
 }
 
 async function createInvoiceFromQuote(index) {

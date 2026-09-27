@@ -15,27 +15,8 @@ import {
 
 const COLLECTION_NAME = 'utilisateurs';
 
-export async function createUtilisateur(data, customId) {
-  const id = customId || data.uid || data.id || auth.currentUser?.uid || (data.email ? data.email.toLowerCase().replace(/[^a-zA-Z0-9]/g, '_') : `USR-${Date.now()}`);
-  const now = new Date().toISOString();
-  const userEmail = auth.currentUser?.email || 'admin';
-  
-  const payload = {
-    ...data,
-    id,
-    status: data.status || 'Actif',
-    createdBy: userEmail,
-    updatedBy: userEmail,
-    createdAt: now,
-    updatedAt: now
-  };
-
-  try {
-    await setDoc(doc(db, COLLECTION_NAME, id), payload);
-    return payload;
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, `${COLLECTION_NAME}/${id}`);
-  }
+export async function createUtilisateur() {
+  throw new Error('Les comptes doivent être créés via Firebase Authentication.');
 }
 
 export async function getUtilisateurs() {
@@ -59,23 +40,15 @@ export async function getUtilisateur(id) {
   }
 }
 
-export async function getUtilisateurByEmail(email) {
-  try {
-    const q = query(collection(db, COLLECTION_NAME), where('email', '==', email.toLowerCase().trim()));
-    const snap = await getDocs(q);
-    if (snap.empty) return null;
-    const first = snap.docs[0];
-    return { ...first.data(), id: first.id };
-  } catch (error) {
-    handleFirestoreError(error, OperationType.GET, COLLECTION_NAME);
-  }
-}
 
 export async function updateUtilisateur(id, updates) {
-  const userEmail = auth.currentUser?.email || 'admin';
+  if (!auth.currentUser) throw new Error('Une session Firebase est requise.');
+  if (String(id) === auth.currentUser.uid && ('role' in updates || 'roles' in updates)) throw new Error('Vous ne pouvez pas modifier votre propre rôle.');
+
+  const user = auth.currentUser;
   const payload = {
     ...updates,
-    updatedBy: userEmail,
+    updatedBy: user.uid,
     updatedAt: new Date().toISOString()
   };
 

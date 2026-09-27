@@ -18,13 +18,16 @@ import {
 const COLLECTION_NAME = 'reservations';
 
 export async function createReservation(data, customId) {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Une session Firebase est requise pour créer une réservation.');
   const id = customId || `RES-${Date.now().toString().slice(-6)}`;
   const now = new Date().toISOString();
-  const userEmail = auth.currentUser?.email || 'admin';
   
   const payload = {
     ...data,
     id,
+    clientId: user.uid,
+    uid: user.uid,
     client: data.client || '',
     origin: data.origin || '',
     destination: data.destination || '',
@@ -37,8 +40,8 @@ export async function createReservation(data, customId) {
     notes: data.notes || '',
     status: data.status || 'Confirmée',
     archived: false,
-    createdBy: userEmail,
-    updatedBy: userEmail,
+    createdBy: user.uid,
+    updatedBy: user.uid,
     createdAt: data.createdAt || now,
     updatedAt: now
   };
@@ -76,12 +79,13 @@ export async function getReservation(id) {
 }
 
 export async function updateReservation(id, updates) {
-  const userEmail = auth.currentUser?.email || 'admin';
+  const user = auth.currentUser;
+  if (!user) throw new Error('Une session Firebase est requise pour modifier une réservation.');
   const payload = {
     ...updates,
     amount: updates.amount !== undefined ? Number(updates.amount) || 0 : undefined,
     passengers: updates.passengers !== undefined ? Number(updates.passengers) || 1 : undefined,
-    updatedBy: userEmail,
+    updatedBy: user.uid,
     updatedAt: new Date().toISOString()
   };
   Object.keys(payload).forEach(key => payload[key] === undefined && delete payload[key]);

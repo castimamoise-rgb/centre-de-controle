@@ -26,26 +26,7 @@ service cloud.firestore {
     }
 
     function isVerified() {
-      return isSignedIn() && (
-        ('email_verified' in request.auth.token && request.auth.token.email_verified == true) ||
-        isSuperAdminEmail() ||
-        ('firebase' in request.auth.token && 
-         'sign_in_provider' in request.auth.token.firebase && 
-         request.auth.token.firebase.sign_in_provider == "google.com")
-      );
-    }
-
-    function isSuperAdminEmail() {
-      return (
-        ('email' in request.auth.token && 
-         request.auth.token.email in ["castimamoise@gmail.com", "castimaklik@gmail.com", "laperletourht@gmail.com", "aperletourht@gmail.com"]) ||
-        ('phone_number' in request.auth.token && 
-         request.auth.token.phone_number in ["+50944408687", "+50944408688", "+5094440-8687"])
-      );
-    }
-
-    function isTargetSuperAdminEmail(targetEmail) {
-      return targetEmail in ["castimamoise@gmail.com", "castimaklik@gmail.com", "laperletourht@gmail.com", "aperletourht@gmail.com"];
+      return isSignedIn();
     }
 
     // -------------------------------------------------------------
@@ -67,38 +48,36 @@ service cloud.firestore {
             : ["lecture_seule"]);
     }
 
+    function hasRoleFor(data, role) {
+      return role in getUserRolesFor(data);
+    }
+
     function getUserRoles() {
-      return isSuperAdminEmail() 
-        ? ["admin"] 
-        : (userDocExists() 
+      return userDocExists()
             ? getUserRolesFor(getUserData())
-            : ["lecture_seule"]);
+            : ["lecture_seule"];
     }
 
     function hasRole(r) {
       return isVerified() && isUserActive() && (
-        isSuperAdminEmail() || 
         r in getUserRoles()
       );
     }
 
     function hasAnyRole(rolesList) {
       return isVerified() && isUserActive() && (
-        isSuperAdminEmail() || 
         getUserRoles().hasAny(rolesList)
       );
     }
 
     function hasAllRoles(rolesList) {
       return isVerified() && isUserActive() && (
-        isSuperAdminEmail() || 
         getUserRoles().hasAll(rolesList)
       );
     }
 
     function isUserActive() {
       return isSignedIn() && (
-        isSuperAdminEmail() ||
         (userDocExists() && (
           ('status' in getUserData() && getUserData().status in ["actif", "Actif", "ACTIF"]) ||
           ('statutCompte' in getUserData() && getUserData().statutCompte in ["actif", "Actif", "ACTIF"])
@@ -108,7 +87,6 @@ service cloud.firestore {
 
     function isAdmin() {
       return isVerified() && isUserActive() && (
-        isSuperAdminEmail() || 
         hasRole("admin") ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );
@@ -183,12 +161,16 @@ service cloud.firestore {
       );
     }
 
+    function isOwnClientIdentity(data) {
+      return (('clientId' in data && data.clientId == request.auth.uid) ||
+              ('uid' in data && data.uid == request.auth.uid)) &&
+        (!('clientId' in data) || data.clientId == request.auth.uid) &&
+        (!('uid' in data) || data.uid == request.auth.uid) &&
+        (!('email' in data) || data.email == request.auth.token.email);
+    }
+
     function isClientDoc(data) {
-      return (isClient() || isProspect()) && (
-        (('clientId' in data) && data.clientId == request.auth.uid) ||
-        (('uid' in data) && data.uid == request.auth.uid) ||
-        (('email' in data) && data.email == request.auth.token.email)
-      );
+      return (isClient() || isProspect()) && isOwnClientIdentity(data);
     }
 
     function isNotificationTarget(data) {
@@ -491,11 +473,7 @@ service cloud.firestore {
       allow create: if isValidId(reservationId) && isValidReservation(incoming()) && (
         canManageOperations() || (
           (isClient() || isProspect()) &&
-          (
-            (('clientId' in incoming()) && incoming().clientId == request.auth.uid) ||
-            (('uid' in incoming()) && incoming().uid == request.auth.uid) ||
-            (('email' in incoming()) && incoming().email == request.auth.token.email)
-          )
+          isOwnClientIdentity(incoming())
         )
       );
       allow update: if canManageOperations() && isValidId(reservationId) && isValidReservation(incoming());
@@ -526,6 +504,12 @@ service cloud.firestore {
       allow create, update: if canManageFinances() && isValidId(proformaId) && isValidProforma(incoming());
       allow delete: if (isAdmin() || canManageFinances()) && isValidId(proformaId);
     }
+    match /demandesProformas/{requestId} {
+      allow get, list: if canReadFinances() ||
+        ((isClient() || isProspect()) && isClientDoc(existing()));
+      // Requests are created and processed only through trusted server operations.
+      allow create, update, delete: if false;
+    }
     match /quotes/{quoteId} {
       allow get, list: if canReadFinances() || (isClient() && isClientDoc(existing()));
       allow create, update: if canManageFinances() && isValidId(quoteId);
@@ -547,131 +531,25 @@ service cloud.firestore {
 
     // 12. Utilisateurs & Rôles
     match /utilisateurs/{utilisateurId} {
-      // ADMIN, SECRETAIRE or signed-in users can list users; individual lookup allowed by valid ID
-      allow list: if isAdmin() || isSecretaire() || isSignedIn();
-      allow get: if isValidId(utilisateurId);
-
-      // Initial self-registration (MUST be role 'prospect', 'lecture_seule' or 'client', statutCompte 'actif', statutClient 'prospect' or 'client', unless super admin)
-      // Or creation by ADMIN (any role) or SECRETAIRE (strictly non-admin roles)
-      allow create: if isValidId(utilisateurId) && isValidUtilisateur(incoming()) && (
-        isAdmin() || (
-          isSecretaire() &&
-          utilisateurId != request.auth.uid &&
-          !isTargetSuperAdminEmail(incoming().email) &&
-          (!('roles' in incoming()) || (
-            !("admin" in incoming().roles) &&
-            incoming().roles.hasOnly(["direction", "comptabilite", "secretaire", "operations", "chauffeur", "client", "prospect", "lecture_seule"])
-          )) &&
-          (!('role' in incoming()) || incoming().role.lower() != "admin")
-        ) || (
-          isSignedIn() && request.auth.uid == utilisateurId &&
-          (
-            (isSuperAdminEmail() && (
-              (!('roles' in incoming()) || incoming().roles == ["admin"]) &&
-              (!('role' in incoming()) || incoming().role.lower() == "admin")
-            )) ||
-            (!isSuperAdminEmail() && (
-              (!('roles' in incoming()) || incoming().roles == ["prospect"] || incoming().roles == ["lecture_seule"] || incoming().roles == ["client"]) &&
-              (!('role' in incoming()) || incoming().role.lower() in ["prospect", "lecture_seule", "client"]) &&
-              (!('statutClient' in incoming()) || incoming().statutClient in ["prospect", "Prospect", "client", "Client"])
-            ))
-          ) &&
-          (!('status' in incoming()) || incoming().status in ["actif", "Actif"]) &&
-          (!('statutCompte' in incoming()) || incoming().statutCompte in ["actif", "Actif"]) &&
-          (!('permissions' in incoming()) || incoming().permissions == {})
-        ) || (
-          // Super admin document sync
-          (isTargetSuperAdminEmail(incoming().email) || utilisateurId in ["usr_admin_castima", "usr_admin_castimaklik", "usr_admin_laperle"]) &&
-          (!('status' in incoming()) || incoming().status in ["actif", "Actif"]) &&
-          (!('statutCompte' in incoming()) || incoming().statutCompte in ["actif", "Actif"])
-        ) || (
-          // Public web registration for new clients and prospects (no administrative privileges)
-          (!('roles' in incoming()) || incoming().roles == ["prospect"] || incoming().roles == ["lecture_seule"] || incoming().roles == ["client"]) &&
-          (!('role' in incoming()) || incoming().role.lower() in ["prospect", "lecture_seule", "client"]) &&
-          (!('statutClient' in incoming()) || incoming().statutClient in ["prospect", "Prospect", "client", "Client"]) &&
-          (!('status' in incoming()) || incoming().status in ["actif", "Actif"]) &&
-          (!('statutCompte' in incoming()) || incoming().statutCompte in ["actif", "Actif"]) &&
-          (!('permissions' in incoming()) || incoming().permissions == {})
-        )
-      );
-
-      // Updates:
-      // 1. ADMIN can update users, but cannot strip admin from super admin email
-      // 2. SECRETAIRE can assign/remove allowed roles for other users, but can never assign ADMIN nor touch existing Admins
-      // 3. User can update ONLY their own personal contact info; CANNOT modify roles, status, or permissions
+      allow get: if isVerified() && isUserActive() &&
+        (request.auth.uid == utilisateurId || isAdmin() || isSecretaire());
+      allow list: if isVerified() && isUserActive() && (isAdmin() || isSecretaire());
+      // Firebase Admin creates profiles after validating the Firebase ID token.
+      allow create: if false;
       allow update: if isValidId(utilisateurId) && isValidUtilisateur(incoming()) && (
-        (
-          isAdmin() &&
-          !(isTargetSuperAdminEmail(existing().email) && ('roles' in incoming()) && !("admin" in incoming().roles))
-        ) ||
-        (
-          isSecretaire() &&
-          utilisateurId != request.auth.uid &&
-          !isTargetSuperAdminEmail(existing().email) &&
-          !(("admin" in getUserRolesFor(existing())) || (('role' in existing()) && existing().role.lower() == "admin")) &&
-          (!('roles' in incoming()) || (
-            !("admin" in incoming().roles) &&
-            incoming().roles.hasOnly(["direction", "comptabilite", "secretaire", "operations", "chauffeur", "client", "prospect", "lecture_seule"])
-          )) &&
-          (!('role' in incoming()) || incoming().role.lower() != "admin") &&
-          (!('uid' in incoming()) || incoming().uid == existing().uid) &&
-          (!('email' in incoming()) || incoming().email == existing().email) &&
-          (!('createdAt' in incoming()) || incoming().createdAt == existing().createdAt) &&
-          (!('createdBy' in incoming()) || incoming().createdBy == existing().createdBy)
-        ) ||
-        (
-          isSignedIn() && request.auth.uid == utilisateurId &&
-          (!('uid' in incoming()) || incoming().uid == existing().uid) &&
-          (!('createdAt' in incoming()) || !('createdAt' in existing()) || incoming().createdAt == existing().createdAt) &&
-          (!('createdBy' in incoming()) || !('createdBy' in existing()) || incoming().createdBy == existing().createdBy) &&
-          // Cannot modify status or statutCompte
-          (!('status' in incoming()) || !('status' in existing()) || incoming().status == existing().status) &&
-          (!('statutCompte' in incoming()) || !('statutCompte' in existing()) || incoming().statutCompte == existing().statutCompte) &&
-          // Cannot self-assign or change any role or permissions
-          (!('roles' in incoming()) || !('roles' in existing()) || incoming().roles == existing().roles) &&
-          (!('role' in incoming()) || !('role' in existing()) || incoming().role == existing().role) &&
-          (!('statutClient' in incoming()) || !('statutClient' in existing()) || incoming().statutClient == existing().statutClient) &&
-          (!('permissions' in incoming()) || !('permissions' in existing()) || incoming().permissions == existing().permissions) &&
-          // Personal contact details and synchronization metadata
-          incoming().diff(existing()).affectedKeys().hasOnly([
-            'name', 'nom', 'prenom', 'username', 'aliases', 
-            'phone', 'telephone', 'photoURL', 'avatar', 
-            'passwordHash', 'notes', 'updatedAt', 'updatedBy', 'lastLoginAt',
-            'syncedToFirestore', 'lastSyncAt', 'syncedAt', 'createdBy', 'permissions',
-            'email', 'id', 'uid', 'status', 'statutCompte', 'statutClient', 'roles', 'role'
-          ])
-        ) ||
-        (
-          // Super admin email profile update
-          (isTargetSuperAdminEmail(existing().email) || isTargetSuperAdminEmail(incoming().email) || utilisateurId in ["usr_admin_castima", "usr_admin_castimaklik", "usr_admin_laperle"]) &&
-          incoming().diff(existing()).affectedKeys().hasOnly([
-            'id', 'uid', 'targetId', 'permissions', 'name', 'nom', 'prenom', 'username', 'aliases', 
-            'phone', 'telephone', 'photoURL', 'avatar', 'passwordHash', 'notes', 
-            'status', 'statutCompte', 'statutClient', 'roles', 'role', 
-            'updatedAt', 'updatedBy', 'lastLoginAt', 'syncedToFirestore', 'lastSyncAt', 'syncedAt', 'createdBy'
-          ])
-        ) ||
-        (
-          // Profile updates for web users without administrative role escalation
-          (!('uid' in incoming()) || incoming().uid == existing().uid) &&
-          (!('createdAt' in incoming()) || !('createdAt' in existing()) || incoming().createdAt == existing().createdAt) &&
-          (!('roles' in incoming()) || !incoming().roles.hasAny(["admin", "direction", "comptabilite", "secretaire", "operations", "chauffeur"])) &&
-          (!('role' in incoming()) || !(["admin", "direction", "comptabilite", "secretaire", "operations", "chauffeur"].hasAny([incoming().role.lower()]))) &&
-          incoming().diff(existing()).affectedKeys().hasOnly([
-            'name', 'nom', 'prenom', 'username', 'aliases', 
-            'phone', 'telephone', 'photoURL', 'avatar', 
-            'passwordHash', 'notes', 'updatedAt', 'updatedBy', 'lastLoginAt',
-            'syncedToFirestore', 'lastSyncAt', 'syncedAt', 'createdBy', 'permissions',
-            'email', 'id', 'uid', 'status', 'statutCompte', 'statutClient', 'roles', 'role'
-          ])
-        )
+        (isAdmin() && utilisateurId != request.auth.uid) ||
+        (isSecretaire() && utilisateurId != request.auth.uid && !hasRoleFor(existing(), "admin") &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['updatedAt', 'updatedBy', 'status', 'statutCompte'])) ||
+        (isVerified() && isUserActive() && request.auth.uid == utilisateurId &&
+          incoming().uid == existing().uid && incoming().id == existing().id &&
+          incoming().email == existing().email && incoming().role == existing().role &&
+          incoming().roles == existing().roles && incoming().statutClient == existing().statutClient &&
+          incoming().status == existing().status && incoming().statutCompte == existing().statutCompte &&
+          incoming().permissions == existing().permissions &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'nom', 'prenom', 'username', 'phone', 'telephone', 'photoURL', 'avatar', 'updatedAt', 'lastLoginAt']))
       );
-
-      // Only Admin can delete a user, and Super Admin cannot be deleted
-      allow delete: if (isAdmin() || isSuperAdminEmail()) && isValidId(utilisateurId) && 
-        !(('email' in existing() && isTargetSuperAdminEmail(existing().email)) || utilisateurId == request.auth.uid);
+      allow delete: if isAdmin() && utilisateurId != request.auth.uid;
     }
-
     // 13. Notifications
     match /notifications/{notificationId} {
       allow get, list: if isVerified() && isUserActive() && (

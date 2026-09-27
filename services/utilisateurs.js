@@ -18,159 +18,33 @@ import { ROLES, SUPER_ADMIN_EMAIL, isSuperAdminEmail, normalizeRole } from './pe
 
 const COLLECTION_NAME = 'utilisateurs';
 
-export async function createOrUpdateUser(userObj) {
-  const email = (userObj.email || '').toLowerCase().trim();
-  const id = userObj.id || (userObj.uid ? userObj.uid : email.replace(/[^a-zA-Z0-9]/g, '_'));
-  const now = new Date().toISOString();
-  const currentUserEmail = auth.currentUser?.email || 'system';
-
-  // Super admin always retains ADMIN role
-  const isSuper = isSuperAdminEmail(email);
-  const role = isSuper ? ROLES.ADMIN : (userObj.role || ROLES.LECTURE_SEULE);
-
-  const payload = {
-    ...userObj,
-    id,
-    uid: userObj.uid || id,
-    email,
-    name: userObj.name || (isSuper ? 'Moïse Castima' : email.split('@')[0]),
-    role,
-    status: userObj.status || 'Actif',
-    archived: false,
-    updatedBy: currentUserEmail,
-    updatedAt: now,
-    createdAt: userObj.createdAt || now,
-    createdBy: userObj.createdBy || currentUserEmail
-  };
-
-  try {
-    await setDoc(doc(db, COLLECTION_NAME, id), payload, { merge: true });
-    // Also if uid differs from id, mirror under uid so firestore rules can read by request.auth.uid directly
-    if (userObj.uid && userObj.uid !== id) {
-      await setDoc(doc(db, COLLECTION_NAME, userObj.uid), payload, { merge: true });
-    }
-    return payload;
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, `${COLLECTION_NAME}/${id}`);
-  }
+export async function createOrUpdateUser() {
+  throw new Error('Les comptes doivent être créés via Firebase Authentication.');
 }
 
 export async function getUtilisateurs(includeArchived = false) {
-  if (auth.currentUser) {
-    try {
-      const q = includeArchived 
-        ? collection(db, COLLECTION_NAME)
-        : query(collection(db, COLLECTION_NAME), where('archived', '==', false));
-      const snap = await getDocs(q);
-      const list = [];
-      snap.forEach(d => list.push({ ...d.data(), id: d.id }));
-      if (list.length > 0) return list;
-    } catch (error) {
-      console.warn("Firestore getUtilisateurs fallback:", error?.message);
-    }
-  }
-
-  // Fallback serveur
-  try {
-    const res = await fetch('/api/auth/users');
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data.users)) {
-        return includeArchived ? data.users : data.users.filter(u => !u.archived && u.status !== 'Archivé');
-      }
-    }
-  } catch (e) {}
-
-  // Fallback local
-  try {
-    const raw = localStorage.getItem("LAPERLE_CENTRE_CONTROL_V3");
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed.utilisateurs)) {
-        return includeArchived ? parsed.utilisateurs : parsed.utilisateurs.filter(u => !u.archived && u.status !== 'Archivé');
-      }
-    }
-  } catch (e) {}
-
-  return [];
+  if (!auth.currentUser) return [];
+  const snap = await getDocs(collection(db, COLLECTION_NAME));
+  const users = snap.docs.map(d => ({ ...d.data(), id: d.id, uid: d.id }));
+  return includeArchived ? users : users.filter(u => !u.archived && u.status !== 'Archivé');
 }
 
 export async function getUtilisateur(id) {
-  if (!id) return null;
-  const cleanId = String(id).trim();
-
-  if (auth.currentUser) {
-    try {
-      const d = await getDoc(doc(db, COLLECTION_NAME, cleanId));
-      if (d.exists()) return { ...d.data(), id: d.id };
-    } catch (error) {
-      console.warn("Firestore getUtilisateur fallback:", error?.message);
-    }
-  }
-
-  try {
-    const res = await fetch(`/api/auth/user/${encodeURIComponent(cleanId)}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data?.user) return data.user;
-    }
-  } catch (e) {}
-
-  try {
-    const raw = localStorage.getItem("LAPERLE_CENTRE_CONTROL_V3");
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      const list = parsed.utilisateurs || [];
-      const match = list.find(u => u.id === cleanId || u.uid === cleanId || u.email === cleanId);
-      if (match) return match;
-    }
-  } catch (e) {}
-
-  return null;
+  if (!auth.currentUser || !id) return null;
+  const refId = String(id).trim();
+  const snap = await getDoc(doc(db, COLLECTION_NAME, refId));
+  return snap.exists() ? { ...snap.data(), id: snap.id, uid: snap.id } : null;
 }
 
 export async function updateUtilisateur(id, updates) {
-  const currentUserEmail = auth.currentUser?.email || 'admin';
-  const payload = {
-    ...updates,
-    updatedBy: currentUserEmail,
-    updatedAt: new Date().toISOString()
-  };
-
-  // Serveur
-  try {
-    await fetch(`/api/auth/user/${encodeURIComponent(id)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-  } catch (e) {}
-
-  // Local
-  try {
-    const raw = localStorage.getItem("LAPERLE_CENTRE_CONTROL_V3");
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed.utilisateurs) {
-        const idx = parsed.utilisateurs.findIndex(u => u.id === id || u.uid === id);
-        if (idx >= 0) {
-          parsed.utilisateurs[idx] = { ...parsed.utilisateurs[idx], ...payload };
-          localStorage.setItem("LAPERLE_CENTRE_CONTROL_V3", JSON.stringify(parsed));
-        }
-      }
-    }
-  } catch (e) {}
-
-  // Firestore
-  if (auth.currentUser) {
-    try {
-      await setDoc(doc(db, COLLECTION_NAME, id), payload, { merge: true });
-    } catch (error) {
-      console.warn("Firestore updateUtilisateur non bloquant:", error?.message);
-    }
+  if (!auth.currentUser) throw new Error('Une session Firebase est requise.');
+  const uid = String(id);
+  if (uid === auth.currentUser.uid && ('role' in updates || 'roles' in updates)) {
+    throw new Error('Vous ne pouvez pas modifier votre propre rôle.');
   }
-
-  return { id, ...payload };
+  const payload = { ...updates, updatedAt: new Date().toISOString() };
+  await updateDoc(doc(db, COLLECTION_NAME, uid), payload);
+  return { id: uid, ...payload };
 }
 
 export async function deleteUtilisateur(id) {
