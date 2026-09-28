@@ -601,6 +601,49 @@ export async function loginWithGoogle(mode = 'login') {
 }
 
 /**
+ * Inscription Express en 1 Clic pour tout nouvel utilisateur
+ * Fonctionne sur TOUS les domaines sans restriction OAuth / popup / authorized-domains.
+ */
+export async function quickOneClickRegister(input = '') {
+  clearExplicitLogout();
+  let cleanInput = String(input || '').trim();
+  let email = '';
+  let nom = '';
+  let prenom = '';
+
+  if (cleanInput.includes('@')) {
+    email = cleanInput.toLowerCase();
+    const parts = email.split('@')[0].split(/[._-]/);
+    nom = parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1) : 'Utilisateur';
+    prenom = parts[1] ? parts[1].charAt(0).toUpperCase() + parts[1].slice(1) : '';
+  } else if (cleanInput) {
+    const parts = cleanInput.split(/\s+/);
+    nom = parts[0] || 'Utilisateur';
+    prenom = parts.slice(1).join(' ');
+    const safeTag = cleanInput.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 15) || 'user';
+    email = `${safeTag}_${Date.now().toString().slice(-4)}@laperle.ht`;
+  } else {
+    const randomId = Math.floor(1000 + Math.random() * 9000);
+    nom = 'Visiteur';
+    prenom = `${randomId}`;
+    email = `visiteur_${randomId}@laperle.ht`;
+  }
+
+  // Mot de passe sécurisé généré automatiquement
+  const autoPassword = `Laperle_${Date.now().toString(36)}!X9`;
+
+  return await signUpWithEmailAndPasswordMethod({
+    nom,
+    prenom: prenom || nom,
+    email,
+    password: autoPassword,
+    passwordConfirm: autoPassword,
+    username: email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 40),
+    telephone: ''
+  });
+}
+
+/**
  * Transforme automatiquement le profil en "client" après l'établissement du premier proforma
  */
 export async function upgradeProfileToClient(userId) {
@@ -738,7 +781,13 @@ export function formatAuthError(error) {
   }
   if (code === 'auth/unauthorized-domain' || msg.includes('auth/unauthorized-domain')) {
     const domain = typeof window !== 'undefined' ? window.location.hostname : 'votre domaine';
-    return `Le domaine « ${domain} » n'est pas autorisé dans Firebase Authentication. Veuillez l'ajouter dans la console Firebase (Authentication > Paramètres > Domaines autorisés).`;
+    return `<b>Le domaine « ${domain} » n'est pas encore autorisé dans Firebase</b><br>` +
+      `<span style="font-size:12px;font-weight:normal;line-height:1.4;display:block;margin:6px 0;">Google bloque la fenêtre en indiquant <i>« The requested action is invalid »</i> tant que ce domaine n'est pas ajouté dans les domaines autorisés de votre projet Firebase.</span>` +
+      `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">` +
+      `<a href="https://console.firebase.google.com/project/laperletourht-28ad8/authentication/settings" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;padding:6px 14px;background:#082b70;color:#ffffff;border-radius:8px;text-decoration:none;font-size:12px;font-weight:700;">🔗 Ouvrir Firebase (Paramètres)</a>` +
+      `<button type="button" onclick="navigator.clipboard.writeText('${domain}');this.textContent='✅ Copié !';" style="padding:6px 12px;background:#ffffff;color:#082b70;border:1.5px solid #082b70;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;">📋 Copier « ${domain} »</button>` +
+      `</div>` +
+      `<div style="margin-top:8px;font-size:12px;color:#475569;font-weight:normal;">👉 Cliquez sur <b>Ajouter un domaine</b> dans Firebase et collez <code>${domain}</code>.<br>💡 Vous pouvez aussi vous inscrire immédiatement avec le formulaire ci-dessous.</div>`;
   }
   if (code === 'auth/network-request-failed' || msg.includes('auth/network-request-failed')) {
     return "Erreur réseau Firebase Authentication : la requête vers Google Firebase n'a pas pu aboutir. Veuillez vérifier la connexion Internet ou l'autorisation du domaine.";

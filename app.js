@@ -48,7 +48,7 @@ import {
   sendFirebasePhoneVerification, verifyFirebasePhoneCode,
   sendVerificationCode, generateVerificationCode, getPendingVerification, verifyCode,
   authenticateWithPhoneOrEmail, registerOrSignInUser, upgradeProfileToClient, directEmailSignInFallback,
-  signUpWithEmailAndPasswordMethod, signInWithEmailAndPasswordMethod,
+  signUpWithEmailAndPasswordMethod, signInWithEmailAndPasswordMethod, quickOneClickRegister,
   requestPasswordReset,
   saveUserSession, getUserSession, clearUserSession,
   saveLogoutInfo, getLogoutInfo, clearLogoutInfo,
@@ -2164,7 +2164,16 @@ function initAuthUI(initialMode = "login") {
     } catch (err) {
       console.warn("Erreur Google sign-in:", err);
       allButtons.forEach(b => { if (b) b.disabled = false; });
-      setAuthMessage("error", formatAuthError(err) || err?.message || "Impossible de terminer la connexion Google.");
+      if (err?.code === 'auth/unauthorized-domain') {
+        setAuthMessage("error", formatAuthError(err) || "Domaine non autorisé pour Google OAuth.");
+        const expressInput = document.getElementById("authExpressInput");
+        if (expressInput) {
+          expressInput.focus();
+          expressInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      } else {
+        setAuthMessage("error", formatAuthError(err) || err?.message || "Impossible de terminer la connexion Google.");
+      }
     } finally {
       isAuthProcessing = false;
       allButtons.forEach(b => { if (b) b.disabled = false; });
@@ -2178,6 +2187,60 @@ function initAuthUI(initialMode = "login") {
   googleRegisterButtons.forEach(btn => {
     btn.onclick = () => handleGoogleAuth('register');
   });
+
+  // 5. ACTION : Inscription Express Directe 1 Clic (Sans dépendance OAuth ni restriction de domaine)
+  const expressInput = document.getElementById("authExpressInput");
+  const btnExpress = document.getElementById("authBtnExpressRegister");
+
+  const handleExpressRegister = async () => {
+    if (isAuthProcessing) return;
+    const rawVal = expressInput ? expressInput.value.trim() : "";
+    isAuthProcessing = true;
+    if (btnExpress) {
+      btnExpress.disabled = true;
+      btnExpress.innerHTML = '<span class="auth-spinner"></span> <span>Création...</span>';
+    }
+    setAuthMessage("loading", "Création express de votre compte en 1 clic...");
+
+    try {
+      const result = await quickOneClickRegister(rawVal);
+      const userLoginId = result.profile?.email || result.user?.email || "votre compte";
+      setAuthMessage("success", `✅ <b>Compte créé en 1 clic avec succès !</b><br>Identifiant : <b>${esc(userLoginId)}</b>`);
+      showToast(`🎉 Bienvenue ${result.profile?.nom || "Utilisateur"} ! Inscription 1 clic réussie.`);
+      completeUserSignIn(result.user, result.profile, result.isNew);
+    } catch (err) {
+      console.warn("Erreur inscription express 1 clic:", err);
+      if (err?.code === 'auth/email-already-in-use') {
+        setAuthMessage("warning", `ℹ️ <b>Cette adresse possède déjà un compte.</b><br>Veuillez basculer sur l'onglet « Se Connecter » pour entrer votre mot de passe.<br><button type="button" id="btnGoToLoginFromExpress" style="margin-top:8px;padding:6px 14px;background:#082b70;color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;">👉 Se Connecter</button>`);
+        setTimeout(() => {
+          const btnL = document.getElementById("btnGoToLoginFromExpress");
+          if (btnL) {
+            btnL.onclick = () => {
+              setMode("login");
+              if (loginEmail && rawVal.includes("@")) loginEmail.value = rawVal;
+            };
+          }
+        }, 50);
+      } else {
+        setAuthMessage("error", formatAuthError(err) || err?.message || "Échec de l'inscription express.");
+      }
+    } finally {
+      isAuthProcessing = false;
+      if (btnExpress) {
+        btnExpress.disabled = false;
+        btnExpress.innerHTML = '<span>Créer en 1 clic 🚀</span>';
+      }
+    }
+  };
+
+  if (btnExpress) {
+    btnExpress.onclick = handleExpressRegister;
+  }
+  if (expressInput) {
+    expressInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") handleExpressRegister();
+    });
+  }
 
   // Touche Entrée pour soumettre le formulaire actif
   [loginEmail, loginPassword].forEach(input => {
