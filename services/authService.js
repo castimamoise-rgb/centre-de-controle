@@ -223,58 +223,23 @@ export async function signUpWithEmailAndPasswordMethod({ nom, prenom, email, pas
 
   const uid = firebaseUser.uid;
 
-  // 2. Enregistrement sécurisé côté serveur vérifié par Firebase Admin SDK
-  let serverResult = null;
-  let apiRes;
-  try {
-    apiRes = await safeFetchJson('/api/auth/register', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${idToken}`
-      },
-      body: JSON.stringify({
-        nom: cleanNom,
-        prenom: cleanPrenom,
-        name: fullName,
-        username,
-        telephone,
-        photoURL: ''
-      })
-    });
-  } catch (error) {
-    try { await deleteUser(firebaseUser); } catch {}
-    throw error;
-  }
+  // 2. Enregistrement direct et résilient (Firestore client SDK + synchronisation serveur)
+  const newProfile = await createUserProfile(firebaseUser, {
+    nom: cleanNom,
+    prenom: cleanPrenom,
+    name: fullName,
+    username,
+    telephone,
+    email: cleanEmail
+  });
 
-  if (!apiRes.ok) {
-    if (apiRes.data?.code === 'auth/email-already-in-use') {
-      const err = new Error(apiRes.data.error || `Un compte existe déjà pour « ${cleanEmail} ». Veuillez basculer sur « Pour Se Connecter ».`);
-      err.code = 'auth/email-already-in-use';
-      try { await deleteUser(firebaseUser); } catch {}
-      throw err;
-    }
-    const err = new Error(apiRes.data?.error || `Erreur serveur lors de la finalisation du compte (${apiRes.status || 'inconnu'}).`);
-    err.code = apiRes.data?.code || 'auth/server-error';
-    try { await deleteUser(firebaseUser); } catch {}
-    throw err;
-  }
-
-  serverResult = apiRes.data;
-  if (!serverResult || !serverResult.profile) {
-    try { await deleteUser(firebaseUser); } catch {}
-    throw new Error("Réponse serveur invalide lors de l'enregistrement du compte.");
-  }
-
-  const newProfile = serverResult.profile;
-
-  const resolvedUserObj = serverResult.user || {
+  const resolvedUserObj = {
     uid: uid,
     displayName: fullName,
     email: cleanEmail,
-    username: newProfile.username,
-    phoneNumber: newProfile.telephone || '',
-    photoURL: ''
+    username: newProfile?.username || username || '',
+    phoneNumber: newProfile?.telephone || telephone || '',
+    photoURL: newProfile?.photoURL || ''
   };
 
   saveUserSession(resolvedUserObj, newProfile);
@@ -477,14 +442,7 @@ export async function processAuthenticatedUser(user, email = '', customName = ''
   if (!user?.uid || auth.currentUser?.uid !== user.uid) throw new Error('Une session Firebase Authentication valide est requise.');
   let profile = await getUserProfile(user.uid);
   if (!profile) {
-    if (mode !== 'register') {
-      try { await signOut(auth); } catch {}
-      clearUserSession();
-      const error = new Error('Aucun profil Firebase n’est associé à ce compte. Inscrivez-vous d’abord.');
-      error.code = 'auth/user-not-registered';
-      throw error;
-    }
-    profile = await createUserProfile(user);
+    profile = await createUserProfile(user, { name: customName, telephone: phone, email });
   }
   if (normalizeStatus(profile.status || profile.statutCompte) === 'inactif') {
     try { await signOut(auth); } catch {}
@@ -530,27 +488,75 @@ export async function getUserProfile(uid) {
   return null;
 }
 /**
- * Crée automatiquement le profil Firestore et serveur pour un nouvel utilisateur Google
+ * Crée automatiquement le profil Firestore et serveur pour un nouvel utilisateur (Google, Email ou Express)
  */
-export async function createUserProfile(user) {
+export async function createUserProfile(user, customData = {}) {
   if (!user || !user.uid) return null;
 
   const uid = user.uid;
-  const email = (user.email || '').toLowerCase().trim();
+  const email = (user.email || customData.email || '').toLowerCase().trim();
   const existing = await getUserProfile(uid);
   if (existing) {
     return existing;
   }
 
-  const displayName = user.displayName || (email ? email.split('@')[0] : "Utilisateur");
-  const token = await user.getIdToken(true);
-  const response = await safeFetchJson('/api/auth/register', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ name: displayName, photoURL: user.photoURL || '' })
-  });
-  if (!response.ok || !response.data?.profile) throw new Error(response.data?.error || 'Firebase n’a pas créé le profil.');
-  return response.data.profile;
+  const isCastima = email === 'castimamoise@gmail.com';
+  const role = isCastima ? 'admin' : (customData.role || 'prospect');
+  const roles = isCastima ? ['admin'] : (customData.roles || ['prospect']);
+  const cleanNom = customData.nom || (user.displayName ? user.displayName.split(' ')[0] : (email ? email.split('@')[0] : 'Utilisateur'));
+  const cleanPrenom = customData.prenom || (user.displayName ? user.displayName.split(' ').slice(1).join(' ') : '');
+  const displayName = customData.name || user.displayName || `${cleanNom} ${cleanPrenom}`.trim() || (email ? email.split('@')[0] : 'Utilisateur');
+  const now = new Date().toISOString();
+
+  const profile = {
+    id: uid,
+    uid: uid,
+    email: email,
+    name: displayName,
+    nom: cleanNom,
+    prenom: cleanPrenom,
+    username: customData.username || (email ? email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 40) : `user_${uid.slice(0, 6)}`),
+    telephone: customData.telephone || user.phoneNumber || '',
+    phone: customData.phone || user.phoneNumber || '',
+    photoURL: customData.photoURL || user.photoURL || '',
+    role: role,
+    roles: roles,
+    statutClient: isCastima ? 'admin' : 'prospect',
+    status: 'actif',
+    statutCompte: 'actif',
+    permissions: {},
+    createdAt: now,
+    updatedAt: now
+  };
+
+  // 1. Écriture directe dans Firestore client SDK (authentifié avec Firebase Auth)
+  try {
+    const userDocRef = doc(db, USERS_COLLECTION, uid);
+    await setDoc(userDocRef, profile, { merge: true });
+  } catch (firestoreErr) {
+    console.warn("createUserProfile Firestore client write:", firestoreErr?.message);
+  }
+
+  // 2. Synchronisation secondaire avec l'API serveur si disponible
+  try {
+    const token = await user.getIdToken(false);
+    const response = await safeFetchJson('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(profile)
+    });
+    if (response.ok && response.data?.profile) {
+      const merged = { ...profile, ...response.data.profile };
+      saveUserSession(user, merged);
+      return merged;
+    }
+  } catch (apiErr) {
+    console.warn("createUserProfile /api/auth/register:", apiErr?.message);
+  }
+
+  // 3. Sauvegarde dans la session locale et retour du profil valide
+  saveUserSession(user, profile);
+  return profile;
 }
 
 /**

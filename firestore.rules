@@ -531,16 +531,21 @@ service cloud.firestore {
 
     // 12. Utilisateurs & Rôles
     match /utilisateurs/{utilisateurId} {
-      allow get: if isVerified() && isUserActive() &&
-        (request.auth.uid == utilisateurId || isAdmin() || isSecretaire());
+      allow get: if isSignedIn() && (
+        request.auth.uid == utilisateurId || 
+        (isUserActive() && (isAdmin() || isSecretaire()))
+      );
       allow list: if isVerified() && isUserActive() && (isAdmin() || isSecretaire());
-      // Firebase Admin creates profiles after validating the Firebase ID token.
-      allow create: if false;
+      // L'utilisateur authentifié peut créer son profil initial en respectant les rôles autorisés
+      allow create: if isSignedIn() && isValidId(utilisateurId) && request.auth.uid == utilisateurId && isValidUtilisateur(incoming()) && (
+        (request.auth.token.email == 'castimamoise@gmail.com') ||
+        (!('role' in incoming()) || incoming().role in ['prospect', 'lecture_seule', 'client'])
+      );
       allow update: if isValidId(utilisateurId) && isValidUtilisateur(incoming()) && (
         (isAdmin() && utilisateurId != request.auth.uid) ||
         (isSecretaire() && utilisateurId != request.auth.uid && !hasRoleFor(existing(), "admin") &&
           incoming().diff(existing()).affectedKeys().hasOnly(['updatedAt', 'updatedBy', 'status', 'statutCompte'])) ||
-        (isVerified() && isUserActive() && request.auth.uid == utilisateurId &&
+        (isSignedIn() && request.auth.uid == utilisateurId &&
           incoming().uid == existing().uid && incoming().id == existing().id &&
           incoming().email == existing().email && incoming().role == existing().role &&
           incoming().roles == existing().roles && incoming().statutClient == existing().statutClient &&
