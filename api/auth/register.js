@@ -68,15 +68,19 @@ export default async function handler(req, res) {
   const idToken = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
   if (!idToken) return sendJson(res, 401, { error: 'Authentification Firebase requise.' });
 
+  let stage = 'initialisation Firebase Admin';
   try {
     const { auth, db, FieldValue } = await getFirebaseAdmin();
+    stage = 'vérification du jeton Firebase';
     const user = await auth.verifyIdToken(idToken, true);
+    stage = 'lecture du compte Firebase';
     const authRecord = await auth.getUser(user.uid);
     const authCreatedAt = timestampMillis(authRecord.metadata?.creationTime);
     const email = String(user.email || '').trim().toLowerCase();
     const ref = db.collection('utilisateurs').doc(user.uid);
     const body = await readBody(req);
 
+    stage = 'écriture du profil Firestore';
     await db.runTransaction(async tx => {
       const snap = await tx.get(ref);
       if (snap.exists) {
@@ -122,13 +126,16 @@ export default async function handler(req, res) {
       profile: { ...profileSnap.data(), id: user.uid, uid: user.uid }
     });
   } catch (error) {
-    if (error.code === 'ADMIN_CREDENTIALS_MISSING' || error.code === 'ADMIN_CREDENTIALS_INVALID') {
-      console.error(`[Vercel auth registration] ${error.message}`);
+    const errorCode = String(error?.code || 'unknown').slice(0, 80);
+    console.error(`[Vercel auth registration: ${stage}]`, errorCode, error?.message || '');
+    if (stage === 'initialisation Firebase Admin') {
       return sendJson(res, 503, { error: 'Firebase Admin indisponible. Vérifiez FIREBASE_SERVICE_ACCOUNT_JSON sur Vercel.' });
     }
-    console.error('[Vercel auth registration]', error?.code || error?.message || 'unknown error');
-    if (error?.code === 'auth/id-token-expired' || error?.code === 'auth/argument-error' || error?.code === 'auth/invalid-id-token') {
+    if (stage === 'vérification du jeton Firebase') {
       return sendJson(res, 401, { error: 'Jeton Firebase invalide ou expiré.' });
+    }
+    if (error?.code === 'permission-denied' || error?.code === 'app/invalid-credential') {
+      return sendJson(res, 503, { error: 'Firebase Admin ne dispose pas des accès requis à Auth ou Firestore. Vérifiez le compte de service et ses rôles IAM.' });
     }
     return sendJson(res, 500, { error: 'Impossible de créer le profil Firebase.' });
   }
