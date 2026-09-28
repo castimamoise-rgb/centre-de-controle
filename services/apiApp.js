@@ -9,6 +9,7 @@ import rateLimit from 'express-rate-limit';
 import { initializeApp as initAdminApp, getApps as getAdminApps, cert } from 'firebase-admin/app';
 import { getAuth as getAdminAuth } from 'firebase-admin/auth';
 import { getFirestore as getAdminFirestore, FieldValue } from 'firebase-admin/firestore';
+import { isSuperAdminEmail } from './permissionService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.resolve(path.dirname(__filename), '..');
@@ -132,9 +133,13 @@ async function getServerProfile(uid) {
 
 async function hasServerRole(uid, roles) {
   const profile = await getServerProfile(uid);
+  if (!profile) return false;
+  if (profile.email && isSuperAdminEmail(profile.email) && roles.includes('admin')) {
+    return true;
+  }
   const values = Array.isArray(profile?.roles) ? profile.roles : [profile?.role];
   const status = String(profile?.status || profile?.statutCompte || '').toLowerCase();
-  return Boolean(profile && status === 'actif' && values.some(role => roles.includes(String(role).toLowerCase())));
+  return Boolean(status === 'actif' && values.some(role => roles.includes(String(role).toLowerCase())));
 }
 
 function timestampMillis(value) {
@@ -207,17 +212,17 @@ app.post('/api/auth/register', async (req, res) => {
   const safeUsername = String(req.body?.username || user.email?.split('@')[0] || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 50);
   const safePhone = String(req.body?.telephone || req.body?.phone || '').trim().slice(0, 50);
 
-  // Castima is the owner/admin in AI Studio
-  const isCastima = user.email === 'castimamoise@gmail.com';
-  const role = isCastima ? 'admin' : 'prospect';
-  const roles = isCastima ? ['admin'] : ['prospect'];
+  // Super Admins are recognized centrally via isSuperAdminEmail
+  const isSuper = isSuperAdminEmail(user.email);
+  const role = isSuper ? 'admin' : 'prospect';
+  const roles = isSuper ? ['admin'] : ['prospect'];
 
   const safeProfile = {
     id: user.uid, uid: user.uid, email: user.email,
     name: safeName, nom: safeName, prenom: String(req.body?.prenom || '').trim().slice(0, 100),
     username: safeUsername, telephone: safePhone, phone: safePhone,
     photoURL: String(req.body?.photoURL || user.picture || '').slice(0, 500),
-    role, roles, statutClient: role === 'admin' ? 'admin' : 'prospect',
+    role, roles, statutClient: isSuper ? 'admin' : 'prospect',
     status: 'actif', statutCompte: 'actif', permissions: {},
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
   };

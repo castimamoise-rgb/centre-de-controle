@@ -2017,7 +2017,7 @@ function initAuthUI(initialMode = "login") {
                                 errMsg.includes("pas encore inscrit") || 
                                 errMsg.includes("n'existe pas dans la base de données");
         if (err?.code === 'auth/admin-needs-google-sync' || (isSuperAdminEmail(identifier) && (isNotRegistered || err?.code === 'auth/wrong-password'))) {
-          setAuthMessage("warning", `ℹ️ <b>Compte Administrateur « ${esc(identifier)} » :</b><br>Ce compte est enregistré avec Google dans Firebase. Pour activer votre mot de passe <b>Admin2026</b> ou accéder directement à votre espace, cliquez sur le bouton ci-dessous :<br><button type="button" id="btnAdminGoogleSyncDirect" style="margin-top:10px;padding:9px 18px;background:#082b70;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:8px;box-shadow:0 3px 10px rgba(8,43,112,0.25);"><span>⚡ Continuer avec Google & Activer Admin2026</span></button>`);
+          setAuthMessage("warning", `ℹ️ <b>Compte Administrateur « ${esc(identifier)} » :</b><br>Ce compte est synchronisé avec Google dans Firebase. Pour activer votre mot de passe ou accéder directement à votre espace, cliquez sur le bouton ci-dessous :<br><button type="button" id="btnAdminGoogleSyncDirect" style="margin-top:10px;padding:9px 18px;background:#082b70;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:8px;box-shadow:0 3px 10px rgba(8,43,112,0.25);"><span>⚡ Continuer avec Google</span></button>`);
           setTimeout(() => {
             const btnSync = document.getElementById("btnAdminGoogleSyncDirect");
             if (btnSync) {
@@ -2260,7 +2260,7 @@ function initAuthUI(initialMode = "login") {
     }
 
     if (isSuperAdminEmail(rawVal)) {
-      setAuthMessage("warning", `🔒 <b>Compte Administrateur :</b> Les administrateurs se connectent <b>exclusivement avec e-mail et mot de passe</b>.<br>Veuillez basculer sur l'onglet <b>« Se Connecter »</b> avec votre mot de passe initial (<b>Admin2026</b>).`);
+      setAuthMessage("warning", `🔒 <b>Compte Administrateur :</b> Les administrateurs se connectent <b>exclusivement avec e-mail et mot de passe</b>.<br>Veuillez basculer sur l'onglet <b>« Se Connecter »</b> avec votre mot de passe.`);
       setMode("login");
       if (loginEmail) loginEmail.value = rawVal;
       if (loginPassword) loginPassword.focus();
@@ -3533,6 +3533,7 @@ function openSyncAuthUsersModal() {
     { email: "jjeanbobyson@gmail.com", name: "Bobyson Jean", role: "prospect" },
     { email: "samuelcastima@gmail.com", name: "Samuel Castima", role: "prospect" },
     { email: "castimamoise@gmail.com", name: "Moïse Castima", role: "admin" },
+    { email: "laperletourht@gmail.com", name: "La Perle Tour HT", role: "admin" },
     { email: "mathiaspatricia66@gmail.com", name: "Patricia Mathias", role: "prospect" },
     { email: "casmoy@gmail.com", name: "Casmoy", role: "prospect" },
     { email: "arthur@laperletourht.com", name: "Arthur Laperle", role: "prospect" },
@@ -4031,7 +4032,7 @@ function documentModuleIntro(key) {
           <div>
             <b style="font-size:13.5px;display:flex;align-items:center;gap:6px">👑 Gouvernance de l'Équipe LAPERLE TOUR HT (RBAC Multi-Rôles)</b>
             <div style="font-size:12px;color:#475569;margin-top:4px">
-              Contrôle strict des accès opérationnels et financiers. <b>castimamoise@gmail.com</b> est immunisé en Super Admin maître originel.
+              Contrôle strict des accès opérationnels et financiers. <b>castimamoise@gmail.com</b> et <b>laperletourht@gmail.com</b> sont immunisés en Super Administrateurs maîtres originels.
             </div>
           </div>
           <div style="display:flex;gap:6px;align-items:center">

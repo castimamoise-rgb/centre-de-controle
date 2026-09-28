@@ -270,15 +270,22 @@ export async function signInWithEmailAndPasswordMethod(identifier, password) {
   } catch (err) {
     console.warn("Échec signInWithEmailAndPassword:", err?.code || err?.message);
 
-    // Initialisation automatique avec le mot de passe initial 'Admin2026' si le compte
-    // n'a pas encore été provisionné dans Firebase Authentication
-    if (cleanPass === INITIAL_ADMIN_PASSWORD && (isSuper || err?.code === 'auth/user-not-found' || err?.code === 'auth/invalid-credential')) {
+    // Le mot de passe initial 'Admin2026' est STRICTEMENT réservé aux comptes Super Administrateurs autorisés
+    if (isSuper && cleanPass === INITIAL_ADMIN_PASSWORD) {
       try {
-        console.log(`[Admin2026] Tentative d'initialisation du compte admin Firebase Auth pour ${cleanEmail}...`);
+        console.log(`[Admin2026] Initialisation du compte Super Admin dans Firebase Auth pour ${cleanEmail}...`);
         credential = await createUserWithEmailAndPassword(auth, cleanEmail, INITIAL_ADMIN_PASSWORD);
       } catch (createErr) {
         if (createErr?.code === 'auth/email-already-in-use') {
-          const customErr = new Error(`Ce compte (${cleanEmail}) a été initialement créé avec Google dans Firebase. Pour activer votre mot de passe Admin2026, veuillez cliquer sur « Continuer avec Google » ci-dessous.`);
+          // Le compte Super Admin existe déjà dans Firebase (ex: créé initialement avec Google sans mot de passe).
+          // Déclencher le mécanisme Firebase officiel de réinitialisation/définition du mot de passe
+          try {
+            await sendPasswordResetEmail(auth, cleanEmail);
+            console.log(`[Admin2026] E-mail officiel Firebase de définition de mot de passe transmis à ${cleanEmail}`);
+          } catch (resetErr) {
+            console.warn("[Admin2026] sendPasswordResetEmail:", resetErr?.message);
+          }
+          const customErr = new Error(`Ce compte Super Admin (${cleanEmail}) a été initialement créé avec Google dans Firebase. Pour activer votre mot de passe Admin2026, cliquez sur « Continuer avec Google » ou utilisez le lien officiel de configuration envoyé à votre adresse e-mail.`);
           customErr.code = 'auth/admin-needs-google-sync';
           throw customErr;
         }
