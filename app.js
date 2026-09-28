@@ -31,7 +31,7 @@ import {
   createProforma, requestProforma, getProformas, updateProforma, archiveProforma, deleteProforma, subscribeProformas, generateProformaNumber,
   createFacture, getFactures, updateFacture, archiveFacture, deleteFacture, subscribeFactures, generateFactureNumber,
   createFinance, getFinances, updateFinance, archiveFinance, deleteFinance, subscribeFinances, calculateFinancialSummary,
-  createOrUpdateUser, getUtilisateurs, updateUtilisateur, deleteUtilisateur, subscribeUtilisateurs, checkUserPermission,
+  createOrUpdateUser, getUtilisateurs, updateUtilisateur, deleteUtilisateur, subscribeUtilisateurs, checkUserPermission, provisionUserInFirestore,
   createNotification, getNotifications, markNotificationRead, markAllNotificationsRead, deleteNotification, subscribeNotifications, seedDefaultServiceAlerts, DEFAULT_SERVICE_ALERTS,
   getCompanySettings, saveCompanySettings, subscribeCompanySettings,
   // RBAC & Authentication Services
@@ -790,6 +790,37 @@ function rawList(k) {
 function list(k) {
   const canon = canonicalCol(k);
   if (!Array.isArray(state[canon])) state[canon] = [];
+
+  // Intégration CRM : Les utilisateurs inscrits avec le profil 'prospect'
+  // apparaissent également dans le module commercial Prospects pour l'administration
+  if (canon === 'prospects') {
+    const registeredProspects = (state.utilisateurs || []).filter(u => {
+      const uRoles = normalizeRoles(u.roles || [u.role]);
+      return uRoles.includes(ROLES.PROSPECT);
+    });
+    registeredProspects.forEach(u => {
+      const uEmail = (u.email || '').toLowerCase().trim();
+      const uId = u.uid || u.id;
+      const uName = u.name || u.nom || (uEmail ? uEmail.split('@')[0] : 'Prospect Web');
+      const alreadyIn = state.prospects.some(p => (p.userId && p.userId === uId) || (uEmail && p.email && p.email.toLowerCase() === uEmail));
+      if (!alreadyIn) {
+        state.prospects.push({
+          id: `PR-${String(uId || '').slice(-4).toUpperCase() || nextNumber('PR', 'prospects').slice(3)}`,
+          userId: uId,
+          name: uName,
+          phone: u.telephone || u.phone || '',
+          email: uEmail,
+          need: 'Inscription en ligne (Site Web)',
+          source: 'Site Web LAPERLE TOUR HT',
+          status: 'Nouveau',
+          next: today(),
+          notes: `Inscrit en ligne le ${u.createdAt ? String(u.createdAt).slice(0, 10) : today()}`,
+          createdAt: u.createdAt || new Date().toISOString()
+        });
+      }
+    });
+  }
+
   return filterDataForUser(canon, state[canon], currentUserProfile);
 }
 
@@ -2722,6 +2753,7 @@ function dashboard() {
 
   if (isAdminOrDirection) {
     const usersList = list("utilisateurs") || [];
+    const prospectsList = list("prospects") || [];
     const reservationsList = list("reservations").filter(x => !x.archived);
     const activeVehiclesCount = list("vehicules").filter(x => !x.archived && x.status !== "En panne").length || 12;
     const busyVehiclesCount = Math.min(activeVehiclesCount, reservationsList.filter(x => ["Confirmée", "En cours"].includes(x.status)).length || 8);
@@ -2750,18 +2782,21 @@ function dashboard() {
               <br>
               <span style="display:inline-flex;align-items:center;gap:6px;margin-top:6px;font-size:12px;color:#cbd5e1">
                 <span style="width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block;box-shadow:0 0 8px #10b981"></span>
-                Synchronisation Firebase Firestore : <b>En direct & Opérationnel</b>
+                Firestore : <b>${usersList.length}</b> utilisateurs inscrits • <b>${prospectsList.length}</b> prospects actifs
               </span>
             </p>
             <div class="admin-hero-actions">
-              <button onclick="openQuickRoleAssignModal()" class="admin-hero-btn primary">
-                🛡️ Attribuer un Rôle
+              <button onclick="go('prospects')" class="admin-hero-btn primary">
+                🎯 Prospects (${prospectsList.length})
               </button>
               <button onclick="go('utilisateurs')" class="admin-hero-btn outline">
-                👥 Gérer les Comptes
+                👥 Gérer les Comptes (${usersList.length})
               </button>
-              <button onclick="go('vehicules')" class="admin-hero-btn outline">
-                🚗 Flotte & Véhicules
+              <button onclick="openSyncAuthUsersModal()" class="admin-hero-btn outline" style="border-color:#38bdf8;color:#e0f2fe">
+                🔄 Synchroniser Firebase
+              </button>
+              <button onclick="openQuickRoleAssignModal()" class="admin-hero-btn outline">
+                🛡️ Attribuer un Rôle
               </button>
             </div>
           </div>
@@ -2796,22 +2831,25 @@ function dashboard() {
                   <button onclick="go('utilisateurs')" class="admin-btn-pill">Voir tout ›</button>
                 </div>
                 <div class="user-progress-list">
-                  ${usersList.slice(0, 5).map((u, i) => {
-                    const uRoles = normalizeRoles(u.roles || u.role || ['client']);
-                    const primaryRole = uRoles[0] || 'client';
-                    const progressPcts = [95, 80, 68, 52, 40];
+                  ${usersList.slice(0, 6).map((u, i) => {
+                    const uName = resolveUserField(u, "name");
+                    const uEmail = resolveUserField(u, "email");
+                    const uRoles = resolveUserField(u, "roles");
+                    const primaryRole = uRoles[0] || 'prospect';
+                    const progressPcts = [95, 80, 68, 52, 40, 30];
                     const pct = progressPcts[i % progressPcts.length];
                     const avatarClass = primaryRole === 'admin' ? 'avatar-admin' : primaryRole === 'chauffeur' ? 'avatar-chauffeur' : primaryRole === 'secretaire' ? 'avatar-secretaire' : primaryRole === 'operations' ? 'avatar-ops' : 'avatar-client';
                     const barColor = primaryRole === 'admin' ? '#3b82f6' : primaryRole === 'chauffeur' ? '#10b981' : primaryRole === 'secretaire' ? '#a855f7' : primaryRole === 'operations' ? '#f97316' : '#06b6d4';
-                    const initials = (u.name || u.email || 'U').split(' ').map(w => w.charAt(0)).slice(0, 2).join('').toUpperCase();
+                    const initials = (uName || uEmail || 'U').split(' ').map(w => w.charAt(0)).slice(0, 2).join('').toUpperCase();
                     return `
                       <div class="user-progress-item">
                         <div class="user-progress-avatar ${avatarClass}">${initials}</div>
                         <div class="user-progress-info">
                           <div class="user-progress-name-row">
-                            <span class="user-progress-name">${esc(u.name || u.email)}</span>
-                            <span class="user-progress-role-tag ${avatarClass}">${ROLE_LABELS[primaryRole] || primaryRole} • ${pct}%</span>
+                            <span class="user-progress-name">${esc(uName)}</span>
+                            <span class="user-progress-role-tag ${avatarClass}">${ROLE_LABELS[primaryRole] || primaryRole.toUpperCase()}</span>
                           </div>
+                          <div style="font-size:11px;color:#94a3b8;margin-top:1px">${esc(uEmail)}</div>
                           <div class="user-progress-track">
                             <div class="user-progress-fill" style="width:${pct}%;background:${barColor}"></div>
                           </div>
@@ -3349,6 +3387,116 @@ function openQuickRoleAssignModal(targetUserId = null) {
 }
 window.openQuickRoleAssignModal = openQuickRoleAssignModal;
 
+function openSyncAuthUsersModal() {
+  const knownAuthUsers = [
+    { email: "jpalamy@gmail.com", name: "J. Palamy", role: "prospect" },
+    { email: "jjeanbobyson@gmail.com", name: "Bobyson Jean", role: "prospect" },
+    { email: "samuelcastima@gmail.com", name: "Samuel Castima", role: "prospect" },
+    { email: "castimamoise@gmail.com", name: "Moïse Castima", role: "admin" },
+    { email: "mathiaspatricia66@gmail.com", name: "Patricia Mathias", role: "prospect" },
+    { email: "casmoy@gmail.com", name: "Casmoy", role: "prospect" },
+    { email: "arthur@laperletourht.com", name: "Arthur Laperle", role: "prospect" },
+    { email: "prospect_2386@laperletourht.com", name: "Prospect 2386", role: "prospect" },
+    { email: "client7234@laperletourht.com", name: "Client 7234", role: "client" }
+  ];
+
+  const currentUsers = list("utilisateurs") || [];
+  const existingEmails = new Set(currentUsers.map(u => (u.email || '').toLowerCase().trim()));
+  const missingUsers = knownAuthUsers.filter(u => !existingEmails.has(u.email.toLowerCase()));
+
+  document.getElementById("modal").innerHTML = `
+    <div class="modal-head">
+      <div>
+        <h2>🔄 Synchronisation Firebase Auth ➔ Firestore</h2>
+        <small>Intègre les utilisateurs enregistrés dans Firebase Authentication directement dans Firestore.</small>
+      </div>
+      <button class="close" onclick="closeModal()">×</button>
+    </div>
+    <div style="padding:16px">
+      <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:12px 14px;margin-bottom:14px">
+        <div style="font-weight:700;font-size:13px;color:#0369a1;margin-bottom:6px">
+          📋 Comptes détectés dans Firebase Auth à synchroniser (${missingUsers.length}) :
+        </div>
+        ${missingUsers.length === 0 ? `
+          <div style="color:#15803d;font-size:12.5px;font-weight:600">
+            ✅ Tous les comptes Firebase Auth connus sont déjà synchronisés dans Firestore !
+          </div>
+        ` : `
+          <ul style="margin:0;padding-left:18px;font-size:12.5px;color:#334155;max-height:160px;overflow-y:auto;line-height:1.6">
+            ${missingUsers.map(u => `
+              <li>
+                <b>${esc(u.email)}</b> — ${esc(u.name)} (${esc(u.role === 'admin' ? 'Administrateur' : 'Prospect')})
+              </li>
+            `).join('')}
+          </ul>
+        `}
+      </div>
+
+      <div class="field" style="margin-bottom:14px">
+        <label for="syncCustomEmails" style="font-weight:600;font-size:12.5px;display:block;margin-bottom:6px">
+          Ajouter manuellement d'autres adresses e-mail Firebase à synchroniser :
+        </label>
+        <textarea id="syncCustomEmails" rows="2" placeholder="ex: jean@gmail.com, paul@yahoo.fr" style="font-size:12px;width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px"></textarea>
+      </div>
+
+      <div class="form-actions" style="margin-top:16px;display:flex;justify-content:flex-end;gap:10px">
+        <button type="button" class="secondary" onclick="closeModal()">Fermer</button>
+        <button type="button" class="primary" id="btnExecuteSyncAuthUsers" style="display:inline-flex;align-items:center;gap:6px">
+          <span>⚡ Lancer la Synchronisation Firestore</span>
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById("modalBackdrop").classList.add("open");
+
+  document.getElementById("btnExecuteSyncAuthUsers").onclick = async () => {
+    const btn = document.getElementById("btnExecuteSyncAuthUsers");
+    btn.disabled = true;
+    btn.innerHTML = '<span>Synchronisation en cours...</span>';
+
+    const customText = document.getElementById("syncCustomEmails")?.value || "";
+    const customList = customText.split(/[\n,;]+/).map(s => s.trim().toLowerCase()).filter(s => s.includes('@'));
+
+    const toSync = [...missingUsers];
+    customList.forEach(email => {
+      if (!toSync.some(u => u.email === email)) {
+        toSync.push({
+          email,
+          name: email.split('@')[0],
+          role: email === SUPER_ADMIN_EMAIL ? 'admin' : 'prospect'
+        });
+      }
+    });
+
+    let successCount = 0;
+    for (const u of toSync) {
+      try {
+        const uid = `usr_${u.email.replace(/[^a-z0-9]/g, '_')}`;
+        await provisionUserInFirestore({
+          uid,
+          email: u.email,
+          name: u.name,
+          role: u.role,
+          roles: [u.role],
+          status: 'actif',
+          statutCompte: 'actif',
+          statutClient: u.role
+        });
+        successCount++;
+      } catch (err) {
+        console.warn("Erreur sync user:", u.email, err?.message);
+      }
+    }
+
+    closeModal();
+    showToast(`🎉 ${successCount} utilisateur(s) synchronisé(s) dans Firestore !`);
+    drawTable('utilisateurs');
+    if (current === 'dashboard') dashboard();
+  };
+}
+window.openSyncAuthUsersModal = openSyncAuthUsersModal;
+
 function openUserRoleModal(indexOrId) {
   const users = list("utilisateurs") || [];
   let user = null;
@@ -3720,6 +3868,12 @@ function modulePage(key) {
   const schema = SCHEMAS[canon] || SCHEMAS[key];
 
   const canCreate = hasPermission("write", canon);
+  const isSuperAdmin = normalizeRoles(currentUserRoles).includes(ROLES.ADMIN) || isSuperAdminEmail(currentUser?.email);
+  const syncBtn = (canon === "utilisateurs" && isSuperAdmin) ? `
+    <button class="secondary" onclick="openSyncAuthUsersModal()" style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:7px 12px;margin-right:6px">
+      <span>🔄 Synchroniser Comptes Firebase</span>
+    </button>
+  ` : "";
 
   document.getElementById("page").innerHTML = `
     <div class="section-head">
@@ -3728,6 +3882,7 @@ function modulePage(key) {
         <p>Gestion en direct Cloud Firestore • Données persistantes et sécurisées.</p>
       </div>
       <div class="actions">
+        ${syncBtn}
         ${canCreate ? `<button class="primary" onclick="openForm('${canon}')">＋ Ajouter</button>` : `<span class="badge" style="background:#e2e8f0;color:#64748b">Consultation uniquement</span>`}
       </div>
     </div>
@@ -3749,6 +3904,28 @@ function modulePage(key) {
   drawTable(canon);
 }
 
+function resolveUserField(o, fieldKey) {
+  if (!o) return "—";
+  if (fieldKey === "name") {
+    return o.name || o.nom || (o.prenom ? `${o.nom || ''} ${o.prenom}`.trim() : '') || o.displayName || (o.email ? o.email.split('@')[0] : 'Utilisateur');
+  }
+  if (fieldKey === "email") {
+    return o.email || o.identifiant || o.mail || o.telephone || o.phone || "—";
+  }
+  if (fieldKey === "roles") {
+    if (Array.isArray(o.roles) && o.roles.length > 0) return o.roles;
+    if (o.role) return [o.role];
+    return ["prospect"];
+  }
+  if (fieldKey === "status") {
+    return o.status || o.statutCompte || o.statut || "Actif";
+  }
+  if (fieldKey === "notes") {
+    return o.notes || o.notesHabilitation || o.remarques || (o.statutClient ? `Statut client : ${o.statutClient}` : "");
+  }
+  return o[fieldKey];
+}
+
 function statusOptions(schema) {
   if (!schema) return "";
   const s = schema.find(x => x[0] === "status");
@@ -3768,8 +3945,20 @@ function drawTable(key) {
   }
 
   let filtered = items.filter(o => {
-    const matchesSearch = Object.values(o).join(" ").toLowerCase().includes(q);
-    const matchesFilter = !f || o.status === f;
+    let searchable = "";
+    if (canon === "utilisateurs") {
+      searchable = [
+        resolveUserField(o, "name"),
+        resolveUserField(o, "email"),
+        resolveUserField(o, "roles").join(" "),
+        resolveUserField(o, "status")
+      ].join(" ").toLowerCase();
+    } else {
+      searchable = Object.values(o).join(" ").toLowerCase();
+    }
+    const matchesSearch = searchable.includes(q);
+    const itemStatus = canon === "utilisateurs" ? resolveUserField(o, "status") : o.status;
+    const matchesFilter = !f || String(itemStatus).toLowerCase() === f.toLowerCase();
     return matchesSearch && matchesFilter;
   });
 
@@ -3811,7 +4000,10 @@ function drawTable(key) {
             const isArchived = o.archived === true || o.status === "Archivé";
             return `
               <tr style="${isArchived ? 'opacity:0.6;background:#f9fafb;' : ''}">
-                ${cols.map(x => `<td>${formatCell(o[x[0]], x[2])}</td>`).join("")}
+                ${cols.map(x => {
+                  const val = canon === "utilisateurs" ? resolveUserField(o, x[0]) : o[x[0]];
+                  return `<td>${formatCell(val, x[2])}</td>`;
+                }).join("")}
                 <td class="action-cell">
                   ${canEdit ? (canon === "utilisateurs" ? ((normalizeRoles(currentUserRoles).includes(ROLES.ADMIN) || normalizeRoles(currentUserRoles).includes(ROLES.SECRETAIRE)) && o.uid !== currentUser?.uid && o.id !== currentUser?.uid ? `<button class="tiny edit role-assign-btn" onclick="openUserRoleModal(${i})">🛡️ Rôles & Accès</button>` : `<span class="badge" style="background:#f1f5f9;color:#64748b;font-size:11px" title="Rôle protégé ou modification réservée à l'Administrateur">🔒 Rôle protégé</span>`) : `<button class="tiny edit" onclick="openForm('${canon}',${i})">Modifier</button>`) : ""}
                   <button class="tiny" onclick="viewRow('${canon}',${i})">Voir</button>
@@ -3941,8 +4133,31 @@ function openForm(key, index = -1) {
       }
       else if (canon === "prospects") obj.id = nextNumber("PR", "prospects");
       else if (canon === "utilisateurs") {
-        showToast("Les comptes doivent être créés avec Firebase Authentication.");
-        return;
+        if (!obj.email || !obj.email.includes('@')) {
+          showToast("Veuillez saisir une adresse e-mail valide pour l'utilisateur.", "error");
+          return;
+        }
+        const cleanEmail = obj.email.trim().toLowerCase();
+        const autoUid = `usr_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`;
+        obj.id = autoUid;
+        obj.uid = autoUid;
+        obj.email = cleanEmail;
+        obj.name = obj.name || cleanEmail.split('@')[0];
+        obj.role = obj.roles || obj.role || 'prospect';
+        obj.roles = [obj.role];
+        obj.status = obj.status || 'actif';
+        obj.statutCompte = 'actif';
+        obj.statutClient = obj.role;
+        try {
+          await provisionUserInFirestore(obj);
+          closeModal();
+          showToast(`✅ Utilisateur « ${cleanEmail} » enregistré dans Firestore !`);
+          drawTable('utilisateurs');
+          return;
+        } catch (err) {
+          showToast(`Erreur enregistrement Firestore: ${err?.message}`, "error");
+          return;
+        }
       }
 
       // Attribution automatique des propriétés de rattachement pour Client, Prospect et Chauffeur

@@ -22,6 +22,38 @@ export async function createOrUpdateUser() {
   throw new Error('Les comptes doivent être créés via Firebase Authentication.');
 }
 
+export async function provisionUserInFirestore(profileData) {
+  if (!auth.currentUser) throw new Error('Une session Firebase est requise.');
+  const uid = String(profileData.uid || profileData.id || '').trim();
+  if (!uid) throw new Error('Identifiant UID requis.');
+  const now = new Date().toISOString();
+  const email = (profileData.email || '').toLowerCase().trim();
+  const displayName = profileData.name || profileData.nom || (email ? email.split('@')[0] : 'Utilisateur');
+  const role = profileData.role || (email === SUPER_ADMIN_EMAIL ? 'admin' : 'prospect');
+  const roles = Array.isArray(profileData.roles) && profileData.roles.length ? profileData.roles : [role];
+
+  const payload = {
+    id: uid,
+    uid: uid,
+    email: email,
+    name: displayName,
+    nom: profileData.nom || displayName,
+    prenom: profileData.prenom || '',
+    telephone: profileData.telephone || profileData.phone || '',
+    phone: profileData.phone || profileData.telephone || '',
+    role: role,
+    roles: roles,
+    status: profileData.status || 'actif',
+    statutCompte: profileData.statutCompte || 'actif',
+    statutClient: profileData.statutClient || (role === 'admin' ? 'admin' : 'prospect'),
+    notes: profileData.notes || 'Compte synchronisé par l\'administrateur',
+    createdAt: profileData.createdAt || now,
+    updatedAt: now
+  };
+  await setDoc(doc(db, COLLECTION_NAME, uid), payload, { merge: true });
+  return payload;
+}
+
 export async function getUtilisateurs(includeArchived = false) {
   if (!auth.currentUser) return [];
   const snap = await getDocs(collection(db, COLLECTION_NAME));
