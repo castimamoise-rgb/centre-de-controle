@@ -556,7 +556,10 @@ service cloud.firestore {
         isAdmin() ||
         (request.auth.uid == utilisateurId && (
           isSuperAdmin() ||
-          (!('role' in incoming()) || incoming().role in ['prospect', 'lecture_seule', 'client'])
+          (
+            (!('role' in incoming()) || incoming().role in ['prospect', 'lecture_seule', 'client']) &&
+            (!('roles' in incoming()) || (incoming().roles is list && incoming().roles.hasOnly(['prospect', 'lecture_seule', 'client'])))
+          )
         ))
       );
       allow update: if isValidId(utilisateurId) && isValidUtilisateur(incoming()) && (
