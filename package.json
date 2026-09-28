@@ -7,7 +7,7 @@
     "dev": "node server.js",
     "build": "node -e \"console.log('Build completed')\"",
     "start": "node server.js",
-    "lint": "node -e \"console.log('Lint passed')\""
+    "lint": "eslint firestore.rules"
   },
   "dependencies": {
     "@google-cloud/firestore": "^9.2.0",

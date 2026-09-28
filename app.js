@@ -1971,14 +1971,23 @@ function initAuthUI(initialMode = "login") {
         setButtonState(btnLogin, false, "Connexion en cours...", "Se Connecter");
         console.warn("Erreur connexion login:", err);
         const errMsg = err?.message || String(err);
-        const isNotRegistered = err?.code === "auth/user-not-registered" || errMsg.includes("pas encore inscrit") || errMsg.includes("n'existe pas dans la base de données");
+        const isNotRegistered = err?.code === "auth/user-not-registered" || 
+                                err?.code === "auth/user-not-found" ||
+                                err?.code === "auth/invalid-credential" ||
+                                errMsg.includes("auth/invalid-credential") ||
+                                errMsg.includes("pas encore inscrit") || 
+                                errMsg.includes("n'existe pas dans la base de données");
         if (isNotRegistered) {
-          setAuthMessage("error", `❌ <b>Le compte « ${esc(identifier)} » n'existe pas dans la base de données.</b><br>Veuillez d'abord créer votre compte avant de pouvoir vous connecter.<br><button type="button" id="btnGoToRegisterFromError" style="margin-top:8px;padding:7px 16px;background:#082b70;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12.5px;">👉 S'inscrire maintenant</button>`);
+          setAuthMessage("error", `❌ <b>Compte introuvable ou identifiants incorrects.</b><br>Si vous n'avez pas encore créé votre compte pour « ${esc(identifier)} », veuillez d'abord vous inscrire.<br><button type="button" id="btnGoToRegisterFromError" style="margin-top:8px;padding:7px 16px;background:#082b70;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12.5px;">👉 S'inscrire maintenant</button>`);
           setTimeout(() => {
             const btnErr = document.getElementById("btnGoToRegisterFromError");
             if (btnErr) {
               btnErr.onclick = () => {
                 setMode("register");
+                const regEmail = document.getElementById("authRegisterEmail");
+                if (regEmail && identifier.includes("@")) {
+                  regEmail.value = identifier;
+                }
                 if (registerPhone && !identifier.includes("@") && /\d/.test(identifier)) {
                   registerPhone.value = identifier.replace(/\D/g, '').slice(-8);
                 } else if (document.getElementById("authRegisterUsername") && !identifier.includes("@")) {
@@ -2128,6 +2137,47 @@ function initAuthUI(initialMode = "login") {
       }
     };
   }
+
+  // 4. ACTION : Connexion / Inscription rapide en 1 clic avec Google
+  const googleLoginButtons = [
+    document.getElementById("authBtnGoogleLoginTop"),
+    document.getElementById("authBtnGoogleLogin")
+  ].filter(Boolean);
+
+  const googleRegisterButtons = [
+    document.getElementById("authBtnGoogleRegisterTop"),
+    document.getElementById("authBtnGoogleRegister")
+  ].filter(Boolean);
+
+  const handleGoogleAuth = async (mode = 'login') => {
+    if (isAuthProcessing) return;
+    isAuthProcessing = true;
+    const allButtons = [...googleLoginButtons, ...googleRegisterButtons];
+    allButtons.forEach(b => { if (b) b.disabled = true; });
+    setAuthMessage("loading", "Ouverture de la fenêtre Google pour validation en 1 clic...");
+
+    try {
+      const result = await authLoginGoogle(mode);
+      setAuthMessage("success", "Connexion en 1 clic réussie ! Bienvenue chez LAPERLE TOUR HT.");
+      showToast(`🎉 Bienvenue ${result.profile?.nom || result.profile?.name || "Administrateur"} !`);
+      completeUserSignIn(result.user, result.profile, result.isNew);
+    } catch (err) {
+      console.warn("Erreur Google sign-in:", err);
+      allButtons.forEach(b => { if (b) b.disabled = false; });
+      setAuthMessage("error", formatAuthError(err) || err?.message || "Impossible de terminer la connexion Google.");
+    } finally {
+      isAuthProcessing = false;
+      allButtons.forEach(b => { if (b) b.disabled = false; });
+    }
+  };
+
+  googleLoginButtons.forEach(btn => {
+    btn.onclick = () => handleGoogleAuth('login');
+  });
+
+  googleRegisterButtons.forEach(btn => {
+    btn.onclick = () => handleGoogleAuth('register');
+  });
 
   // Touche Entrée pour soumettre le formulaire actif
   [loginEmail, loginPassword].forEach(input => {

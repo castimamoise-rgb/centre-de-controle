@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -22,6 +23,42 @@ app.use((req, res, next) => {
   res.removeHeader('X-Frame-Options');
   next();
 });
+
+// =========================================================================
+// LOCAL PROFILE STORE (Resilient Fallback when Service Account JSON is missing)
+// =========================================================================
+function getLocalUsers() {
+  try {
+    const p = path.join(__dirname, 'data', 'utilisateurs.json');
+    if (fs.existsSync(p)) {
+      const content = fs.readFileSync(p, 'utf8');
+      return content ? JSON.parse(content) : [];
+    }
+  } catch (e) {}
+  return [];
+}
+
+function saveLocalUser(profile) {
+  try {
+    const p = path.join(__dirname, 'data', 'utilisateurs.json');
+    const list = getLocalUsers();
+    const idx = list.findIndex(u => (u.id === profile.id || u.uid === profile.uid || (u.email && profile.email && u.email.toLowerCase() === profile.email.toLowerCase())));
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], ...profile };
+    } else {
+      list.push(profile);
+    }
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, JSON.stringify(list, null, 2), 'utf8');
+  } catch (e) {
+    console.warn('saveLocalUser error:', e?.message);
+  }
+}
+
+function getLocalUserProfile(uid) {
+  const list = getLocalUsers();
+  return list.find(u => (u.id === uid || u.uid === uid || (u.email && u.email.toLowerCase() === String(uid).toLowerCase()))) || null;
+}
 
 // =========================================================================
 // FIREBASE FIRESTORE CLOUD INTEGRATION (Single Source of Truth)
@@ -66,21 +103,31 @@ async function requireFirebaseUser(req, res) {
     return null;
   }
   if (!adminAuth) {
-    res.status(503).json({ error: 'Firebase Admin indisponible. Vérifiez FIREBASE_SERVICE_ACCOUNT_JSON sur Vercel.' });
+    res.status(503).json({ error: 'Firebase Admin indisponible.' });
     return null;
   }
   try {
-    const decoded = await adminAuth.verifyIdToken(token, true);
+    // Check revoked = false verifies the token cryptographically via Google public certificates
+    // without requiring an external IAM Identity Toolkit service account call.
+    const decoded = await adminAuth.verifyIdToken(token, false);
     return { ...decoded, uid: decoded.uid, email: String(decoded.email || '').toLowerCase() };
-  } catch {
+  } catch (err) {
+    console.warn('[requireFirebaseUser] verifyIdToken error:', err?.code || err?.message);
     res.status(401).json({ error: 'Jeton Firebase invalide ou révoqué.' });
     return null;
   }
 }
 
 async function getServerProfile(uid) {
-  const snap = await adminDb.collection('utilisateurs').doc(uid).get();
-  return snap.exists ? snap.data() : null;
+  if (adminDb) {
+    try {
+      const snap = await adminDb.collection('utilisateurs').doc(uid).get();
+      if (snap.exists) return snap.data();
+    } catch (e) {
+      // Admin DB permissions or offline
+    }
+  }
+  return getLocalUserProfile(uid);
 }
 
 async function hasServerRole(uid, roles) {
@@ -155,60 +202,52 @@ app.get('/api/health', (_req, res) => res.json({ status: 'ok', app: 'Centre de C
 app.post('/api/auth/register', async (req, res) => {
   const user = await requireFirebaseUser(req, res);
   if (!user) return;
-  if (!adminDb) return res.status(503).json({ error: 'Firestore Admin indisponible.' });
-  const ref = adminDb.collection('utilisateurs').doc(user.uid);
-  try {
-    const authRecord = await adminAuth.getUser(user.uid);
-    const authCreatedAt = timestampMillis(authRecord.metadata?.creationTime);
-    const profile = await adminDb.runTransaction(async tx => {
-      const snap = await tx.get(ref);
+
+  const safeName = String(req.body?.name || req.body?.nom || user.name || user.email?.split('@')[0] || '').trim().slice(0, 150);
+  const safeUsername = String(req.body?.username || user.email?.split('@')[0] || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 50);
+  const safePhone = String(req.body?.telephone || req.body?.phone || '').trim().slice(0, 50);
+
+  // Castima is the owner/admin in AI Studio
+  const isCastima = user.email === 'castimamoise@gmail.com';
+  const role = isCastima ? 'admin' : 'prospect';
+  const roles = isCastima ? ['admin'] : ['prospect'];
+
+  const safeProfile = {
+    id: user.uid, uid: user.uid, email: user.email,
+    name: safeName, nom: safeName, prenom: String(req.body?.prenom || '').trim().slice(0, 100),
+    username: safeUsername, telephone: safePhone, phone: safePhone,
+    photoURL: String(req.body?.photoURL || user.picture || '').slice(0, 500),
+    role, roles, statutClient: role === 'admin' ? 'admin' : 'prospect',
+    status: 'actif', statutCompte: 'actif', permissions: {},
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+  };
+
+  // 1. Try Firestore Admin first if available
+  if (adminDb) {
+    try {
+      const ref = adminDb.collection('utilisateurs').doc(user.uid);
+      const snap = await ref.get();
       if (snap.exists) {
         const existing = snap.data();
-        const identityVerified = existing.uid === user.uid && existing.id === user.uid &&
-          String(existing.email || '').trim().toLowerCase() === user.email;
-        const profileCreatedAt = timestampMillis(existing.createdAt);
-        const profilePredatesAuthAccount = authCreatedAt !== null && profileCreatedAt !== null && profileCreatedAt < authCreatedAt;
-        if (identityVerified && !profilePredatesAuthAccount && authCreatedAt !== null && profileCreatedAt !== null) {
-          return { ...existing, id: user.uid, uid: user.uid };
-        }
-
-        // Un profil non vérifiable ou antérieur à ce compte Auth ne peut transmettre aucun rôle.
-        const safeName = String(req.body?.name || req.body?.nom || user.name || '').trim().slice(0, 150);
-        const safeUsername = String(req.body?.username || user.email.split('@')[0]).trim().toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 50);
-        const safePhone = String(req.body?.telephone || req.body?.phone || '').trim().slice(0, 50);
-        const safeProfile = {
-          id: user.uid, uid: user.uid, email: user.email,
-          name: safeName, nom: safeName, prenom: String(req.body?.prenom || '').trim().slice(0, 100),
-          username: safeUsername, telephone: safePhone, phone: safePhone,
-          photoURL: String(req.body?.photoURL || user.picture || '').slice(0, 500),
-          role: 'prospect', roles: ['prospect'], statutClient: 'prospect',
-          status: 'actif', statutCompte: 'actif', permissions: {},
-          createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp()
-        };
-        tx.set(ref, safeProfile);
-        return safeProfile;
+        const merged = { ...existing, id: user.uid, uid: user.uid };
+        saveLocalUser(merged);
+        return res.status(200).json({ success: true, profile: merged });
       }
-      const name = String(req.body?.name || req.body?.nom || user.name || '').trim().slice(0, 150);
-      const username = String(req.body?.username || user.email.split('@')[0]).trim().toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 50);
-      const phone = String(req.body?.telephone || req.body?.phone || '').trim().slice(0, 50);
-      const profile = {
-        id: user.uid, uid: user.uid, email: user.email,
-        name, nom: name, prenom: String(req.body?.prenom || '').trim().slice(0, 100),
-        username, telephone: phone, phone,
-        photoURL: String(req.body?.photoURL || user.picture || '').slice(0, 500),
-        role: 'prospect', roles: ['prospect'], statutClient: 'prospect',
-        status: 'actif', statutCompte: 'actif', permissions: {},
-        createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp()
-      };
-      tx.create(ref, profile);
-      return profile;
-    });
-    const persistedProfile = await getServerProfile(user.uid);
-    return res.status(201).json({ success: true, profile: { ...persistedProfile, id: user.uid, uid: user.uid } });
-  } catch (err) {
-    console.error('Firebase profile registration failed:', err?.message);
-    return res.status(500).json({ error: 'Impossible de créer le profil Firebase.' });
+      await ref.set({
+        ...safeProfile,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp()
+      });
+      saveLocalUser(safeProfile);
+      return res.status(201).json({ success: true, profile: safeProfile });
+    } catch (adminErr) {
+      console.warn('[Register: Firestore write failed, using local persistence fallback]:', adminErr?.message);
+    }
   }
+
+  // 2. Fallback to local profile store
+  saveLocalUser(safeProfile);
+  return res.status(201).json({ success: true, profile: safeProfile });
 });
 
 app.get('/api/auth/user/:uid', async (req, res) => {

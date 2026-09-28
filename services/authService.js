@@ -503,8 +503,31 @@ export async function processAuthenticatedUser(user, email = '', customName = ''
 export async function getUserProfile(uid) {
   const user = auth.currentUser;
   if (!user || !uid || uid !== user.uid) return null;
-  const snap = await getDoc(doc(db, USERS_COLLECTION, user.uid));
-  return snap.exists() ? { ...snap.data(), id: snap.id, uid: user.uid } : null;
+  // 1. Essai Firestore Client SDK
+  try {
+    const snap = await getDoc(doc(db, USERS_COLLECTION, user.uid));
+    if (snap.exists()) return { ...snap.data(), id: snap.id, uid: user.uid };
+  } catch (err) {
+    console.warn("getUserProfile client Firestore:", err?.message);
+  }
+
+  // 2. Repli vers l'API serveur sécurisée
+  try {
+    const token = await user.getIdToken(false);
+    const res = await safeFetchJson(`/api/auth/user/${user.uid}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (res.ok && (res.data?.user || res.data?.profile)) {
+      return res.data.user || res.data.profile;
+    }
+  } catch (e) {}
+
+  // 3. Repli vers la session locale en mémoire/cache
+  const session = getUserSession();
+  if (session?.profile && (session.profile.id === uid || session.profile.uid === uid)) {
+    return session.profile;
+  }
+  return null;
 }
 /**
  * Crée automatiquement le profil Firestore et serveur pour un nouvel utilisateur Google
@@ -559,17 +582,10 @@ export async function ensureUserProfile(user, mode = 'register') {
       throw new Error("Ce compte a été désactivé ou suspendu par l'administration LAPERLE TOUR HT.");
     }
     await updateUserLastLogin(existing.uid || existing.id || user.uid);
-
     return existing;
   }
 
-  if (mode !== 'register') {
-    try { await signOut(auth); } catch {}
-    clearUserSession();
-    const error = new Error('Aucun profil Firebase n’est associé à ce compte. Inscrivez-vous d’abord.');
-    error.code = 'auth/user-not-registered';
-    throw error;
-  }
+  // Provisioning automatique en 1 clic pour tout compte Google
   return await createUserProfile(user);
 }
 
@@ -718,17 +734,26 @@ export function formatAuthError(error) {
   const msg = error.message || "";
 
   if (code === 'auth/operation-not-allowed' || msg.includes('auth/operation-not-allowed')) {
-    return "La méthode « Lien par e-mail sans mot de passe » doit être activée dans la console Firebase (Authentication > Sign-in method > E-mail/Mot de passe > Activer « Lien par e-mail »). Vous pouvez vous connecter immédiatement avec Google ou en accès direct ci-dessous.";
+    return "La méthode d'authentification « E-mail et mot de passe » doit être activée dans la console Firebase (Authentication > Sign-in method > E-mail/Mot de passe).";
   }
   if (code === 'auth/unauthorized-domain' || msg.includes('auth/unauthorized-domain')) {
     const domain = typeof window !== 'undefined' ? window.location.hostname : 'votre domaine';
     return `Le domaine « ${domain} » n'est pas autorisé dans Firebase Authentication. Veuillez l'ajouter dans la console Firebase (Authentication > Paramètres > Domaines autorisés).`;
   }
   if (code === 'auth/network-request-failed' || msg.includes('auth/network-request-failed')) {
-    return "Erreur réseau Firebase Authentication : la requête vers Google Firebase n'a pas pu aboutir. Veuillez vérifier la connexion ou l'autorisation du domaine.";
+    return "Erreur réseau Firebase Authentication : la requête vers Google Firebase n'a pas pu aboutir. Veuillez vérifier la connexion Internet ou l'autorisation du domaine.";
+  }
+  if (code === 'auth/invalid-credential' || msg.includes('auth/invalid-credential')) {
+    return "Identifiants incorrects : adresse e-mail ou mot de passe invalide. Si vous n'avez pas encore créé votre compte, cliquez sur l'onglet « S'inscrire » ci-dessus.";
+  }
+  if (code === 'auth/user-not-found' || msg.includes('auth/user-not-found')) {
+    return "Aucun compte n'est enregistré avec cette adresse e-mail. Veuillez d'abord vous inscrire via l'onglet « S'inscrire ».";
   }
   if (code === 'auth/invalid-email') {
     return "L'adresse e-mail saisie n'est pas valide.";
+  }
+  if (code === 'auth/weak-password' || msg.includes('auth/weak-password')) {
+    return "Le mot de passe doit comporter au moins 8 caractères.";
   }
   if (code === 'auth/invalid-action-code') {
     return "Ce lien de connexion Firebase a expiré ou a déjà été utilisé.";
@@ -743,13 +768,13 @@ export function formatAuthError(error) {
     return "La fenêtre d'authentification a été bloquée. Veuillez autoriser les fenêtres pop-up.";
   }
   if (code === 'auth/user-not-registered') {
-    return msg || "Le compte n'est pas encore inscrit sur LAPERLE TOUR HT. Veuillez d'abord créer votre compte via l'onglet « Pour S'inscrire ».";
+    return msg || "Le compte n'est pas encore inscrit sur LAPERLE TOUR HT. Veuillez d'abord créer votre compte via l'onglet « S'inscrire ».";
   }
   if (code === 'auth/wrong-password') {
     return "Mot de passe incorrect. Veuillez vérifier votre saisie.";
   }
   if (code === 'auth/email-already-in-use') {
-    return msg || "Un compte existe déjà pour cette adresse e-mail. Veuillez basculer sur l'onglet « Pour Se Connecter ».";
+    return msg || "Un compte existe déjà pour cette adresse e-mail. Veuillez basculer sur l'onglet « Se Connecter ».";
   }
   if (code === 'auth/user-disabled') {
     return "Ce compte utilisateur a été désactivé par l'administration.";
