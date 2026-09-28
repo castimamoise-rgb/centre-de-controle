@@ -78,6 +78,7 @@ service cloud.firestore {
 
     function isUserActive() {
       return isSignedIn() && (
+        isSuperAdmin() ||
         (userDocExists() && (
           ('status' in getUserData() && getUserData().status in ["actif", "Actif", "ACTIF"]) ||
           ('statutCompte' in getUserData() && getUserData().statutCompte in ["actif", "Actif", "ACTIF"])
@@ -85,11 +86,25 @@ service cloud.firestore {
       );
     }
 
+    function isSuperAdmin() {
+      return isVerified() && (
+        request.auth.token.email == 'castimamoise@gmail.com' ||
+        request.auth.token.email == 'laperletourht@gmail.com'
+      );
+    }
+
+    function isSuperAdminDoc(data) {
+      return ('email' in data) && (
+        data.email == 'castimamoise@gmail.com' ||
+        data.email == 'laperletourht@gmail.com'
+      );
+    }
+
     function isAdmin() {
-      return isVerified() && isUserActive() && (
+      return isSuperAdmin() || (isVerified() && isUserActive() && (
         hasRole("admin") ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid))
-      );
+      ));
     }
 
     function isDirection() {
@@ -536,14 +551,17 @@ service cloud.firestore {
         (isUserActive() && (isAdmin() || isSecretaire()))
       );
       allow list: if isVerified() && isUserActive() && (isAdmin() || isSecretaire());
-      // L'utilisateur authentifié peut créer son profil initial en respectant les rôles autorisés
-      allow create: if isSignedIn() && isValidId(utilisateurId) && request.auth.uid == utilisateurId && isValidUtilisateur(incoming()) && (
-        (request.auth.token.email == 'castimamoise@gmail.com') ||
-        (!('role' in incoming()) || incoming().role in ['prospect', 'lecture_seule', 'client'])
+      // L'Administrateur peut créer des profils utilisateurs pré-configurés, ou l'utilisateur authentifié crée son propre profil
+      allow create: if isSignedIn() && isValidId(utilisateurId) && isValidUtilisateur(incoming()) && (
+        isAdmin() ||
+        (request.auth.uid == utilisateurId && (
+          isSuperAdmin() ||
+          (!('role' in incoming()) || incoming().role in ['prospect', 'lecture_seule', 'client'])
+        ))
       );
       allow update: if isValidId(utilisateurId) && isValidUtilisateur(incoming()) && (
-        (isAdmin() && utilisateurId != request.auth.uid) ||
-        (isSecretaire() && utilisateurId != request.auth.uid && !hasRoleFor(existing(), "admin") &&
+        (isAdmin() && (!isSuperAdminDoc(existing()) || isSuperAdmin())) ||
+        (isSecretaire() && utilisateurId != request.auth.uid && !hasRoleFor(existing(), "admin") && !isSuperAdminDoc(existing()) &&
           incoming().diff(existing()).affectedKeys().hasOnly(['updatedAt', 'updatedBy', 'status', 'statutCompte'])) ||
         (isSignedIn() && request.auth.uid == utilisateurId &&
           incoming().uid == existing().uid && incoming().id == existing().id &&
@@ -553,7 +571,7 @@ service cloud.firestore {
           incoming().permissions == existing().permissions &&
           incoming().diff(existing()).affectedKeys().hasOnly(['name', 'nom', 'prenom', 'username', 'phone', 'telephone', 'photoURL', 'avatar', 'updatedAt', 'lastLoginAt']))
       );
-      allow delete: if isAdmin() && utilisateurId != request.auth.uid;
+      allow delete: if isAdmin() && utilisateurId != request.auth.uid && !isSuperAdminDoc(existing());
     }
     // 13. Notifications
     match /notifications/{notificationId} {

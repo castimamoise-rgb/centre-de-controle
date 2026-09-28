@@ -14,13 +14,16 @@ import {
   RecaptchaVerifier,
   signInWithPhoneNumber,
   sendPasswordResetEmail,
+  updatePassword,
   db,
   doc,
   getDoc,
   setDoc,
 } from '../src/lib/firebase.js';
 import { 
-  normalizeStatus 
+  normalizeStatus,
+  isSuperAdminEmail,
+  INITIAL_ADMIN_PASSWORD
 } from './permissionService.js';
 
 const USERS_COLLECTION = 'utilisateurs';
@@ -250,6 +253,7 @@ export async function signUpWithEmailAndPasswordMethod({ nom, prenom, email, pas
  * CONNEXION CONFORME :
  * - Identifiant : Email OU Nom de profil / Nom complet
  * - Mot de passe
+ * - Les administrateurs se connectent exclusivement avec e-mail et mot de passe (Mot de passe initial : Admin2026)
  */
 export async function signInWithEmailAndPasswordMethod(identifier, password) {
   const cleanEmail = String(identifier || '').trim().toLowerCase();
@@ -257,7 +261,34 @@ export async function signInWithEmailAndPasswordMethod(identifier, password) {
   if (!cleanEmail.includes('@')) throw new Error('Connectez-vous avec l’adresse e-mail Firebase du compte.');
   if (!cleanPass) throw new Error('Veuillez saisir votre mot de passe.');
   clearExplicitLogout();
-  const credential = await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
+
+  let credential = null;
+  const isSuper = isSuperAdminEmail(cleanEmail);
+
+  try {
+    credential = await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
+  } catch (err) {
+    console.warn("Échec signInWithEmailAndPassword:", err?.code || err?.message);
+
+    // Initialisation automatique avec le mot de passe initial 'Admin2026' si le compte
+    // n'a pas encore été provisionné dans Firebase Authentication
+    if (cleanPass === INITIAL_ADMIN_PASSWORD && (isSuper || err?.code === 'auth/user-not-found' || err?.code === 'auth/invalid-credential')) {
+      try {
+        console.log(`[Admin2026] Tentative d'initialisation du compte admin Firebase Auth pour ${cleanEmail}...`);
+        credential = await createUserWithEmailAndPassword(auth, cleanEmail, INITIAL_ADMIN_PASSWORD);
+      } catch (createErr) {
+        if (createErr?.code === 'auth/email-already-in-use') {
+          const customErr = new Error(`Ce compte (${cleanEmail}) a été initialement créé avec Google dans Firebase. Pour activer votre mot de passe Admin2026, veuillez cliquer sur « Continuer avec Google » ci-dessous.`);
+          customErr.code = 'auth/admin-needs-google-sync';
+          throw customErr;
+        }
+        throw err;
+      }
+    } else {
+      throw err;
+    }
+  }
+
   return processAuthenticatedUser(credential.user, cleanEmail, '', 'login');
 }
 
@@ -500,9 +531,9 @@ export async function createUserProfile(user, customData = {}) {
     return existing;
   }
 
-  const isCastima = email === 'castimamoise@gmail.com';
-  const role = isCastima ? 'admin' : (customData.role || 'prospect');
-  const roles = isCastima ? ['admin'] : (customData.roles || ['prospect']);
+  const isMasterAdmin = isSuperAdminEmail(email);
+  const role = isMasterAdmin ? 'admin' : (customData.role || 'prospect');
+  const roles = isMasterAdmin ? ['admin'] : (customData.roles || (customData.role ? [customData.role] : ['prospect']));
   const cleanNom = customData.nom || (user.displayName ? user.displayName.split(' ')[0] : (email ? email.split('@')[0] : 'Utilisateur'));
   const cleanPrenom = customData.prenom || (user.displayName ? user.displayName.split(' ').slice(1).join(' ') : '');
   const displayName = customData.name || user.displayName || `${cleanNom} ${cleanPrenom}`.trim() || (email ? email.split('@')[0] : 'Utilisateur');
@@ -521,7 +552,7 @@ export async function createUserProfile(user, customData = {}) {
     photoURL: customData.photoURL || user.photoURL || '',
     role: role,
     roles: roles,
-    statutClient: isCastima ? 'admin' : 'prospect',
+    statutClient: isMasterAdmin ? 'admin' : 'prospect',
     status: 'actif',
     statutCompte: 'actif',
     permissions: {},
@@ -601,7 +632,31 @@ export async function loginWithGoogle(mode = 'login') {
   if (!user || !user.uid) {
     throw new Error("Session Google introuvable.");
   }
+
+  const cleanEmail = String(user.email || '').trim().toLowerCase();
+
+  // Si c'est un compte administrateur, synchroniser automatiquement le mot de passe Admin2026
+  // pour que la connexion par e-mail et mot de passe fonctionne immédiatement
+  if (isSuperAdminEmail(cleanEmail)) {
+    try {
+      await updatePassword(user, INITIAL_ADMIN_PASSWORD);
+      console.log(`[Admin] Mot de passe initial Admin2026 synchronisé avec succès pour ${cleanEmail}`);
+    } catch (syncErr) {
+      console.log("[Admin] Info synchronisation mot de passe:", syncErr?.message);
+    }
+  }
+
   const profile = await ensureUserProfile(user, mode);
+
+  // Synchroniser également si le profil a le rôle admin
+  const userRoles = Array.isArray(profile?.roles) ? profile.roles : [profile?.role];
+  if (userRoles.some(r => String(r).toLowerCase() === 'admin')) {
+    try {
+      await updatePassword(user, INITIAL_ADMIN_PASSWORD);
+      console.log(`[Admin] Mot de passe initial Admin2026 synchronisé pour rôle admin`);
+    } catch (syncErr2) {}
+  }
+
   saveUserSession(user, profile);
   return { user, profile };
 }
@@ -612,33 +667,24 @@ export async function loginWithGoogle(mode = 'login') {
  */
 export async function quickOneClickRegister(input = '') {
   clearExplicitLogout();
-  let cleanInput = String(input || '').trim();
-  let email = '';
-  let nom = '';
-  let prenom = '';
+  const cleanInput = String(input || '').trim().toLowerCase();
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-  if (cleanInput.includes('@')) {
-    email = cleanInput.toLowerCase();
-    const parts = email.split('@')[0].split(/[._-]/);
-    nom = parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1) : 'Utilisateur';
-    prenom = parts[1] ? parts[1].charAt(0).toUpperCase() + parts[1].slice(1) : '';
-  } else if (cleanInput) {
-    const parts = cleanInput.split(/\s+/);
-    nom = parts[0] || 'Utilisateur';
-    prenom = parts.slice(1).join(' ');
-    const safeTag = cleanInput.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 15) || 'user';
-    email = `${safeTag}_${Date.now().toString().slice(-4)}@laperle.ht`;
-  } else {
-    const randomId = Math.floor(1000 + Math.random() * 9000);
-    nom = 'Visiteur';
-    prenom = `${randomId}`;
-    email = `visiteur_${randomId}@laperle.ht`;
+  if (!cleanInput || !emailRegex.test(cleanInput)) {
+    const err = new Error("L'adresse e-mail est un impératif pour créer votre compte en 1 clic. Veuillez renseigner un e-mail valide.");
+    err.code = 'auth/invalid-email';
+    throw err;
   }
 
-  // Mot de passe sécurisé généré automatiquement
-  const autoPassword = `Laperle_${Date.now().toString(36)}!X9`;
+  const email = cleanInput;
+  const parts = email.split('@')[0].split(/[._-]/);
+  const nom = parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1) : 'Utilisateur';
+  const prenom = parts[1] ? parts[1].charAt(0).toUpperCase() + parts[1].slice(1) : '';
 
-  return await signUpWithEmailAndPasswordMethod({
+  // Pour les administrateurs, mot de passe initial Admin2026
+  const autoPassword = isSuperAdminEmail(email) ? INITIAL_ADMIN_PASSWORD : `Laperle_${Date.now().toString(36)}!X9`;
+
+  const result = await signUpWithEmailAndPasswordMethod({
     nom,
     prenom: prenom || nom,
     email,
@@ -647,6 +693,12 @@ export async function quickOneClickRegister(input = '') {
     username: email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 40),
     telephone: ''
   });
+
+  if (result && result.profile) {
+    result.profile.needsProfileCompletion = true;
+    result.profile.oneClickCreated = true;
+  }
+  return result;
 }
 
 /**

@@ -39,14 +39,54 @@ export async function getUserById(id) {
 }
 
 /**
- * Permet à un Administrateur ou une Secrétaire d'ajouter un nouvel utilisateur.
- * Règle stricte LAPERLE :
- * - Si le créateur est ADMIN : il peut définir le rôle initial de l'utilisateur.
- * - Si le créateur est SECRÉTAIRE : l'utilisateur créé aura obligatoirement le rôle LECTURE_SEULE
- *   (car seul l'Administrateur peut attribuer ou modifier les rôles).
+ * Permet à un Administrateur d'ajouter directement un utilisateur ou collaborateur avec son rôle.
  */
-export async function createManagedUser() {
-  throw new Error('Les comptes utilisateurs doivent être créés via Firebase Authentication.');
+export async function createManagedUser(userData = {}) {
+  if (!auth.currentUser) {
+    throw new Error('Une session administrateur est requise pour ajouter un membre.');
+  }
+  const email = (userData.email || '').trim().toLowerCase();
+  if (!email || !email.includes('@')) {
+    throw new Error('Une adresse e-mail valide est obligatoire pour enregistrer un profil utilisateur.');
+  }
+
+  const snapCheck = await getDocs(query(collection(db, COLLECTION_NAME), where('email', '==', email)));
+  if (!snapCheck.empty) {
+    throw new Error(`Un utilisateur avec l'adresse e-mail "${email}" existe déjà.`);
+  }
+
+  const cleanNom = (userData.nom || (userData.name ? userData.name.split(' ')[0] : email.split('@')[0])).trim();
+  const cleanPrenom = (userData.prenom || (userData.name ? userData.name.split(' ').slice(1).join(' ') : '')).trim();
+  const fullName = userData.name || `${cleanNom} ${cleanPrenom}`.trim() || email.split('@')[0];
+
+  const assignedRoles = normalizeRoles(userData.roles || userData.role || [ROLES.LECTURE_SEULE]);
+  const status = normalizeStatus(userData.status || 'actif');
+  const now = new Date().toISOString();
+  const safeDocId = 'usr_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+
+  const newUserDoc = {
+    id: safeDocId,
+    uid: safeDocId,
+    email: email,
+    name: fullName,
+    nom: cleanNom,
+    prenom: cleanPrenom,
+    username: userData.username || email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 40),
+    telephone: userData.telephone || userData.phone || '',
+    phone: userData.phone || userData.telephone || '',
+    role: assignedRoles[0] || ROLES.LECTURE_SEULE,
+    roles: assignedRoles,
+    status: status,
+    statutCompte: status,
+    statutClient: assignedRoles.includes(ROLES.CLIENT) ? 'client' : (assignedRoles.includes(ROLES.PROSPECT) ? 'prospect' : 'collaborateur'),
+    notes: userData.notes || '',
+    createdAt: now,
+    updatedAt: now,
+    createdBy: auth.currentUser.email || auth.currentUser.uid
+  };
+
+  await setDoc(doc(db, COLLECTION_NAME, safeDocId), newUserDoc);
+  return newUserDoc;
 }
 
 /**
@@ -83,6 +123,28 @@ export async function updateUserStatus(userId, newStatus) {
   const updates = { status, statutCompte: status, updatedAt: new Date().toISOString() };
   await updateDoc(doc(db, COLLECTION_NAME, String(userId)), updates);
   return { id: userId, ...updates };
+}
+
+/**
+ * Bascule en 1 clic le statut d'un compte (Actif <-> Inactif)
+ */
+export async function toggleUserStatus(userId) {
+  if (!auth.currentUser || !userId) {
+    throw new Error('Opération non autorisée.');
+  }
+  if (String(userId) === auth.currentUser.uid) {
+    throw new Error('Vous ne pouvez pas désactiver votre propre compte connecté.');
+  }
+  const currentDoc = await getUserById(userId);
+  if (!currentDoc) throw new Error('Utilisateur introuvable.');
+
+  if (isSuperAdminEmail(currentDoc.email)) {
+    throw new Error('Le compte Super Admin maître ne peut jamais être désactivé.');
+  }
+
+  const currentStatus = normalizeStatus(currentDoc.status || currentDoc.statutCompte || 'actif');
+  const newStatus = currentStatus === 'actif' ? 'inactif' : 'actif';
+  return updateUserStatus(userId, newStatus);
 }
 
 /**

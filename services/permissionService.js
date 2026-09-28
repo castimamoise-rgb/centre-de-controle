@@ -32,14 +32,15 @@ export const STATUS_LABELS = {
   inactif: 'Inactif / Désactivé'
 };
 
+export const INITIAL_ADMIN_PASSWORD = 'Admin2026';
 export const SUPER_ADMIN_EMAIL = 'castimamoise@gmail.com';
-export const SUPER_ADMIN_EMAILS = ['castimamoise@gmail.com'];
+export const SUPER_ADMIN_EMAILS = ['castimamoise@gmail.com', 'laperletourht@gmail.com'];
 export const SUPER_ADMIN_PHONES = ['44408687', '50944408687', '+50944408687'];
 
 export function isSuperAdminEmail(email) {
   if (!email) return false;
   const clean = String(email).trim().toLowerCase();
-  return clean === 'castimamoise@gmail.com' || SUPER_ADMIN_EMAILS.includes(clean);
+  return clean === 'castimamoise@gmail.com' || clean === 'laperletourht@gmail.com' || SUPER_ADMIN_EMAILS.includes(clean);
 }
 
 export function isSuperAdminIdentifier(val) {

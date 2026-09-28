@@ -52,7 +52,8 @@ button, input, select, textarea {
 .firebase-icon{font-size:13px;line-height:1}
 .user-avatar-img{width:31px;height:31px;border-radius:50%;object-fit:cover}
 .user-role-badge{display:inline-block;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;background:#082b70;color:#fff;text-transform:uppercase;letter-spacing:0.5px}
-.user-role-badge.ADMIN, .user-role-badge.admin{background:#082b70;color:#fff}
+.user-role-badge.ADMIN, .user-role-badge.admin{background:linear-gradient(135deg, #07255e 0%, #0d3b87 100%);color:#fbbf24;border:1px solid #f59e0b;font-weight:800;letter-spacing:0.6px;box-shadow:0 1px 4px rgba(245,158,11,0.22)}
+.user-role-badge.super-admin{background:linear-gradient(135deg, #041639 0%, #082b70 60%, #b45309 140%);color:#fef08a;border:1.5px solid #eab308;font-weight:800;letter-spacing:0.7px;box-shadow:0 2px 8px rgba(234,179,8,0.35)}
 .user-role-badge.DIRECTION, .user-role-badge.direction{background:#1675ea;color:#fff}
 .user-role-badge.COMPTABILITE, .user-role-badge.comptabilite{background:#187a43;color:#fff}
 .user-role-badge.SECRETAIRE, .user-role-badge.secretaire{background:#7054ea;color:#fff}

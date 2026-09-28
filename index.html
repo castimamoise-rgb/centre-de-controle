@@ -94,24 +94,15 @@
           <div class="auth-form-top">
             <div class="auth-login-kicker">ESPACE SÉCURISÉ</div>
             <h2 class="auth-login-heading">Se Connecter</h2>
-            <p class="auth-login-sub">Saisissez vos identifiants ou connectez-vous en 1 clic</p>
+            <p class="auth-login-sub">Saisissez vos identifiants pour accéder à votre espace</p>
           </div>
 
-          <!-- Bouton Connexion 1 Clic Google -->
-          <button type="button" class="google-signin-btn google-hero-btn" id="authBtnGoogleLoginTop">
-            <svg class="google-icon" viewBox="0 0 24 24">
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-            </svg>
-            <span>⚡ Se connecter en 1 clic avec Google</span>
-          </button>
-
-          <div class="auth-sep-wrap" style="margin: 14px 0 12px;">
-            <span class="auth-sep-line"></span>
-            <span class="auth-sep-text">OU PAR E-MAIL & MOT DE PASSE</span>
-            <span class="auth-sep-line"></span>
+          <!-- Note explicative pour les administrateurs -->
+          <div class="auth-admin-badge-note" style="margin: 0 0 14px; padding: 10px 12px; background: #f0f7ff; border: 1.5px solid #082b70; border-radius: 8px; font-size: 11.5px; color: #082b70; line-height: 1.45; display: flex; align-items: flex-start; gap: 8px;">
+            <span style="font-size: 15px; flex-shrink: 0;">🛡️</span>
+            <div>
+              <b>Accès Administrateurs :</b> Connexion par <b>e-mail & mot de passe</b> (Mot de passe initial : <code style="background: #ffffff; padding: 1px 6px; border-radius: 4px; font-weight: 800; border: 1px solid #bfdbfe; font-size: 12px; color: #082b70;">Admin2026</code>) ou en 1 clic via le bouton <b>Google</b> ci-dessous.
+            </div>
           </div>
 
           <!-- Champ Email, Téléphone ou Nom de profil -->
@@ -178,45 +169,31 @@
             <p class="auth-login-sub">Créer votre profil Laperle en 1 clic ou via le formulaire</p>
           </div>
 
-          <!-- Inscription Express Directe 1 Clic (Fonctionne immédiatement sur TOUS les domaines) -->
+          <!-- Inscription Express Directe 1 Clic (E-mail obligatoire) -->
           <div class="auth-express-card" style="margin-bottom:14px;background:#f0f7ff;border:1.5px solid #082b70;border-radius:12px;padding:12px 14px;box-shadow:0 2px 8px rgba(8,43,112,0.06);">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
               <span style="font-weight:800;color:#082b70;font-size:13px;display:flex;align-items:center;gap:6px;">
-                ⚡ Inscription Express 1 Clic
+                ⚡ Accès Express 1 Clic
               </span>
-              <span style="font-size:10.5px;background:#082b70;color:#fff;padding:2px 8px;border-radius:12px;font-weight:700;">Instantané</span>
+              <span style="font-size:10.5px;background:#082b70;color:#fff;padding:2px 8px;border-radius:12px;font-weight:700;">E-mail obligatoire</span>
             </div>
             <p style="font-size:11.5px;color:#475569;margin:0 0 10px;line-height:1.35;">
-              Entrez simplement votre prénom ou adresse e-mail pour accéder instantanément :
+              L'adresse e-mail est un impératif pour l'accès en 1 clic. Vous serez ensuite invité à compléter votre profil :
             </p>
             <div style="display:flex;gap:6px;">
-              <input type="text" id="authExpressInput" placeholder="Ex: Jean ou jean@gmail.com" style="flex:1;padding:9px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:13px;background:#ffffff;outline:none;" />
+              <input type="email" id="authExpressInput" placeholder="Votre adresse e-mail (ex: nom@domaine.com)" autocomplete="email" required style="flex:1;padding:9px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:13px;background:#ffffff;outline:none;" />
               <button type="button" id="authBtnExpressRegister" style="padding:9px 16px;background:#082b70;color:#ffffff;border:none;border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:4px;">
                 <span>Créer en 1 clic 🚀</span>
               </button>
             </div>
+            <div style="font-size:11px;color:#64748b;margin-top:6px;display:flex;align-items:center;gap:4px;">
+              <span>💡</span> <span>Une fois connecté, le système vous proposera de compléter votre profil.</span>
+            </div>
           </div>
-
-          <div class="auth-sep-wrap" style="margin: 12px 0;">
-            <span class="auth-sep-line"></span>
-            <span class="auth-sep-text">OU AVEC GOOGLE</span>
-            <span class="auth-sep-line"></span>
-          </div>
-
-          <!-- Bouton Inscription 1 Clic Google -->
-          <button type="button" class="google-signin-btn google-hero-btn" id="authBtnGoogleRegisterTop">
-            <svg class="google-icon" viewBox="0 0 24 24">
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-            </svg>
-            <span>⚡ S'inscrire en 1 clic avec Google</span>
-          </button>
 
           <div class="auth-sep-wrap" style="margin: 14px 0 12px;">
             <span class="auth-sep-line"></span>
-            <span class="auth-sep-text">OU AVEC LE FORMULAIRE</span>
+            <span class="auth-sep-text">OU AVEC LE FORMULAIRE DÉTAILLÉ</span>
             <span class="auth-sep-line"></span>
           </div>
 

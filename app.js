@@ -127,7 +127,15 @@ function updateRoleBadge(rolesInput) {
   const badge = document.getElementById("headerUserRole");
   if (!badge) return;
   const rolesList = normalizeRoles(rolesInput || currentUserRoles);
-  badge.textContent = rolesList.map(r => ROLE_LABELS[r] || r.toUpperCase()).join(" + ");
+  const isSuper = isSuperAdminEmail(currentUser?.email);
+  if (isSuper) {
+    badge.innerHTML = `👑 SUPER ADMIN`;
+    badge.className = `user-role-badge admin super-admin`;
+    badge.title = `Super Administrateur Principal (Fondateur) - Habilitation absolue`;
+    return;
+  }
+  const text = rolesList.map(r => (r === ROLES.ADMIN ? "👑 ADMIN" : (ROLE_LABELS[r] || r.toUpperCase()))).join(" + ");
+  badge.textContent = text;
   badge.className = `user-role-badge ${rolesList[0] || 'lecture_seule'}`;
   badge.title = `Rôles attribués : ${rolesList.map(r => ROLE_LABELS[r] || r).join(', ')}`;
 }
@@ -440,7 +448,7 @@ const MODULES = {
   vehicules: { label: "Véhicules", icon: "🚙" },
   paiements: { label: "Paiements", icon: "💰" },
   finances: { label: "Finances & Dépenses", icon: "📊" },
-  utilisateurs: { label: "Utilisateurs & Rôles", icon: "🛡️" },
+  utilisateurs: { label: "Équipe & Rôles", icon: "🛡️" },
   reports: { label: "Rapports", icon: "📈" },
   marketing: { label: "Marketing", icon: "📣" },
   settings: { label: "Paramètres", icon: "⚙️" },
@@ -2008,6 +2016,20 @@ function initAuthUI(initialMode = "login") {
                                 errMsg.includes("auth/invalid-credential") ||
                                 errMsg.includes("pas encore inscrit") || 
                                 errMsg.includes("n'existe pas dans la base de données");
+        if (err?.code === 'auth/admin-needs-google-sync' || (isSuperAdminEmail(identifier) && (isNotRegistered || err?.code === 'auth/wrong-password'))) {
+          setAuthMessage("warning", `ℹ️ <b>Compte Administrateur « ${esc(identifier)} » :</b><br>Ce compte est enregistré avec Google dans Firebase. Pour activer votre mot de passe <b>Admin2026</b> ou accéder directement à votre espace, cliquez sur le bouton ci-dessous :<br><button type="button" id="btnAdminGoogleSyncDirect" style="margin-top:10px;padding:9px 18px;background:#082b70;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:8px;box-shadow:0 3px 10px rgba(8,43,112,0.25);"><span>⚡ Continuer avec Google & Activer Admin2026</span></button>`);
+          setTimeout(() => {
+            const btnSync = document.getElementById("btnAdminGoogleSyncDirect");
+            if (btnSync) {
+              btnSync.onclick = () => {
+                const googleBtn = document.getElementById("authBtnGoogleLogin");
+                if (googleBtn) googleBtn.click();
+              };
+            }
+          }, 50);
+          return;
+        }
+
         if (isNotRegistered) {
           setAuthMessage("error", `❌ <b>Compte introuvable ou identifiants incorrects.</b><br>Si vous n'avez pas encore créé votre compte pour « ${esc(identifier)} », veuillez d'abord vous inscrire.<br><button type="button" id="btnGoToRegisterFromError" style="margin-top:8px;padding:7px 16px;background:#082b70;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12.5px;">👉 S'inscrire maintenant</button>`);
           setTimeout(() => {
@@ -2190,7 +2212,7 @@ function initAuthUI(initialMode = "login") {
     try {
       const result = await authLoginGoogle(mode);
       setAuthMessage("success", "Connexion en 1 clic réussie ! Bienvenue chez LAPERLE TOUR HT.");
-      showToast(`🎉 Bienvenue ${result.profile?.nom || result.profile?.name || "Administrateur"} !`);
+      showToast(`🎉 Bienvenue ${result.profile?.nom || result.profile?.name || "Utilisateur"} !`);
       completeUserSignIn(result.user, result.profile, result.isNew);
     } catch (err) {
       console.warn("Erreur Google sign-in:", err);
@@ -2219,13 +2241,33 @@ function initAuthUI(initialMode = "login") {
     btn.onclick = () => handleGoogleAuth('register');
   });
 
-  // 5. ACTION : Inscription Express Directe 1 Clic (Sans dépendance OAuth ni restriction de domaine)
+  // 5. ACTION : Inscription Express Directe 1 Clic (E-mail impératif + suggestion profil après connexion)
   const expressInput = document.getElementById("authExpressInput");
   const btnExpress = document.getElementById("authBtnExpressRegister");
 
   const handleExpressRegister = async () => {
     if (isAuthProcessing) return;
-    const rawVal = expressInput ? expressInput.value.trim() : "";
+    const rawVal = expressInput ? expressInput.value.trim().toLowerCase() : "";
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!rawVal || !emailRegex.test(rawVal)) {
+      setAuthMessage("error", "⚠️ <b>Adresse e-mail impérative :</b> L'adresse e-mail est obligatoire pour l'accès en 1 clic. Veuillez saisir un e-mail valide (ex: contact@exemple.com).");
+      if (expressInput) {
+        expressInput.style.borderColor = "#dc2626";
+        expressInput.focus();
+      }
+      return;
+    }
+
+    if (isSuperAdminEmail(rawVal)) {
+      setAuthMessage("warning", `🔒 <b>Compte Administrateur :</b> Les administrateurs se connectent <b>exclusivement avec e-mail et mot de passe</b>.<br>Veuillez basculer sur l'onglet <b>« Se Connecter »</b> avec votre mot de passe initial (<b>Admin2026</b>).`);
+      setMode("login");
+      if (loginEmail) loginEmail.value = rawVal;
+      if (loginPassword) loginPassword.focus();
+      return;
+    }
+
+    if (expressInput) expressInput.style.borderColor = "#cbd5e1";
     isAuthProcessing = true;
     if (btnExpress) {
       btnExpress.disabled = true;
@@ -2235,25 +2277,29 @@ function initAuthUI(initialMode = "login") {
 
     try {
       const result = await quickOneClickRegister(rawVal);
-      const userLoginId = result.profile?.email || result.user?.email || "votre compte";
-      setAuthMessage("success", `✅ <b>Compte créé en 1 clic avec succès !</b><br>Identifiant : <b>${esc(userLoginId)}</b>`);
+      const userLoginId = result.profile?.email || result.user?.email || rawVal;
+      setAuthMessage("success", `✅ <b>Compte activé en 1 clic avec succès !</b><br>Identifiant : <b>${esc(userLoginId)}</b>`);
       showToast(`🎉 Bienvenue ${result.profile?.nom || "Utilisateur"} ! Inscription 1 clic réussie.`);
-      completeUserSignIn(result.user, result.profile, result.isNew);
+
+      // Mémoriser pour suggérer de compléter le profil
+      sessionStorage.setItem("SUGGEST_PROFILE_COMPLETION", "1");
+
+      completeUserSignIn(result.user, result.profile, true);
     } catch (err) {
       console.warn("Erreur inscription express 1 clic:", err);
       if (err?.code === 'auth/email-already-in-use') {
-        setAuthMessage("warning", `ℹ️ <b>Cette adresse possède déjà un compte.</b><br>Veuillez basculer sur l'onglet « Se Connecter » pour entrer votre mot de passe.<br><button type="button" id="btnGoToLoginFromExpress" style="margin-top:8px;padding:6px 14px;background:#082b70;color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;">👉 Se Connecter</button>`);
+        setAuthMessage("warning", `ℹ️ <b>Cette adresse (${esc(rawVal)}) possède déjà un compte.</b><br>Veuillez basculer sur l'onglet « Se Connecter » pour entrer votre mot de passe.<br><button type="button" id="btnGoToLoginFromExpress" style="margin-top:8px;padding:6px 14px;background:#082b70;color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;">👉 Se Connecter</button>`);
         setTimeout(() => {
           const btnL = document.getElementById("btnGoToLoginFromExpress");
           if (btnL) {
             btnL.onclick = () => {
               setMode("login");
-              if (loginEmail && rawVal.includes("@")) loginEmail.value = rawVal;
+              if (loginEmail) loginEmail.value = rawVal;
             };
           }
         }, 50);
       } else {
-        setAuthMessage("error", formatAuthError(err) || err?.message || "Échec de l'inscription express.");
+        setAuthMessage("error", formatAuthError(err) || err?.message || "Échec de l'accès en 1 clic.");
       }
     } finally {
       isAuthProcessing = false;
@@ -2357,7 +2403,101 @@ function completeUserSignIn(user, profile, isNew = false) {
 
 
   render();
+
+  // 7. Suggérer de compléter le profil si inscription 1 clic ou profil incomplet
+  if (isNew || sessionStorage.getItem("SUGGEST_PROFILE_COMPLETION") === "1" || currentUserProfile?.needsProfileCompletion) {
+    sessionStorage.removeItem("SUGGEST_PROFILE_COMPLETION");
+    setTimeout(() => {
+      promptProfileCompletionIfSuggested();
+    }, 600);
+  }
 }
+
+/**
+ * Suggestion amicale invitant l'utilisateur à finaliser son profil après une connexion 1 clic
+ */
+function promptProfileCompletionIfSuggested() {
+  const existing = document.getElementById("profileCompletionPromptModal");
+  if (existing) existing.remove();
+
+  const profile = currentUserProfile || {};
+  const email = profile.email || currentUser?.email || "votre adresse e-mail";
+
+  const modal = document.createElement("div");
+  modal.id = "profileCompletionPromptModal";
+  modal.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(8, 27, 65, 0.65);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    padding: 16px;
+  `;
+
+  modal.innerHTML = `
+    <div style="background:#ffffff;border-radius:18px;max-width:490px;width:100%;box-shadow:0 20px 45px rgba(0,0,0,0.3);overflow:hidden;border:1px solid #e2e8f0;font-family:system-ui,-apple-system,sans-serif;">
+      <div style="background:linear-gradient(135deg, #092e70 0%, #1e40af 100%);color:#ffffff;padding:22px 24px;position:relative;">
+        <span style="font-size:32px;display:inline-block;margin-bottom:6px;">🎉</span>
+        <h3 style="margin:0;font-size:19px;font-weight:800;letter-spacing:-0.3px;">Bienvenue sur LAPERLE TOUR HT !</h3>
+        <p style="margin:6px 0 0;font-size:13px;opacity:0.95;line-height:1.4;">
+          Votre compte a été activé en 1 clic avec :<br>
+          <b style="color:#fef08a;font-size:13.5px;">${esc(email)}</b>
+        </p>
+      </div>
+
+      <div style="padding:22px 24px;">
+        <div style="display:flex;align-items:flex-start;gap:12px;background:#f0fdf4;border:1.5px solid #bbf7d0;border-left:4px solid #16a34a;padding:12px 14px;border-radius:8px;margin-bottom:18px;">
+          <span style="font-size:22px;">💡</span>
+          <div style="font-size:12.5px;color:#166534;line-height:1.45;">
+            <b>Suggestion importante :</b> Pour personnaliser vos futures réservations/devis et sécuriser votre compte avec votre propre mot de passe, nous vous suggérons de compléter votre profil dès maintenant.
+          </div>
+        </div>
+
+        <ul style="font-size:12px;color:#475569;margin:0 0 18px 20px;padding:0;line-height:1.6;">
+          <li>Renseigner votre Nom et Prénom</li>
+          <li>Ajouter votre numéro de téléphone (WhatsApp)</li>
+          <li>Définir votre mot de passe personnel</li>
+        </ul>
+
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <button type="button" id="btnPromptCompleteProfileNow" style="width:100%;padding:12px 18px;background:#092e70;color:#ffffff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 12px rgba(9,46,112,0.25);">
+            <span>✏️ Compléter mon profil</span>
+          </button>
+          <button type="button" id="btnPromptDismissProfile" style="width:100%;padding:10px 18px;background:transparent;color:#64748b;border:1px solid #cbd5e1;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;">
+            Accéder directement à l'espace (Plus tard)
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  const btnNow = document.getElementById("btnPromptCompleteProfileNow");
+  const btnDismiss = document.getElementById("btnPromptDismissProfile");
+
+  if (btnNow) {
+    btnNow.onclick = () => {
+      modal.remove();
+      if (typeof openProfile === "function") {
+        openProfile();
+      }
+    };
+  }
+
+  if (btnDismiss) {
+    btnDismiss.onclick = () => {
+      modal.remove();
+    };
+  }
+}
+window.promptProfileCompletionIfSuggested = promptProfileCompletionIfSuggested;
 
 let cachedAuthContainerHTML = "";
 
@@ -3713,6 +3853,40 @@ function openUserRoleModal(indexOrId) {
   };
 }
 
+async function toggleUserStatusDirect(index) {
+  const users = list("utilisateurs") || [];
+  const target = users[index];
+  if (!target) return;
+  if (isSuperAdminEmail(target.email)) {
+    showToast("👑 Le compte Super Administrateur maître ne peut jamais être désactivé.", "error");
+    return;
+  }
+  if (target.uid === currentUser?.uid || target.id === currentUser?.uid || target.email === currentUser?.email) {
+    showToast("⚠️ Vous ne pouvez pas désactiver votre propre compte actuellement connecté.", "error");
+    return;
+  }
+  const currStat = (resolveUserField(target, "status") || "").toLowerCase();
+  const nextStat = currStat === "actif" ? "inactif" : "actif";
+  const actionWord = nextStat === "actif" ? "activer" : "désactiver";
+
+  if (!confirm(`Confirmer : Souhaitez-vous vraiment ${actionWord} l'accès de « ${target.name || target.email} » ?`)) {
+    return;
+  }
+
+  try {
+    const docId = target.id || target.uid;
+    await updateUserStatus(docId, nextStat);
+    target.status = nextStat === "actif" ? "Actif" : "Inactif";
+    target.statutCompte = nextStat;
+    save();
+    showToast(`✅ Compte de « ${target.name || target.email} » passé à : ${nextStat.toUpperCase()}`);
+    drawTable("utilisateurs");
+  } catch (err) {
+    showToast(`Erreur mise à jour: ${err.message}`, "error");
+  }
+}
+window.toggleUserStatusDirect = toggleUserStatusDirect;
+
 function chartHTML() {
   const rev = list("paiements").filter(x => ["Reçu", "Validé", "Payé"].includes(x.status)).reduce((s, x) => s + Number(x.amount || 0), 0);
   const exp = list("finances").reduce((s, x) => s + Number(x.amount || 0), 0);
@@ -3852,9 +4026,21 @@ function documentModuleIntro(key) {
   }
   if (canon === "utilisateurs") {
     return `
-      <div class="info" style="margin-bottom:14px;background:#eef2ff;border:1px solid #c7d2fe;color:#3730a3">
-        <b>🛡️ Gestion des Utilisateurs & Rôles (RBAC)</b><br>
-        Attribuez les permissions d'accès (ADMIN, DIRECTION, COMPTABILITE, OPERATIONS, LECTURE_SEULE).
+      <div class="info" style="margin-bottom:14px;background:#f0f7ff;border:1.5px solid #082b70;border-radius:10px;padding:14px 16px;color:#082b70">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <div>
+            <b style="font-size:13.5px;display:flex;align-items:center;gap:6px">👑 Gouvernance de l'Équipe LAPERLE TOUR HT (RBAC Multi-Rôles)</b>
+            <div style="font-size:12px;color:#475569;margin-top:4px">
+              Contrôle strict des accès opérationnels et financiers. <b>castimamoise@gmail.com</b> est immunisé en Super Admin maître originel.
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span class="user-role-badge admin super-admin" style="font-size:10px">👑 Super Admin</span>
+            <span class="user-role-badge direction" style="font-size:10px">🏢 Direction</span>
+            <span class="user-role-badge operations" style="font-size:10px">🚦 Opérations</span>
+            <span class="user-role-badge comptabilite" style="font-size:10px">💼 Comptabilité</span>
+          </div>
+        </div>
       </div>
     `;
   }
@@ -4005,7 +4191,33 @@ function drawTable(key) {
                   return `<td>${formatCell(val, x[2])}</td>`;
                 }).join("")}
                 <td class="action-cell">
-                  ${canEdit ? (canon === "utilisateurs" ? ((normalizeRoles(currentUserRoles).includes(ROLES.ADMIN) || normalizeRoles(currentUserRoles).includes(ROLES.SECRETAIRE)) && o.uid !== currentUser?.uid && o.id !== currentUser?.uid ? `<button class="tiny edit role-assign-btn" onclick="openUserRoleModal(${i})">🛡️ Rôles & Accès</button>` : `<span class="badge" style="background:#f1f5f9;color:#64748b;font-size:11px" title="Rôle protégé ou modification réservée à l'Administrateur">🔒 Rôle protégé</span>`) : `<button class="tiny edit" onclick="openForm('${canon}',${i})">Modifier</button>`) : ""}
+                  ${canEdit ? (canon === "utilisateurs" ? (() => {
+                    const isCallerAdmin = normalizeRoles(currentUserRoles).includes(ROLES.ADMIN) || isSuperAdminEmail(currentUser?.email);
+                    const isCallerSecretaire = normalizeRoles(currentUserRoles).includes(ROLES.SECRETAIRE);
+                    const isTargetSuper = isSuperAdminEmail(o.email);
+                    const isTargetSelf = o.uid === currentUser?.uid || o.id === currentUser?.uid || o.email === currentUser?.email;
+                    const curStatus = (resolveUserField(o, "status") || "").toLowerCase();
+                    const isActif = curStatus === "actif";
+
+                    let btns = "";
+                    if ((isCallerAdmin || isCallerSecretaire) && !isTargetSuper && !isTargetSelf) {
+                      btns += `<button class="tiny edit role-assign-btn" onclick="openUserRoleModal(${i})">🛡️ Rôles & Accès</button>`;
+                      if (isCallerAdmin) {
+                        if (isActif) {
+                          btns += `<button class="tiny" style="color:#b91c1c;border-color:#fca5a5;background:#fff" onclick="toggleUserStatusDirect(${i})" title="Désactiver l'accès en 1 clic">🔒 Désactiver</button>`;
+                        } else {
+                          btns += `<button class="tiny" style="color:#15803d;border-color:#86efac;background:#fff" onclick="toggleUserStatusDirect(${i})" title="Réactiver l'accès en 1 clic">✅ Activer</button>`;
+                        }
+                      }
+                    } else if (isTargetSuper) {
+                      btns += `<span class="user-role-badge admin super-admin" style="font-size:10px" title="Super Administrateur Fondateur (Immunisé contre toute suppression ou rétrogradation)">👑 Super Admin</span>`;
+                    } else if (isTargetSelf) {
+                      btns += `<span class="badge" style="background:#eff6ff;color:#1e40af;font-size:10.5px">👤 Mon compte</span>`;
+                    } else {
+                      btns += `<span class="badge" style="background:#f1f5f9;color:#64748b;font-size:10.5px">🔒 Rôle protégé</span>`;
+                    }
+                    return btns;
+                  })() : `<button class="tiny edit" onclick="openForm('${canon}',${i})">Modifier</button>`) : ""}
                   <button class="tiny" onclick="viewRow('${canon}',${i})">Voir</button>
                   ${canon === "proformas" ? `
                     <button class="tiny" onclick="createInvoiceFromQuote(${i})">Facture</button>
@@ -4014,7 +4226,8 @@ function drawTable(key) {
                   ${canon === "factures" ? `
                     <button class="tiny" onclick="printDocument('facture',${i})">PDF Facture</button>
                   ` : ""}
-                  ${canDelete ? `<button class="tiny delete" onclick="removeRow('${canon}',${i})">Archiver / Suppr.</button>` : ""}
+                  ${canDelete && canon !== "utilisateurs" ? `<button class="tiny delete" onclick="removeRow('${canon}',${i})">Archiver / Suppr.</button>` : ""}
+                  ${canDelete && canon === "utilisateurs" && !isSuperAdminEmail(o.email) && o.uid !== currentUser?.uid && o.id !== currentUser?.uid ? `<button class="tiny delete" onclick="removeRow('${canon}',${i})">Supprimer</button>` : ""}
                 </td>
               </tr>
             `;
@@ -4031,7 +4244,16 @@ function formatCell(v, t) {
     const list = Array.isArray(v) ? v : [v];
     return list.map(r => {
       const safe = String(r).toLowerCase();
-      return `<span class="user-role-badge ${safe}" style="font-size:10px;padding:2px 7px;margin:1px 2px;display:inline-block">${esc(ROLE_LABELS[safe] || safe.toUpperCase())}</span>`;
+      let label = ROLE_LABELS[safe] || safe.toUpperCase();
+      if (safe === "admin") label = "👑 Administrateur";
+      else if (safe === "direction") label = "🏢 Direction";
+      else if (safe === "operations") label = "🚦 Opérations";
+      else if (safe === "comptabilite") label = "💼 Comptabilité";
+      else if (safe === "secretaire") label = "📋 Secrétariat";
+      else if (safe === "chauffeur") label = "🚗 Chauffeur";
+      else if (safe === "client") label = "👤 Client";
+      else if (safe === "prospect") label = "🎯 Prospect";
+      return `<span class="user-role-badge ${safe}" style="font-size:10px;padding:2px 7px;margin:1px 2px;display:inline-block">${esc(label)}</span>`;
     }).join(" ");
   }
   if (typeof v === "string" && ["actif", "inactif", "suspendu"].includes(v.toLowerCase())) {
@@ -4148,10 +4370,18 @@ function openForm(key, index = -1) {
         obj.status = obj.status || 'actif';
         obj.statutCompte = 'actif';
         obj.statutClient = obj.role;
+        const isAdminUser = obj.role === 'admin' || obj.roles.includes('admin');
+        if (isAdminUser) {
+          obj.notes = obj.notes ? `${obj.notes} (Mot de passe initial : Admin2026)` : 'Mot de passe initial : Admin2026';
+        }
         try {
           await provisionUserInFirestore(obj);
           closeModal();
-          showToast(`✅ Utilisateur « ${cleanEmail} » enregistré dans Firestore !`);
+          if (isAdminUser) {
+            showToast(`👑 Administrateur « ${cleanEmail} » créé ! Mot de passe initial : Admin2026`);
+          } else {
+            showToast(`✅ Utilisateur « ${cleanEmail} » enregistré dans Firestore !`);
+          }
           drawTable('utilisateurs');
           return;
         } catch (err) {
@@ -5125,6 +5355,7 @@ function openProfile() {
           telephone: newPhone,
           phone: newPhone,
           photoURL: newPhoto,
+          needsProfileCompletion: false,
           ...(newPass ? { newPassword: newPass, newPasswordConfirm: newPassConfirm } : {})
         };
 
