@@ -1,11 +1,17 @@
-import { cert, getApps, initializeApp } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
-import { FieldValue, getFirestore } from 'firebase-admin/firestore';
-
 const PROJECT_ID = 'laperletourht-28ad8';
 const DATABASE_ID = 'ai-studio-centredecontrole-27e8ff4b-e91d-4923-8cc6-6265fb193fe7';
 
-function getFirebaseAdmin() {
+function sendJson(res, status, payload) {
+  res.statusCode = status;
+  res.end(JSON.stringify(payload));
+}
+
+async function getFirebaseAdmin() {
+  const [{ cert, getApps, initializeApp }, { getAuth }, { FieldValue, getFirestore }] = await Promise.all([
+    import('firebase-admin/app'),
+    import('firebase-admin/auth'),
+    import('firebase-admin/firestore')
+  ]);
   const existingApp = getApps()[0];
   if (existingApp) {
     return { auth: getAuth(existingApp), db: getFirestore(existingApp, DATABASE_ID) };
@@ -55,15 +61,15 @@ export default async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Allow', 'POST');
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Méthode non autorisée.' });
+    return sendJson(res, 405, { error: 'Méthode non autorisée.' });
   }
 
   const authorization = String(req.headers.authorization || '');
   const idToken = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
-  if (!idToken) return res.status(401).json({ error: 'Authentification Firebase requise.' });
+  if (!idToken) return sendJson(res, 401, { error: 'Authentification Firebase requise.' });
 
   try {
-    const { auth, db } = getFirebaseAdmin();
+    const { auth, db, FieldValue } = await getFirebaseAdmin();
     const user = await auth.verifyIdToken(idToken, true);
     const authRecord = await auth.getUser(user.uid);
     const authCreatedAt = timestampMillis(authRecord.metadata?.creationTime);
@@ -111,19 +117,19 @@ export default async function handler(req, res) {
     });
 
     const profileSnap = await ref.get();
-    return res.status(201).json({
+    return sendJson(res, 201, {
       success: true,
       profile: { ...profileSnap.data(), id: user.uid, uid: user.uid }
     });
   } catch (error) {
     if (error.code === 'ADMIN_CREDENTIALS_MISSING' || error.code === 'ADMIN_CREDENTIALS_INVALID') {
       console.error(`[Vercel auth registration] ${error.message}`);
-      return res.status(503).json({ error: 'Firebase Admin indisponible. Vérifiez FIREBASE_SERVICE_ACCOUNT_JSON sur Vercel.' });
+      return sendJson(res, 503, { error: 'Firebase Admin indisponible. Vérifiez FIREBASE_SERVICE_ACCOUNT_JSON sur Vercel.' });
     }
     console.error('[Vercel auth registration]', error?.code || error?.message || 'unknown error');
     if (error?.code === 'auth/id-token-expired' || error?.code === 'auth/argument-error' || error?.code === 'auth/invalid-id-token') {
-      return res.status(401).json({ error: 'Jeton Firebase invalide ou expiré.' });
+      return sendJson(res, 401, { error: 'Jeton Firebase invalide ou expiré.' });
     }
-    return res.status(500).json({ error: 'Impossible de créer le profil Firebase.' });
+    return sendJson(res, 500, { error: 'Impossible de créer le profil Firebase.' });
   }
 }
