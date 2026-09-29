@@ -83,6 +83,8 @@ try {
   const existingAdminApps = getAdminApps();
   const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   const serviceAccount = serviceAccountJson ? JSON.parse(serviceAccountJson) : null;
+  const hasAdminCredentials = !!(serviceAccount || process.env.GOOGLE_APPLICATION_CREDENTIALS);
+
   if (process.env.VERCEL === '1' && !serviceAccount && existingAdminApps.length === 0) {
     throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON is required on Vercel.');
   }
@@ -91,7 +93,13 @@ try {
     ...(serviceAccount ? { credential: cert(serviceAccount) } : {})
   });
   adminAuth = getAdminAuth(adminApp);
-  adminDb = getAdminFirestore(adminApp, firebaseConfig.firestoreDatabaseId);
+  if (hasAdminCredentials) {
+    try {
+      adminDb = getAdminFirestore(adminApp, firebaseConfig.firestoreDatabaseId);
+    } catch {
+      adminDb = null;
+    }
+  }
 } catch (adminInitErr) {
   console.warn('[Firebase Admin SDK Init]:', adminInitErr?.message);
 }
@@ -246,7 +254,9 @@ app.post('/api/auth/register', async (req, res) => {
       saveLocalUser(safeProfile);
       return res.status(201).json({ success: true, profile: safeProfile });
     } catch (adminErr) {
-      console.warn('[Register: Firestore write failed, using local persistence fallback]:', adminErr?.message);
+      if (adminErr?.code === 7 || String(adminErr?.message).includes('PERMISSION_DENIED')) {
+        adminDb = null;
+      }
     }
   }
 

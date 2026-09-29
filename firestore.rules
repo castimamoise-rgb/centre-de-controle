@@ -183,12 +183,9 @@ service cloud.firestore {
     }
 
     function isOwnClientIdentity(data) {
-      return (('clientId' in data && data.clientId == request.auth.uid) ||
-              ('uid' in data && data.uid == request.auth.uid) ||
-              ('clientUid' in data && data.clientUid == request.auth.uid)) &&
-        (!('clientId' in data) || data.clientId == request.auth.uid) &&
-        (!('uid' in data) || data.uid == request.auth.uid) &&
-        (!('clientUid' in data) || data.clientUid == request.auth.uid);
+      return (('clientId' in data) && data.clientId == request.auth.uid) ||
+             (('uid' in data) && data.uid == request.auth.uid) ||
+             (('clientUid' in data) && data.clientUid == request.auth.uid);
     }
 
     function isClientDoc(data) {
@@ -588,15 +585,23 @@ service cloud.firestore {
     }
     // 13. Notifications
     match /notifications/{notificationId} {
-      allow get, list: if isVerified() && isUserActive() && (
-        canManageNotifications() || (
-          (isClient() || isChauffeur()) && isNotificationTarget(existing())
+      allow get: if canManageNotifications() || (
+        isSignedIn() && isNotificationTarget(existing())
+      );
+      allow list: if canManageNotifications() || (
+        isSignedIn() && (
+          resource.data.targetUid in [request.auth.uid, 'all'] ||
+          resource.data.targetUid == request.auth.uid ||
+          resource.data.targetUid == 'all'
         )
       );
-      allow create: if isVerified() && isUserActive() && isValidId(notificationId) && isValidNotification(incoming()) && (canManageNotifications() || isClient() || isProspect());
-      allow update: if isVerified() && isUserActive() && isValidId(notificationId) && (
+      allow create: if isSignedIn() && isValidId(notificationId) && isValidNotification(incoming()) && (
+        canManageNotifications() || isClient() || isProspect() || isChauffeur() ||
+        (incoming().targetUid == "all" || incoming().targetUid == "broadcast" || incoming().forRole == "admin" || incoming().targetUid == request.auth.uid)
+      );
+      allow update: if isValidId(notificationId) && (
         canManageNotifications() || (
-          (isClient() || isChauffeur()) && isNotificationTarget(existing()) &&
+          isSignedIn() && isNotificationTarget(existing()) &&
           incoming().diff(existing()).affectedKeys().hasOnly(['read', 'updatedAt', 'updatedBy'])
         )
       );
