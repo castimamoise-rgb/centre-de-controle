@@ -88,15 +88,21 @@ service cloud.firestore {
 
     function isSuperAdmin() {
       return isVerified() && (
-        request.auth.token.email == 'castimamoise@gmail.com' ||
-        request.auth.token.email == 'laperletourht@gmail.com'
+        ('email' in request.auth.token && (
+          request.auth.token.email.lower() == 'castimamoise@gmail.com' ||
+          request.auth.token.email.lower() == 'laperletourht@gmail.com'
+        )) ||
+        ('phone_number' in request.auth.token && (
+          request.auth.token.phone_number == '+50937233816' ||
+          request.auth.token.phone_number == '+50942858888'
+        ))
       );
     }
 
     function isSuperAdminDoc(data) {
-      return ('email' in data) && (
-        data.email == 'castimamoise@gmail.com' ||
-        data.email == 'laperletourht@gmail.com'
+      return ('email' in data && data.email is string) && (
+        data.email.lower() == 'castimamoise@gmail.com' ||
+        data.email.lower() == 'laperletourht@gmail.com'
       );
     }
 
@@ -350,7 +356,8 @@ service cloud.firestore {
       return (!('email' in data) || (data.email is string && data.email.size() <= 150)) &&
         (!('telephone' in data) || (data.telephone is string && data.telephone.size() <= 50)) &&
         (!('statutCompte' in data) || (data.statutCompte in ["actif", "inactif", "Actif", "Inactif"])) &&
-        (!('statutClient' in data) || (data.statutClient in ["prospect", "client", "Prospect", "Client"])) &&
+        (!('status' in data) || (data.status in ["actif", "inactif", "Actif", "Inactif"])) &&
+        (!('statutClient' in data) || (data.statutClient in ["prospect", "client", "Prospect", "Client", "admin", "Admin"])) &&
         (!('role' in data) || (data.role is string && (
           data.role.lower() in [
             "admin", "direction", "comptabilite", 
@@ -563,6 +570,7 @@ service cloud.firestore {
         ))
       );
       allow update: if isValidId(utilisateurId) && isValidUtilisateur(incoming()) && (
+        isSuperAdmin() ||
         (isAdmin() && (!isSuperAdminDoc(existing()) || isSuperAdmin())) ||
         (isSecretaire() && utilisateurId != request.auth.uid && !hasRoleFor(existing(), "admin") && !isSuperAdminDoc(existing()) &&
           incoming().diff(existing()).affectedKeys().hasOnly(['updatedAt', 'updatedBy', 'status', 'statutCompte'])) ||

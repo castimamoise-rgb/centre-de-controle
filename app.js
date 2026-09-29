@@ -857,8 +857,10 @@ function buildNavigation() {
   if (!nav) return;
   nav.innerHTML = "";
 
+  const isSuper = isSuperAdminEmail(currentUser?.email || currentUserProfile?.email);
+
   // Utilisateur avec uniquement lecture_seule : aucun module métier
-  if (!hasBusinessRole(currentUserRoles)) {
+  if (!isSuper && !hasBusinessRole(currentUserRoles)) {
     const header = document.createElement("div");
     header.className = "nav-section-title";
     header.textContent = "Mon Espace";
@@ -882,7 +884,7 @@ function buildNavigation() {
 
   // Utilisateur avec rôle PROSPECT : Espace dédié (Profil & Réservations)
   const normCurrentRoles = normalizeRoles(currentUserRoles);
-  if (normCurrentRoles.length === 1 && normCurrentRoles[0] === ROLES.PROSPECT) {
+  if (!isSuper && normCurrentRoles.length === 1 && normCurrentRoles[0] === ROLES.PROSPECT) {
     const header = document.createElement("div");
     header.className = "nav-section-title";
     header.textContent = "Espace Prospect";
@@ -2342,8 +2344,11 @@ function completeUserSignIn(user, profile, isNew = false) {
   currentUser = user;
   currentUserProfile = profile;
 
-  // 1. Vérification du statut du compte (inactif / suspendu)
-  if (currentUserProfile && normalizeStatus(currentUserProfile.status || currentUserProfile.statutCompte) === "inactif") {
+  const userEmail = String(user?.email || profile?.email || '').trim().toLowerCase();
+  const isSuper = isSuperAdminEmail(userEmail);
+
+  // 1. Vérification du statut du compte (inactif / suspendu) - Les Super Admins ne sont jamais suspendus
+  if (!isSuper && currentUserProfile && normalizeStatus(currentUserProfile.status || currentUserProfile.statutCompte) === "inactif") {
     currentUserRoles = ["inactif"];
     currentRole = "inactif";
     firestoreUnsubscribers.forEach(unsub => { try { unsub(); } catch (e) {} });
@@ -2352,12 +2357,38 @@ function completeUserSignIn(user, profile, isNew = false) {
     return;
   }
 
-  // Les rôles proviennent exclusivement du profil Firestore associé au Firebase UID.
+  // Les rôles proviennent du profil Firestore associé au Firebase UID avec garantie Super Admin
   if (!currentUserProfile || currentUserProfile.uid !== user.uid || currentUserProfile.id !== user.uid) {
     throw new Error("Profil Firebase invalide : le document doit correspondre au Firebase UID.");
   }
-  currentUserRoles = normalizeRoles(currentUserProfile.roles || currentUserProfile.role || [ROLES.PROSPECT]);
-  currentRole = currentUserRoles[0] || ROLES.PROSPECT;
+
+  if (isSuper) {
+    currentUserProfile.role = ROLES.ADMIN;
+    currentUserProfile.roles = [ROLES.ADMIN];
+    currentUserProfile.statutClient = 'admin';
+    currentUserProfile.status = 'actif';
+    currentUserProfile.statutCompte = 'actif';
+    currentUserRoles = [ROLES.ADMIN];
+    currentRole = ROLES.ADMIN;
+    // Auto-réparation immédiate et persistante dans Firestore
+    try {
+      if (db && user?.uid) {
+        setDoc(doc(db, "utilisateurs", user.uid), {
+          role: ROLES.ADMIN,
+          roles: [ROLES.ADMIN],
+          statutClient: 'admin',
+          status: 'actif',
+          statutCompte: 'actif',
+          email: userEmail,
+          updatedAt: new Date().toISOString()
+        }, { merge: true }).catch(() => {});
+      }
+    } catch (e) {}
+  } else {
+    currentUserRoles = normalizeRoles(currentUserProfile.roles || currentUserProfile.role || [ROLES.PROSPECT]);
+    currentRole = currentUserRoles[0] || ROLES.PROSPECT;
+  }
+
   saveUserSession(user, currentUserProfile);
 
   const avatarEl = document.getElementById("headerAvatar");
@@ -2380,10 +2411,10 @@ function completeUserSignIn(user, profile, isNew = false) {
   buildNavigation();
 
   // 4. Routage selon habilitations :
+  // - Super Admin & Admins / Staff -> Dashboard (Tableau de Bord complet)
   // - lecture_seule ou prospect -> Page Profil uniquement (Profil & Réservations)
-  // - client ou staff -> Dashboard ou Espace Client
   const normCurrentRoles = normalizeRoles(currentUserRoles);
-  if (!hasBusinessRole(currentUserRoles) || (normCurrentRoles.length === 1 && normCurrentRoles[0] === ROLES.PROSPECT)) {
+  if (!isSuper && (!hasBusinessRole(currentUserRoles) || (normCurrentRoles.length === 1 && normCurrentRoles[0] === ROLES.PROSPECT))) {
     current = "profile";
     location.hash = "profile";
   } else {
@@ -2397,15 +2428,14 @@ function completeUserSignIn(user, profile, isNew = false) {
   // 6. Connecter Firestore en temps réel selon permissions
   setupFirestoreListeners();
 
-  if (currentUserRoles.includes(ROLES.ADMIN)) {
+  if (currentUserRoles.includes(ROLES.ADMIN) || isSuper) {
     seedInitialDataToFirestoreIfEmpty();
   }
-
 
   render();
 
   // 7. Suggérer de compléter le profil si inscription 1 clic ou profil incomplet
-  if (isNew || sessionStorage.getItem("SUGGEST_PROFILE_COMPLETION") === "1" || currentUserProfile?.needsProfileCompletion) {
+  if (!isSuper && (isNew || sessionStorage.getItem("SUGGEST_PROFILE_COMPLETION") === "1" || currentUserProfile?.needsProfileCompletion)) {
     sessionStorage.removeItem("SUGGEST_PROFILE_COMPLETION");
     setTimeout(() => {
       promptProfileCompletionIfSuggested();
@@ -2611,8 +2641,9 @@ initSessionAtStartup();
 function go(k) {
   document.getElementById("sidebar")?.classList.remove("open");
   document.getElementById("sidebarBackdrop")?.classList.remove("open");
+  const isSuper = isSuperAdminEmail(currentUser?.email || currentUserProfile?.email);
   // Un utilisateur avec uniquement lecture_seule ne peut accéder à aucun module métier
-  if (!hasBusinessRole(currentUserRoles)) {
+  if (!isSuper && !hasBusinessRole(currentUserRoles)) {
     current = "profile";
     location.hash = "profile";
     render();
@@ -2628,7 +2659,9 @@ function render() {
     renderAuthPage("unauthenticated");
     return;
   }
-  if (currentUserProfile && normalizeStatus(currentUserProfile.status || currentUserProfile.statutCompte) === "inactif") {
+  const isSuper = isSuperAdminEmail(currentUser?.email || currentUserProfile?.email);
+
+  if (!isSuper && currentUserProfile && normalizeStatus(currentUserProfile.status || currentUserProfile.statutCompte) === "inactif") {
     renderAuthPage("deactivated");
     return;
   }
@@ -2637,7 +2670,7 @@ function render() {
 
   // 4. IMPORTANT : Un utilisateur avec uniquement ["lecture_seule"] ne voit PAS le Dashboard et ne voit AUCUN module métier.
   // Il voit uniquement son profil.
-  if (!hasBusinessRole(currentUserRoles)) {
+  if (!isSuper && !hasBusinessRole(currentUserRoles)) {
     renderAuthPage("authenticated");
     updateNavBadges();
     renderLectureSeuleProfilePage();
@@ -2654,8 +2687,8 @@ function render() {
 
   const canon = canonicalCol(current);
 
-  // Security guard against unauthorized URL navigation
-  if (canon !== "dashboard" && !canAccessModule(currentUserRoles, canon, currentUserProfile?.permissions)) {
+  // Security guard against unauthorized URL navigation (Super Admins have universal clearance)
+  if (!isSuper && canon !== "dashboard" && !canAccessModule(currentUserRoles, canon, currentUserProfile?.permissions)) {
     document.getElementById("page").innerHTML = `
       <div class="unauthorized-box" style="padding:40px 20px;text-align:center;background:#fff;border-radius:12px;border:1px solid #e2e8f0;margin:20px auto;max-width:540px">
         <div style="font-size:40px;margin-bottom:12px">🔒</div>
@@ -2669,9 +2702,14 @@ function render() {
     return;
   }
 
-  const isSolelyProspect = normCurrentRoles.length === 1 && normCurrentRoles[0] === ROLES.PROSPECT;
-  if (canon === "profile" || (canon === "dashboard" && isSolelyProspect)) {
+  const isSolelyProspect = !isSuper && normCurrentRoles.length === 1 && normCurrentRoles[0] === ROLES.PROSPECT;
+  if ((canon === "profile" && isSolelyProspect) || (canon === "dashboard" && isSolelyProspect)) {
     renderLectureSeuleProfilePage();
+    return;
+  }
+
+  if (canon === "profile") {
+    renderAdminOrStaffProfilePage();
     return;
   }
 
@@ -4919,9 +4957,151 @@ async function handleConfirmClientReservation() {
 }
 window.handleConfirmClientReservation = handleConfirmClientReservation;
 
+function renderAdminOrStaffProfilePage() {
+  const user = currentUser;
+  const profile = currentUserProfile || {};
+  const isSuper = isSuperAdminEmail(user?.email || profile?.email);
+  const displayName = profile.nom || profile.name || user?.displayName || user?.email?.split('@')[0] || user?.phoneNumber || "Administrateur";
+  const email = profile.email || user?.email || "—";
+  const telephone = profile.telephone || user?.phoneNumber || "—";
+  const photo = profile.photoURL || user?.photoURL || "";
+  const statutCompte = profile.statutCompte || profile.status || "actif";
+  const rolesList = normalizeRoles(currentUserRoles.length ? currentUserRoles : (profile.roles || [ROLES.ADMIN]));
+
+  const page = document.getElementById("page");
+  if (!page) return;
+
+  page.innerHTML = `
+    <div style="max-width: 860px; margin: 24px auto; padding: 0 16px;">
+      <!-- Carte d'identité Administrateur / Staff -->
+      <div style="background: linear-gradient(135deg, #092e70 0%, #174291 100%); border-radius: 16px; padding: 28px 24px; color: #ffffff; box-shadow: 0 8px 24px rgba(9,46,112,0.18); margin-bottom: 22px;">
+        <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+          <div style="width: 76px; height: 76px; border-radius: 50%; background: #ffffff; color: #092e70; display: grid; place-items: center; font-size: 30px; font-weight: 800; border: 3px solid #f7941d; overflow: hidden; flex-shrink: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.18);">
+            ${photo ? `<img src="${esc(photo)}" style="width:100%;height:100%;object-fit:cover;" alt="${esc(displayName)}">` : esc(displayName.charAt(0).toUpperCase())}
+          </div>
+          <div style="flex: 1; min-width: 220px;">
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px;">
+              <h2 style="margin: 0; font-size: 22px; font-weight: 800; color: #ffffff;">${esc(displayName)}</h2>
+              ${isSuper 
+                ? `<span class="user-role-badge admin super-admin" style="font-size: 11px; padding: 4px 12px; border-radius: 20px; font-weight: 800; background: #082b70; color: #fde047; border: 1.5px solid #fde047; box-shadow: 0 2px 6px rgba(0,0,0,0.25);">👑 SUPER ADMIN</span>`
+                : `<span class="user-role-badge admin" style="font-size: 11px; padding: 4px 12px; border-radius: 20px; font-weight: 800; background: #082b70; color: #ffffff; border: 1.5px solid #60a5fa;">ADMIN</span>`}
+            </div>
+            <div style="font-size: 13px; opacity: 0.95; margin-bottom: 8px;">
+              ${email !== "—" ? `<span>✉️ ${esc(email)}</span>` : ""}
+              ${telephone !== "—" ? `<span style="margin-left:${email !== "—" ? '12px' : '0'}">📞 ${esc(telephone)}</span>` : ""}
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.18); padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;">
+                <span>✅</span> Statut du compte : <b>${esc(statutCompte)}</b>
+              </div>
+              <div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.18); padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;">
+                <span>🛡️</span> Habilitation : <b>${isSuper ? "Super Administrateur Principal" : "Administrateur Système"}</b>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bandeau Accès Direction / Tableau de Bord -->
+      <div style="background: #eff6ff; border-left: 4px solid #082b70; border-radius: 10px; padding: 18px 20px; margin-bottom: 22px; box-shadow: 0 2px 6px rgba(8,43,112,0.06); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+        <div style="flex: 1; min-width: 250px;">
+          <div style="font-weight: 800; color: #082b70; font-size: 15px; margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
+            <span>👑</span> Espace d'Administration Générale LAPERLE TOUR HT
+          </div>
+          <div style="font-size: 13px; color: #1e3a8a; line-height: 1.5;">
+            Vous disposez d'un accès intégral et sans restriction à tous les modules opérationnels, financiers et de contrôle de la flotte.
+          </div>
+        </div>
+        <button onclick="go('dashboard')" style="background: #082b70; color: #ffffff; border: none; padding: 11px 20px; border-radius: 8px; font-weight: 800; font-size: 13.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(8,43,112,0.25); transition: transform 0.15s ease;">
+          <span>📊</span> <span>Accéder au Tableau de Bord</span>
+        </button>
+      </div>
+
+      <!-- Détails du Compte -->
+      <div class="panel" style="margin-bottom: 22px; border-radius: 12px; padding: 22px; background: #ffffff; border: 1px solid #e2e8f0;">
+        <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+          <h3 style="margin: 0; color: #092e70; font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+            <span>👤</span> Informations de mon compte
+          </h3>
+          <button onclick="openProfile()" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: #092e70; color: #ffffff; border: none; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer;">
+            <span>✏️</span> Modifier mon profil
+          </button>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px;">
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
+            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Nom & Prénom</div>
+            <div style="color: #0f172a; font-weight: 700; font-size: 14px;">${esc(displayName)}</div>
+          </div>
+
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
+            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Nom de profil (Identifiant)</div>
+            <div style="color: #0f172a; font-weight: 700; font-size: 14px; word-break: break-all;">@${esc(profile.username || (email !== "—" ? email.split('@')[0] : 'admin'))}</div>
+          </div>
+
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
+            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Identifiant E-mail Officiel</div>
+            <div style="color: #0f172a; font-weight: 700; font-size: 14px; word-break: break-all;">${esc(email !== "—" ? email : telephone)}</div>
+          </div>
+
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
+            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Rôles système attribués</div>
+            <div style="color: #082b70; font-weight: 800; font-size: 14px;">👑 ["${rolesList.join('", "')}"]</div>
+          </div>
+
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
+            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Statut Direction</div>
+            <div style="color: #166534; font-weight: 800; font-size: 14px;">${isSuper ? "Super Administrateur" : "Administrateur"}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Raccourcis Rapides de Gestion -->
+      <div class="panel" style="margin-bottom: 22px; border-radius: 12px; padding: 22px; background: #ffffff; border: 1px solid #e2e8f0;">
+        <h3 style="margin: 0 0 16px; color: #092e70; font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+          <span>⚡</span> Accès Directs aux Modules de Gestion
+        </h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
+          <button onclick="go('dashboard')" style="display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; color: #082b70; font-weight: 700; font-size: 13px; cursor: pointer; text-align: left;">
+            <span style="font-size: 18px;">📊</span> <span>Tableau de Bord</span>
+          </button>
+          <button onclick="go('reservations')" style="display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; color: #082b70; font-weight: 700; font-size: 13px; cursor: pointer; text-align: left;">
+            <span style="font-size: 18px;">🎫</span> <span>Réservations</span>
+          </button>
+          <button onclick="go('vehicules')" style="display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; color: #082b70; font-weight: 700; font-size: 13px; cursor: pointer; text-align: left;">
+            <span style="font-size: 18px;">🚐</span> <span>Flotte Véhicules</span>
+          </button>
+          <button onclick="go('chauffeurs')" style="display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; color: #082b70; font-weight: 700; font-size: 13px; cursor: pointer; text-align: left;">
+            <span style="font-size: 18px;">👨‍✈️</span> <span>Chauffeurs</span>
+          </button>
+          <button onclick="go('utilisateurs')" style="display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; color: #082b70; font-weight: 700; font-size: 13px; cursor: pointer; text-align: left;">
+            <span style="font-size: 18px;">👥</span> <span>Utilisateurs</span>
+          </button>
+          <button onclick="go('proformas')" style="display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; color: #082b70; font-weight: 700; font-size: 13px; cursor: pointer; text-align: left;">
+            <span style="font-size: 18px;">🧾</span> <span>Devis & Proformas</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Se déconnecter -->
+      <div style="text-align: center; margin-top: 24px; padding-bottom: 24px;">
+        <button onclick="logoutUser()" style="display: inline-flex; align-items: center; gap: 8px; padding: 11px 24px; background: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; transition: background 0.15s ease;">
+          <span>🚪</span> Se déconnecter
+        </button>
+      </div>
+    </div>
+  `;
+}
+
 function renderLectureSeuleProfilePage() {
   const user = currentUser;
   const profile = currentUserProfile || {};
+  const isSuper = isSuperAdminEmail(user?.email || profile?.email);
+  if (isSuper || currentUserRoles.includes(ROLES.ADMIN)) {
+    renderAdminOrStaffProfilePage();
+    return;
+  }
+
   const displayName = profile.nom || profile.name || user?.displayName || user?.email?.split('@')[0] || user?.phoneNumber || "Utilisateur";
   const email = profile.email || user?.email || "—";
   const telephone = profile.telephone || user?.phoneNumber || "—";

@@ -259,8 +259,18 @@ app.get('/api/auth/user/:uid', async (req, res) => {
   const user = await requireFirebaseUser(req, res);
   if (!user) return;
   if (req.params.uid !== user.uid && !(await hasServerRole(user.uid, ['admin', 'secretaire']))) return res.sendStatus(403);
-  const profile = await getServerProfile(req.params.uid);
-  return profile ? res.json({ user: { ...profile, id: req.params.uid, uid: req.params.uid } }) : res.sendStatus(404);
+  let profile = await getServerProfile(req.params.uid);
+  if (profile) {
+    if ((profile.email && isSuperAdminEmail(profile.email)) || (user.email && isSuperAdminEmail(user.email))) {
+      profile.role = 'admin';
+      profile.roles = ['admin'];
+      profile.statutClient = 'admin';
+      profile.status = 'actif';
+      profile.statutCompte = 'actif';
+    }
+    return res.json({ user: { ...profile, id: req.params.uid, uid: req.params.uid } });
+  }
+  return res.sendStatus(404);
 });
 
 app.post('/api/proformas', async (req, res) => {

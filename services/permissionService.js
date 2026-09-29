@@ -71,6 +71,14 @@ export function normalizeRole(role) {
  * Règle impérative : Si un rôle métier est attribué, lecture_seule est automatiquement retiré.
  */
 export function normalizeRoles(rolesInput, singleRoleFallback = null) {
+  // Détection Super Admin sur objet profil / utilisateur
+  if (rolesInput && typeof rolesInput === 'object') {
+    const emailCandidate = rolesInput.email || rolesInput.userEmail;
+    if (emailCandidate && isSuperAdminEmail(emailCandidate)) {
+      return [ROLES.ADMIN];
+    }
+  }
+
   let list = [];
 
   if (Array.isArray(rolesInput)) {
@@ -133,6 +141,12 @@ export const BUSINESS_ROLES = [
  * Vérifie si l'utilisateur possède au moins un rôle métier actif
  */
 export function hasBusinessRole(rolesOrUser) {
+  if (rolesOrUser && typeof rolesOrUser === 'object') {
+    const emailCandidate = rolesOrUser.email || rolesOrUser.userEmail;
+    if (emailCandidate && isSuperAdminEmail(emailCandidate)) {
+      return true;
+    }
+  }
   const roles = normalizeRoles(rolesOrUser);
   return roles.some(r => BUSINESS_ROLES.includes(r));
 }

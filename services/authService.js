@@ -482,7 +482,18 @@ export async function processAuthenticatedUser(user, email = '', customName = ''
   if (!profile) {
     profile = await createUserProfile(user, { name: customName, telephone: phone, email });
   }
-  if (normalizeStatus(profile.status || profile.statutCompte) === 'inactif') {
+
+  const userEmail = String(user.email || email || profile?.email || '').trim().toLowerCase();
+  const isSuper = isSuperAdminEmail(userEmail);
+  if (isSuper && profile) {
+    profile.role = 'admin';
+    profile.roles = ['admin'];
+    profile.statutClient = 'admin';
+    profile.status = 'actif';
+    profile.statutCompte = 'actif';
+  }
+
+  if (!isSuper && normalizeStatus(profile.status || profile.statutCompte) === 'inactif') {
     try { await signOut(auth); } catch {}
     clearUserSession();
     throw new Error('Ce compte est désactivé.');
@@ -499,31 +510,78 @@ export async function processAuthenticatedUser(user, email = '', customName = ''
 export async function getUserProfile(uid) {
   const user = auth.currentUser;
   if (!user || !uid || uid !== user.uid) return null;
+  let profile = null;
+
   // 1. Essai Firestore Client SDK
   try {
     const snap = await getDoc(doc(db, USERS_COLLECTION, user.uid));
-    if (snap.exists()) return { ...snap.data(), id: snap.id, uid: user.uid };
+    if (snap.exists()) {
+      profile = { ...snap.data(), id: snap.id, uid: user.uid };
+    }
   } catch (err) {
     console.warn("getUserProfile client Firestore:", err?.message);
   }
 
   // 2. Repli vers l'API serveur sécurisée
-  try {
-    const token = await user.getIdToken(false);
-    const res = await safeFetchJson(`/api/auth/user/${user.uid}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (res.ok && (res.data?.user || res.data?.profile)) {
-      return res.data.user || res.data.profile;
-    }
-  } catch (e) {}
+  if (!profile) {
+    try {
+      const token = await user.getIdToken(false);
+      const res = await safeFetchJson(`/api/auth/user/${user.uid}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok && (res.data?.user || res.data?.profile)) {
+        profile = res.data.user || res.data.profile;
+      }
+    } catch (e) {}
+  }
 
   // 3. Repli vers la session locale en mémoire/cache
-  const session = getUserSession();
-  if (session?.profile && (session.profile.id === uid || session.profile.uid === uid)) {
-    return session.profile;
+  if (!profile) {
+    const session = getUserSession();
+    if (session?.profile && (session.profile.id === uid || session.profile.uid === uid)) {
+      profile = session.profile;
+    }
   }
-  return null;
+
+  if (!profile) return null;
+
+  // AUTO-HEALING & SYNCHRONISATION SUPER ADMIN :
+  // Si le compte correspond à une adresse Super Admin officielle (laperletourht@gmail.com, castimamoise@gmail.com),
+  // garantir immédiatement le rôle admin et synchroniser le document Firestore
+  const cleanEmail = String(user.email || profile.email || '').trim().toLowerCase();
+  if (isSuperAdminEmail(cleanEmail)) {
+    const needsElevation = !Array.isArray(profile.roles) ||
+                           !profile.roles.includes('admin') ||
+                           profile.role !== 'admin' ||
+                           profile.statutClient !== 'admin' ||
+                           profile.status !== 'actif';
+    profile.role = 'admin';
+    profile.roles = ['admin'];
+    profile.statutClient = 'admin';
+    profile.status = 'actif';
+    profile.statutCompte = 'actif';
+
+    if (needsElevation) {
+      try {
+        const userDocRef = doc(db, USERS_COLLECTION, user.uid);
+        await setDoc(userDocRef, {
+          role: 'admin',
+          roles: ['admin'],
+          statutClient: 'admin',
+          status: 'actif',
+          statutCompte: 'actif',
+          email: cleanEmail,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+        console.log(`[SuperAdmin] Profil élevé automatiquement au rôle admin pour ${cleanEmail}`);
+      } catch (errElevate) {
+        console.warn("[SuperAdmin] Erreur auto-élévation Firestore:", errElevate?.message);
+      }
+      saveUserSession(user, profile);
+    }
+  }
+
+  return profile;
 }
 /**
  * Crée automatiquement le profil Firestore et serveur pour un nouvel utilisateur (Google, Email ou Express)
@@ -533,12 +591,21 @@ export async function createUserProfile(user, customData = {}) {
 
   const uid = user.uid;
   const email = (user.email || customData.email || '').toLowerCase().trim();
+  const isMasterAdmin = isSuperAdminEmail(email);
+
   const existing = await getUserProfile(uid);
   if (existing) {
+    if (isMasterAdmin) {
+      existing.role = 'admin';
+      existing.roles = ['admin'];
+      existing.statutClient = 'admin';
+      existing.status = 'actif';
+      existing.statutCompte = 'actif';
+      saveUserSession(user, existing);
+    }
     return existing;
   }
 
-  const isMasterAdmin = isSuperAdminEmail(email);
   const role = isMasterAdmin ? 'admin' : (customData.role || 'prospect');
   const roles = isMasterAdmin ? ['admin'] : (customData.roles || (customData.role ? [customData.role] : ['prospect']));
   const cleanNom = customData.nom || (user.displayName ? user.displayName.split(' ')[0] : (email ? email.split('@')[0] : 'Utilisateur'));
@@ -616,11 +683,20 @@ export async function updateUserLastLogin(uid) {
 
 export async function ensureUserProfile(user, mode = 'register') {
   if (!user || !user.uid) return null;
+  const cleanEmail = String(user.email || '').trim().toLowerCase();
+  const isSuper = isSuperAdminEmail(cleanEmail);
   const existing = await getUserProfile(user.uid);
 
   if (existing) {
+    if (isSuper) {
+      existing.role = 'admin';
+      existing.roles = ['admin'];
+      existing.statutClient = 'admin';
+      existing.status = 'actif';
+      existing.statutCompte = 'actif';
+    }
     const isDeactivated = normalizeStatus(existing.status || existing.statutCompte) === 'inactif';
-    if (isDeactivated) {
+    if (!isSuper && isDeactivated) {
       try { await signOut(auth); } catch (e) {}
       clearUserSession();
       throw new Error("Ce compte a été désactivé ou suspendu par l'administration LAPERLE TOUR HT.");
