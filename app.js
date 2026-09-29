@@ -4933,7 +4933,31 @@ async function handleConfirmClientReservation() {
       throw new Error("Session Firebase invalide ou Firestore indisponible.");
     }
 
-    // Écriture Firestore sécurisée
+    // Synchronisation du profil prospect dans Firestore
+    try {
+      const userDocRef = doc(db, "utilisateurs", uid);
+      await setDoc(userDocRef, {
+        id: uid,
+        uid: uid,
+        email: email,
+        name: clientName,
+        nom: prof.nom || clientName,
+        prenom: prof.prenom || "",
+        username: prof.username || (email ? email.split('@')[0] : `user_${uid.slice(0, 6)}`),
+        phone: phone,
+        telephone: phone,
+        role: "prospect",
+        roles: ["prospect"],
+        statutClient: "prospect",
+        status: "actif",
+        statutCompte: "actif",
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    } catch (e) {
+      console.warn("Sync profil prospect Firestore:", e?.message);
+    }
+
+    // Écriture Firestore sécurisée de la réservation
     await setDoc(doc(db, "reservations", resId), resItem);
 
     // Notification broadcast pour les administrateurs et secrétaires

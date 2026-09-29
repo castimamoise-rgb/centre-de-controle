@@ -192,7 +192,7 @@ service cloud.firestore {
     }
 
     function isClientDoc(data) {
-      return (isClient() || isProspect()) && isOwnClientIdentity(data);
+      return isSignedIn() && isOwnClientIdentity(data);
     }
 
     function isNotificationTarget(data) {
@@ -491,11 +491,11 @@ service cloud.firestore {
     // 8. Réservations (/reservations and alias /bookings)
     match /reservations/{reservationId} {
       allow get, list: if canReadOperations() || 
-        ((isClient() || isProspect()) && isClientDoc(existing())) ||
+        (isSignedIn() && isClientDoc(existing())) ||
         (isChauffeur() && isChauffeurDoc(existing()));
       allow create: if isValidId(reservationId) && isValidReservation(incoming()) && (
         canManageOperations() || (
-          (isClient() || isProspect()) &&
+          isSignedIn() &&
           isOwnClientIdentity(incoming())
         )
       );
@@ -503,7 +503,7 @@ service cloud.firestore {
       allow delete: if isAdmin() && isValidId(reservationId);
     }
     match /bookings/{bookingId} {
-      allow get, list: if canReadOperations() || ((isClient() || isProspect()) && isClientDoc(existing())) || (isChauffeur() && isChauffeurDoc(existing()));
+      allow get, list: if canReadOperations() || (isSignedIn() && isClientDoc(existing())) || (isChauffeur() && isChauffeurDoc(existing()));
       allow create, update: if canManageOperations() && isValidId(bookingId);
       allow delete: if isAdmin() && isValidId(bookingId);
     }
@@ -577,11 +577,12 @@ service cloud.firestore {
           incoming().diff(existing()).affectedKeys().hasOnly(['updatedAt', 'updatedBy', 'status', 'statutCompte'])) ||
         (isSignedIn() && request.auth.uid == utilisateurId &&
           incoming().uid == existing().uid && incoming().id == existing().id &&
-          incoming().email == existing().email && incoming().role == existing().role &&
-          incoming().roles == existing().roles && incoming().statutClient == existing().statutClient &&
-          incoming().status == existing().status && incoming().statutCompte == existing().statutCompte &&
-          incoming().permissions == existing().permissions &&
-          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'nom', 'prenom', 'username', 'phone', 'telephone', 'photoURL', 'avatar', 'updatedAt', 'lastLoginAt']))
+          incoming().role == existing().role && incoming().roles == existing().roles &&
+          (!('permissions' in existing()) || incoming().permissions == existing().permissions) &&
+          (!('statutClient' in existing()) || incoming().statutClient == existing().statutClient) &&
+          (!('status' in existing()) || incoming().status == existing().status) &&
+          (!('statutCompte' in existing()) || incoming().statutCompte == existing().statutCompte) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'nom', 'prenom', 'username', 'phone', 'telephone', 'email', 'photoURL', 'avatar', 'updatedAt', 'lastLoginAt', 'status', 'statutCompte', 'statutClient', 'permissions']))
       );
       allow delete: if isAdmin() && utilisateurId != request.auth.uid && !isSuperAdminDoc(existing());
     }
