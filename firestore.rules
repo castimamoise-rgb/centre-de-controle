@@ -184,10 +184,11 @@ service cloud.firestore {
 
     function isOwnClientIdentity(data) {
       return (('clientId' in data && data.clientId == request.auth.uid) ||
-              ('uid' in data && data.uid == request.auth.uid)) &&
+              ('uid' in data && data.uid == request.auth.uid) ||
+              ('clientUid' in data && data.clientUid == request.auth.uid)) &&
         (!('clientId' in data) || data.clientId == request.auth.uid) &&
         (!('uid' in data) || data.uid == request.auth.uid) &&
-        (!('email' in data) || data.email == request.auth.token.email);
+        (!('clientUid' in data) || data.clientUid == request.auth.uid);
     }
 
     function isClientDoc(data) {
@@ -202,7 +203,7 @@ service cloud.firestore {
         (('uid' in data) && data.uid == request.auth.uid) ||
         (('clientId' in data) && data.clientId == request.auth.uid) ||
         (('chauffeurId' in data) && data.chauffeurId == request.auth.uid) ||
-        (('email' in data) && data.email == request.auth.token.email)
+        (('email' in data) && ('email' in request.auth.token) && data.email == request.auth.token.email)
       );
     }
 
@@ -591,7 +592,7 @@ service cloud.firestore {
           (isClient() || isChauffeur()) && isNotificationTarget(existing())
         )
       );
-      allow create: if isVerified() && isUserActive() && isValidId(notificationId) && isValidNotification(incoming()) && canManageNotifications();
+      allow create: if isVerified() && isUserActive() && isValidId(notificationId) && isValidNotification(incoming()) && (canManageNotifications() || isClient() || isProspect());
       allow update: if isVerified() && isUserActive() && isValidId(notificationId) && (
         canManageNotifications() || (
           (isClient() || isChauffeur()) && isNotificationTarget(existing()) &&

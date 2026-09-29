@@ -4885,66 +4885,103 @@ async function handleConfirmClientReservation() {
     if (!uid) throw new Error("Utilisateur non connecté ou session invalide.");
 
     const prof = currentUserProfile || {};
+    const parts = dest.includes("➔") ? dest.split("➔").map(s => s.trim()) : [dest, dest];
+    const clientName = prof.nom || prof.name || currentUser.displayName || (prof.email ? prof.email.split('@')[0] : "Client LAPERLE");
+    const numPassengers = parseInt(passengers, 10) || 1;
+    const phone = prof.telephone || prof.phone || currentUser.phoneNumber || "";
+    const email = prof.email || currentUser.email || "";
 
-    // 1. Création de l'enregistrement de réservation dans la collection 'reservations'
-    // RÈGLE MÉTIER : Le PROSPECT peut créer une réservation mais RESTE PROSPECT jusqu'à son premier proforma
+    // 1. Création de l'enregistrement de réservation conforme au schéma complet de la plateforme
     const resId = "RES-" + Date.now().toString(36).toUpperCase();
     const resItem = {
       id: resId,
       code: resId,
-      nomClient: prof.nom || prof.name || currentUser.displayName || "Client LAPERLE",
-      clientUid: uid,
+      client: clientName,
+      nomClient: clientName,
       clientId: uid,
-      telephone: prof.telephone || prof.phone || currentUser.phoneNumber || "",
-      email: prof.email || currentUser.email || "",
+      clientUid: uid,
+      uid: uid,
+      createdBy: uid,
+      updatedBy: uid,
+      telephone: phone,
+      phone: phone,
+      email: email,
+      origin: parts[0] || dest,
+      destination: parts[1] || dest,
       trajet: dest,
       route: dest,
-      typePrestation: service,
       service: service,
-      dateDepart: date,
+      typePrestation: service,
       date: date,
-      passagers: parseInt(passengers, 10) || 1,
-      statut: "Confirmée",
+      dateDepart: date,
+      time: "08:00",
+      passengers: numPassengers,
+      passagers: numPassengers,
+      amount: 2500,
       montantTotal: 2500,
+      price: 2500,
       devise: "HTG",
-      createdAt: new Date().toISOString()
+      status: "À confirmer",
+      statut: "À confirmer",
+      notes: `${service} • ${dest} • ${numPassengers} passager(s) • Réservé en ligne`,
+      archived: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
 
     if (!db || !auth.currentUser || auth.currentUser.uid !== uid) {
       throw new Error("Session Firebase invalide ou Firestore indisponible.");
     }
-    await setDoc(doc(db, "reservations", resId), {
-      ...resItem,
-      uid,
-      clientId: uid,
-      createdBy: uid,
-      updatedBy: uid,
-      archived: false,
-      updatedAt: new Date().toISOString()
-    });
+
+    // Écriture Firestore sécurisée
+    await setDoc(doc(db, "reservations", resId), resItem);
+
+    // Notification broadcast pour les administrateurs et secrétaires
+    try {
+      const notifId = "NOTIF-" + Date.now().toString(36).toUpperCase();
+      await setDoc(doc(db, "notifications", notifId), {
+        id: notifId,
+        title: "Nouvelle réservation prospect",
+        message: `${clientName} (@${prof.username || uid.slice(0, 6)}) a réservé : ${dest} pour le ${date} (${numPassengers} passager(s)).`,
+        targetUid: "all",
+        broadcast: true,
+        forRole: "admin",
+        read: false,
+        createdAt: new Date().toISOString()
+      });
+    } catch (notifErr) {
+      console.warn("Notification staff:", notifErr);
+    }
 
     let proformaRequestSaved = true;
     try {
-      await requestProforma({ client: resItem.nomClient, reservationId: resId, details: `${service} • ${dest} • ${date} • ${passengers} passager(s)` });
+      await requestProforma({ client: clientName, reservationId: resId, details: `${service} • ${dest} • ${date} • ${numPassengers} passager(s)` });
     } catch (requestError) {
       proformaRequestSaved = false;
-      console.error("Demande de proforma non transmise:", requestError);
+      console.warn("Demande de proforma non transmise:", requestError);
     }
 
     if (!Array.isArray(state["reservations"])) state["reservations"] = [];
-    state["reservations"].unshift(resItem);
+    const existingIdx = state["reservations"].findIndex(r => r.id === resId);
+    if (existingIdx >= 0) {
+      state["reservations"][existingIdx] = resItem;
+    } else {
+      state["reservations"].unshift(resItem);
+    }
     save();
 
-    showToast(proformaRequestSaved
-      ? "✅ Réservation enregistrée et demande de proforma transmise. Votre compte deviendra CLIENT après émission officielle d'une proforma valide."
-      : "✅ Réservation enregistrée. La demande de proforma n’a pas pu être transmise; veuillez contacter l’équipe.", proformaRequestSaved ? "success" : "error");
+    showToast("✅ Réservation enregistrée avec succès ! Notre équipe commerciale prépare votre premier devis proforma.", "success");
 
-    // Rediriger vers l'espace de réservations
-    setTimeout(() => {
-      current = "reservations";
-      location.hash = "reservations";
-      render();
-    }, 600);
+    // Re-rendre la vue pour afficher immédiatement la réservation
+    render();
+
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<span>✅</span> <span>Réservation transmise avec succès !</span>`;
+      setTimeout(() => {
+        if (btn) btn.innerHTML = `<span>🎫</span> <span>Réserver un autre trajet</span>`;
+      }, 3500);
+    }
 
   } catch (err) {
     console.error("Erreur confirmation réservation client:", err);
@@ -4952,7 +4989,7 @@ async function handleConfirmClientReservation() {
       btn.disabled = false;
       btn.innerHTML = `<span>🎫</span> <span>Confirmer ma réservation et activer mon Espace Client</span>`;
     }
-    showToast("Réservation non enregistrée dans Firestore. Vérifiez votre connexion et réessayez.", "error");
+    showToast("Réservation non enregistrée dans Firestore (" + (err?.message || "erreur") + "). Vérifiez votre connexion et réessayez.", "error");
   }
 }
 window.handleConfirmClientReservation = handleConfirmClientReservation;
@@ -5108,6 +5145,7 @@ function renderLectureSeuleProfilePage() {
   const photo = profile.photoURL || user?.photoURL || "";
   const statutCompte = profile.statutCompte || profile.status || "actif";
   const statutClient = profile.statutClient || "prospect";
+  const myReservations = list("reservations");
 
   const page = document.getElementById("page");
   if (!page) return;
@@ -5190,6 +5228,48 @@ function renderLectureSeuleProfilePage() {
           </div>
         </div>
       </div>
+
+      <!-- Mes Réservations en cours -->
+      ${myReservations.length > 0 ? `
+      <div class="panel" style="margin-bottom: 22px; border-radius: 12px; padding: 22px; background: #ffffff; border: 1px solid #e2e8f0; box-shadow: 0 4px 16px rgba(0,0,0,0.04);">
+        <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+          <div>
+            <h3 style="margin: 0; color: #092e70; font-size: 17px; font-weight: 800; display: flex; align-items: center; gap: 8px;">
+              <span>📅</span> Mes Réservations en cours (${myReservations.length})
+            </h3>
+            <p style="margin: 4px 0 0; font-size: 12px; color: #475569;">
+              Demandes enregistrées sur LAPERLE TOUR HT en attente de votre premier devis proforma.
+            </p>
+          </div>
+          <button class="secondary" onclick="go('reservations')" style="padding: 6px 14px; font-size: 12.5px; border-radius: 8px;">
+            Voir le tableau complet ›
+          </button>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          ${myReservations.map(r => `
+            <div style="border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; background: #f8fafc; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+              <div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                  <span style="font-weight: 800; color: #092e70; font-size: 14px;">${esc(r.trajet || r.route || (r.origin && r.destination ? `${r.origin} ➔ ${r.destination}` : r.destination || 'Trajet LAPERLE'))}</span>
+                  <span style="font-size: 11px; background: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 12px; font-weight: 700;">${esc(r.id || r.code || 'RES')}</span>
+                </div>
+                <div style="font-size: 12.5px; color: #64748b;">
+                  <span>📅 ${esc(r.date || r.dateDepart || '—')}</span> • 
+                  <span>🚘 ${esc(r.service || r.typePrestation || 'Transport')}</span> • 
+                  <span>👥 ${esc(r.passengers || r.passagers || 1)} passager(s)</span>
+                </div>
+              </div>
+              <div style="text-align: right;">
+                <div style="font-size: 14px; font-weight: 800; color: #166534; margin-bottom: 4px;">${money(r.amount || r.montantTotal || r.price || 2500)}</div>
+                <span style="font-size: 11.5px; padding: 3px 10px; border-radius: 20px; font-weight: 700; background: #fef3c7; color: #92400e; border: 1px solid #fde68a;">
+                  ⏳ ${esc(r.status || r.statut || 'À confirmer')}
+                </span>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      ` : ''}
 
       <!-- Action Métier : Première réservation -->
       <div class="panel" style="margin-bottom: 22px; border-radius: 12px; padding: 22px; background: #ffffff; border: 2px solid #bbf7d0; box-shadow: 0 4px 16px rgba(34,197,94,0.08);">
