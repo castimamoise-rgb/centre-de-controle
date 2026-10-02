@@ -1052,14 +1052,48 @@ function getApplicableNotifications() {
   const all = Array.isArray(state.notifications) ? [...state.notifications] : [];
   all.sort((a, b) => new Date(b.createdAt || b.date || 0).getTime() - new Date(a.createdAt || a.date || 0).getTime());
   
-  if (!currentUser) return all;
+  if (!currentUser) return [];
+  const uid = currentUser.uid || currentUser.id || '';
+  const email = (currentUser.email || '').toLowerCase().trim();
   const roles = normalizeRoles(currentUserRoles);
-  const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
-  if (isStaff) return all;
+  const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(email);
+
+  if (isStaff) {
+    // Les responsables reçoivent les alertes internes, administratives et de service.
+    // Ils ne doivent JAMAIS recevoir les notifications nominatives qu'ils ont eux-mêmes envoyées aux clients/prospects.
+    return all.filter(n => {
+      // 1. Ne jamais afficher à l'expéditeur la notification qu'il a lui-même envoyée à un tiers
+      if (n.senderUid && n.senderUid === uid && n.targetUid && n.targetUid !== uid && n.targetUid !== 'staff') {
+        return false;
+      }
+
+      // 2. Si c'est une notification nominative destinée à un client/prospect (proforma, facture, message de confirmation client)
+      const isClientTargeted = n.targetUid && n.targetUid !== 'staff' && n.targetUid !== 'admin' && n.targetUid !== 'all' && n.targetUid !== 'broadcast';
+      if (isClientTargeted && (n.proformaId || n.factureId || n.docType || n.type === 'finance' || n.targetRole === 'client' || n.targetRole === 'prospect')) {
+        // Seul le client destinataire ciblé doit la voir
+        if (n.targetUid !== uid && (!n.email || n.email.toLowerCase().trim() !== email)) {
+          return false;
+        }
+      }
+
+      // 3. Alertes destinées au staff / administration (nouvelle réservation, demande de devis, SOS chauffeur, alertes internes)
+      const isStaffAlert = n.targetRole === 'staff' || n.targetRole === 'admin' ||
+                           n.forRole === 'staff' || n.forRole === 'admin' || n.forRole === 'direction' || n.forRole === 'secretaire' || n.forRole === 'operations' || n.forRole === 'comptabilite' ||
+                           n.targetUid === 'staff' || n.targetUid === 'admin' || n.isInternal === true;
+      if (isStaffAlert) return true;
+
+      // 4. Alertes personnelles nominatives adressées à ce responsable
+      if (n.targetUid === uid || n.userId === uid || n.uid === uid) return true;
+      if (n.email && n.email.toLowerCase().trim() === email) return true;
+
+      // 5. Alertes générales de service / météo / trafic destinées au public
+      if (n.targetUid === 'all' || n.targetUid === 'broadcast' || n.broadcast === true) return true;
+
+      return false;
+    });
+  }
 
   // Filtrage strict pour client / prospect / chauffeur : ils ne voient JAMAIS les alertes staff ni les réservations des autres
-  const uid = currentUser.uid || currentUser.id;
-  const email = (currentUser.email || '').toLowerCase();
   return all.filter(n => {
     // 1. Bloquer toute notification interne, d'administration ou réservée au staff
     const isStaffAlert = n.forRole === 'admin' || n.forRole === 'staff' || n.forRole === 'direction' || n.forRole === 'secretaire' ||
@@ -1069,7 +1103,7 @@ function getApplicableNotifications() {
 
     // 2. Alertes personnelles nominatives destinées à cet utilisateur
     if (n.targetUid === uid || n.userId === uid || n.uid === uid || n.clientId === uid || n.chauffeurId === uid) return true;
-    if (n.email && n.email.toLowerCase() === email) return true;
+    if (n.email && n.email.toLowerCase().trim() === email) return true;
 
     // 3. Alertes générales de service / météo / trafic destinées au public
     if (n.targetUid === 'all' || n.targetUid === 'broadcast' || n.broadcast === true) return true;
@@ -6994,14 +7028,10 @@ async function handleAcceptDocumentRequestFromAlert(notifId, reservationId, type
           read: false,
           date: new Date().toISOString(),
           proformaId: quoteNumber,
-          reservationId: r.id || r.code || ''
+          reservationId: r.id || r.code || '',
+          senderUid: currentUser?.uid || 'staff',
+          senderName: currentUserProfile?.nom || currentUser?.displayName || 'Direction LAPERLE'
         };
-
-        if (!Array.isArray(state.notifications)) state.notifications = [];
-        state.notifications.unshift({ ...notifPayload });
-        newlyArrivedNotificationIds.add(notifId);
-        updateNotificationBadge();
-        if (isNotifDropdownOpen) renderNotificationDropdown();
 
         await createNotification(notifPayload, notifId);
       } catch (err) {
@@ -7051,14 +7081,10 @@ async function handleAcceptDocumentRequestFromAlert(notifId, reservationId, type
           read: false,
           date: new Date().toISOString(),
           factureId: invoiceNumber,
-          reservationId: r.id || r.code || ''
+          reservationId: r.id || r.code || '',
+          senderUid: currentUser?.uid || 'staff',
+          senderName: currentUserProfile?.nom || currentUser?.displayName || 'Direction LAPERLE'
         };
-
-        if (!Array.isArray(state.notifications)) state.notifications = [];
-        state.notifications.unshift({ ...notifPayload });
-        newlyArrivedNotificationIds.add(notifId);
-        updateNotificationBadge();
-        if (isNotifDropdownOpen) renderNotificationDropdown();
 
         await createNotification(notifPayload, notifId);
       } catch (err) {
@@ -7281,15 +7307,10 @@ async function executeSendProformaNotification(index) {
     read: false,
     date: new Date().toISOString(),
     proformaId: quoteNumber,
-    reservationId: q.reservationId || ''
+    reservationId: q.reservationId || '',
+    senderUid: currentUser?.uid || 'staff',
+    senderName: currentUserProfile?.nom || currentUser?.displayName || 'Direction LAPERLE'
   };
-
-  // Double synchronisation : locale + Firestore
-  if (!Array.isArray(state.notifications)) state.notifications = [];
-  state.notifications.unshift({ ...notifPayload });
-  newlyArrivedNotificationIds.add(notifId);
-  updateNotificationBadge();
-  if (isNotifDropdownOpen) renderNotificationDropdown();
 
   try {
     await createNotification(notifPayload, notifId);
@@ -7427,14 +7448,10 @@ async function createProformaFromReservation(index) {
           read: false,
           date: new Date().toISOString(),
           proformaId: quoteNumber,
-          reservationId: r.id || r.code || ''
+          reservationId: r.id || r.code || '',
+          senderUid: currentUser?.uid || 'staff',
+          senderName: currentUserProfile?.nom || currentUser?.displayName || 'Direction LAPERLE'
         };
-
-        if (!Array.isArray(state.notifications)) state.notifications = [];
-        state.notifications.unshift({ ...notifPayload });
-        newlyArrivedNotificationIds.add(notifId);
-        updateNotificationBadge();
-        if (isNotifDropdownOpen) renderNotificationDropdown();
 
         await createNotification(notifPayload, notifId);
       } catch (notifErr) {
@@ -7508,14 +7525,10 @@ async function createInvoiceFromQuote(index) {
           read: false,
           date: new Date().toISOString(),
           factureId: invoiceNumber,
-          proformaId: q.number || q.id || ''
+          proformaId: q.number || q.id || '',
+          senderUid: currentUser?.uid || 'staff',
+          senderName: currentUserProfile?.nom || currentUser?.displayName || 'Comptabilité LAPERLE'
         };
-
-        if (!Array.isArray(state.notifications)) state.notifications = [];
-        state.notifications.unshift({ ...notifPayload });
-        newlyArrivedNotificationIds.add(notifId);
-        updateNotificationBadge();
-        if (isNotifDropdownOpen) renderNotificationDropdown();
 
         await createNotification(notifPayload, notifId);
       } catch (notifErr) {
