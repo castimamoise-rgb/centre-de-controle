@@ -1223,6 +1223,38 @@ function renderNotificationDropdown() {
         else if (item.type === 'update') { typeLabel = 'MISE À JOUR'; typeEmoji = '📢'; }
         else if (item.type === 'finance') { typeLabel = 'FINANCES'; typeEmoji = '💳'; }
 
+        const roles = normalizeRoles(currentUserRoles);
+        const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
+
+        let actionHtml = "";
+        if (isStaff && item.reservationId && !item.actionCompleted) {
+          const reqType = item.actionType === 'demande_facture' ? 'facture' : 'proforma';
+          const btnLabel = reqType === 'facture' ? '✅ Accepter & Émettre la Facture' : '✅ Accepter & Émettre la Proforma';
+          actionHtml = `
+            <div style="margin: 8px 0 6px 0; display: flex; gap: 6px; flex-wrap: wrap;">
+              <button class="notif-action-btn" style="background:#082b70;color:#fff;border-color:#082b70;font-weight:700;padding:5px 10px;font-size:11px" onclick="handleAcceptDocumentRequestFromAlert('${item.id}', '${item.reservationId}', '${reqType}')">
+                ${btnLabel}
+              </button>
+            </div>
+          `;
+        } else if (item.actionCompleted) {
+          actionHtml = `
+            <div style="margin: 6px 0; font-size: 11px; color: #15803d; font-weight: 700; display:flex; align-items:center; gap:4px">
+              <span>✅</span> <span>Demande acceptée • Document émis (${escapeHtml(item.actionCompletedDoc || '')})</span>
+            </div>
+          `;
+        } else if (!isStaff && (item.proformaId || item.factureId)) {
+          const docType = item.factureId ? 'facture' : 'proforma';
+          const docId = item.factureId || item.proformaId;
+          actionHtml = `
+            <div style="margin: 8px 0 6px 0; display: flex; gap: 6px; flex-wrap: wrap;">
+              <button class="notif-action-btn" style="background:#082b70;color:#fff;border-color:#082b70;font-weight:700;padding:5px 10px;font-size:11px" onclick="handleOpenDocumentFromAlert('${docType}', '${docId}')">
+                📄 Consulter le document PDF (${escapeHtml(docId)})
+              </button>
+            </div>
+          `;
+        }
+
         return `
           <div class="notif-item ${isNewArrival ? 'notif-new-arrival' : ''} ${!item.read ? 'unread' : ''} ${isUrgent ? 'is-urgent' : ''} ${isTransport ? 'is-transport' : ''}" style="animation-delay: ${animDelay};">
             <div class="notif-item-top">
@@ -1236,6 +1268,7 @@ function renderNotificationDropdown() {
             </div>
             <h5 class="notif-title">${escapeHtml(item.title || 'Information LAPERLE')}</h5>
             <p class="notif-message">${escapeHtml(item.message || '')}</p>
+            ${actionHtml}
             <div class="notif-actions">
               <button class="notif-action-btn" onclick="handleToggleRead('${item.id}', ${!item.read})">
                 ${item.read ? 'Marquer non lu' : '✓ Marquer lu'}
@@ -4609,12 +4642,17 @@ function drawTable(key) {
                       `;
                     } else {
                       let clientBtns = "";
-                      if (!o.demandeProforma && !o.proformaGenerated) {
+                      if (o.proformaGenerated) {
+                        clientBtns += `<button class="tiny" style="color:#082b70;border-color:#bfdbfe;background:#eff6ff" onclick="handleOpenDocumentFromAlert('proforma', '${o.proformaGenerated}')" title="Consulter le devis officiel">📄 Devis Proforma</button>`;
+                      } else if (!o.demandeProforma) {
                         clientBtns += `<button class="tiny" style="color:#0369a1;border-color:#bae6fd;background:#f0f9ff" onclick="requestDocumentFromReservation(${i}, 'proforma')" title="Demander un devis proforma à l'administration">Demander Proforma</button>`;
-                      } else if (o.demandeProforma) {
+                      } else {
                         clientBtns += `<span class="badge" style="background:#fef3c7;color:#92400e;font-size:10px;padding:2px 6px">⏳ Proforma demandée</span>`;
                       }
-                      if (!o.demandeFacture) {
+
+                      if (o.factureGenerated) {
+                        clientBtns += `<button class="tiny" style="color:#15803d;border-color:#bbf7d0;background:#f0fdf4" onclick="handleOpenDocumentFromAlert('facture', '${o.factureGenerated}')" title="Consulter la facture officielle">🧾 Facture</button>`;
+                      } else if (!o.demandeFacture) {
                         clientBtns += `<button class="tiny" style="color:#15803d;border-color:#bbf7d0;background:#f0fdf4" onclick="requestDocumentFromReservation(${i}, 'facture')" title="Demander une facture officielle à l'administration">Demander Facture</button>`;
                       } else {
                         clientBtns += `<span class="badge" style="background:#e0f2fe;color:#0369a1;font-size:10px;padding:2px 6px">⏳ Facture demandée</span>`;
@@ -5175,17 +5213,42 @@ function viewRow(key, index) {
       `;
     } else {
       let reqBtns = "";
-      if (!o.demandeProforma && !o.proformaGenerated) {
+      if (o.proformaGenerated) {
+        reqBtns += `
+          <button class="primary" style="background:#082b70;border-color:#082b70;display:inline-flex;align-items:center;gap:6px" onclick="closeModal();handleOpenDocumentFromAlert('proforma', '${o.proformaGenerated}')">
+            <span>📄</span> <span>Consulter mon Devis Proforma (${o.proformaGenerated})</span>
+          </button>
+        `;
+      } else if (!o.demandeProforma) {
         reqBtns += `
           <button class="primary" style="background:#0284c7;border-color:#0284c7;display:inline-flex;align-items:center;gap:6px" onclick="requestDocumentFromReservation(${index}, 'proforma')">
             <span>📩</span> <span>Demander un devis Proforma</span>
           </button>
         `;
+      } else {
+        reqBtns += `
+          <button class="secondary" style="background:#fef3c7;color:#92400e;border-color:#fde68a" disabled>
+            <span>⏳</span> <span>Demande de Proforma en attente de validation</span>
+          </button>
+        `;
       }
-      if (!o.demandeFacture) {
+
+      if (o.factureGenerated) {
+        reqBtns += `
+          <button class="primary green" style="display:inline-flex;align-items:center;gap:6px" onclick="closeModal();handleOpenDocumentFromAlert('facture', '${o.factureGenerated}')">
+            <span>🧾</span> <span>Consulter ma Facture (${o.factureGenerated})</span>
+          </button>
+        `;
+      } else if (!o.demandeFacture) {
         reqBtns += `
           <button class="primary" style="background:#16a34a;border-color:#16a34a;display:inline-flex;align-items:center;gap:6px" onclick="requestDocumentFromReservation(${index}, 'facture')">
             <span>📩</span> <span>Demander une Facture</span>
+          </button>
+        `;
+      } else {
+        reqBtns += `
+          <button class="secondary" style="background:#e0f2fe;color:#0369a1;border-color:#bae6fd" disabled>
+            <span>⏳</span> <span>Demande de Facture en attente de validation</span>
           </button>
         `;
       }
@@ -6586,6 +6649,8 @@ async function requestDocumentFromReservation(index, type = 'proforma') {
       message: `Le client ${clientName} (${phone || 'sans tél'}) a demandé un(e) ${docTypeLabel} pour la course ${resCode} (${r.origin || ''} ➔ ${r.destination || r.trajet || ''}).`,
       type: 'finance',
       priority: 'high',
+      actionType: isProforma ? 'demande_proforma' : 'demande_facture',
+      docType: type,
       targetUid: 'staff',
       targetRole: 'staff',
       isInternal: true,
@@ -6606,6 +6671,163 @@ async function requestDocumentFromReservation(index, type = 'proforma') {
   showToast(`✅ Votre demande de ${docTypeLabel} a été transmise à l'Administration LAPERLE TOUR HT.`);
 }
 window.requestDocumentFromReservation = requestDocumentFromReservation;
+
+async function handleAcceptDocumentRequestFromAlert(notifId, reservationId, type = 'proforma') {
+  const roles = normalizeRoles(currentUserRoles);
+  const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
+  if (!isStaff) {
+    showToast("⚠️ Action réservée à l'Administration LAPERLE TOUR HT.", "error");
+    return;
+  }
+
+  const resList = list("reservations");
+  const resIndex = resList.findIndex(r => r.id === reservationId || r.code === reservationId);
+  if (resIndex === -1) {
+    showToast("Réservation introuvable.", "error");
+    return;
+  }
+
+  const r = resList[resIndex];
+  const targetUid = r.clientUid || r.clientId || "";
+  const clientEmail = (r.email || "").toLowerCase().trim();
+  const clientName = r.nomClient || r.client || "Client";
+  const phone = r.telephone || r.phone || "";
+  const routeDesc = r.trajet || r.route || (r.origin && r.destination ? `${r.origin} ➔ ${r.destination}` : "");
+
+  let createdDocNumber = "";
+
+  if (type === 'proforma') {
+    const quoteNumber = nextProformaNumber();
+    createdDocNumber = quoteNumber;
+    const newQuote = {
+      id: quoteNumber,
+      number: quoteNumber,
+      client: clientName,
+      clientId: targetUid,
+      clientUid: targetUid,
+      email: clientEmail,
+      telephone: phone,
+      date: today(),
+      amount: Number(r.montantTotal || r.amount || 2500),
+      status: "Envoyée",
+      validUntil: today(),
+      archived: false,
+      reservationId: r.id || r.code || "",
+      notes: `Proforma validée et générée depuis la demande d'alerte pour la réservation #${r.code || r.id || ''}${routeDesc ? ` (${routeDesc})` : ''}`
+    };
+
+    list("proformas").push(newQuote);
+    r.demandeProforma = false;
+    r.proformaGenerated = quoteNumber;
+    save();
+    await saveDocumentToFirestore("proformas", newQuote);
+    await saveDocumentToFirestore("reservations", r);
+
+    if (targetUid || clientEmail) {
+      try {
+        await createNotification({
+          title: `✅ Devis Proforma ${quoteNumber} validé !`,
+          message: `Votre demande a été acceptée par la Direction LAPERLE TOUR HT. Votre devis proforma officiel ${quoteNumber} (${money(newQuote.amount)}) est prêt.`,
+          type: 'finance',
+          priority: 'high',
+          targetUid: targetUid || 'all',
+          broadcast: !targetUid,
+          email: clientEmail,
+          read: false,
+          date: new Date().toISOString(),
+          proformaId: quoteNumber,
+          reservationId: r.id || r.code || ''
+        });
+      } catch (err) {
+        console.warn("Erreur alerte client proforma:", err);
+      }
+    }
+  } else {
+    const invoiceNumber = nextFactureNumber();
+    createdDocNumber = invoiceNumber;
+    const newInvoice = {
+      id: invoiceNumber,
+      number: invoiceNumber,
+      client: clientName,
+      clientId: targetUid,
+      clientUid: targetUid,
+      email: clientEmail,
+      telephone: phone,
+      date: today(),
+      proforma: r.proformaGenerated || r.id || "",
+      amount: Number(r.montantTotal || r.amount || 2500),
+      status: "Brouillon",
+      due: today(),
+      archived: false,
+      reservationId: r.id || r.code || "",
+      notes: `Facture validée et émise depuis la demande d'alerte pour la réservation #${r.code || r.id || ''}`
+    };
+
+    list("factures").push(newInvoice);
+    r.demandeFacture = false;
+    r.factureGenerated = invoiceNumber;
+    save();
+    await saveDocumentToFirestore("factures", newInvoice);
+    await saveDocumentToFirestore("reservations", r);
+
+    if (targetUid || clientEmail) {
+      try {
+        await createNotification({
+          title: `✅ Facture ${invoiceNumber} validée et émise !`,
+          message: `Votre demande a été acceptée par la Direction LAPERLE TOUR HT. Votre facture officielle ${invoiceNumber} (${money(newInvoice.amount)}) est prête.`,
+          type: 'finance',
+          priority: 'normal',
+          targetUid: targetUid || 'all',
+          broadcast: !targetUid,
+          email: clientEmail,
+          read: false,
+          date: new Date().toISOString(),
+          factureId: invoiceNumber,
+          reservationId: r.id || r.code || ''
+        });
+      } catch (err) {
+        console.warn("Erreur alerte client facture:", err);
+      }
+    }
+  }
+
+  // Mettre à jour l'alerte du responsable
+  const notifObj = (state.notifications || []).find(n => n.id === notifId);
+  if (notifObj) {
+    notifObj.actionCompleted = true;
+    notifObj.actionCompletedDoc = createdDocNumber;
+    notifObj.read = true;
+  }
+  try {
+    await updateDoc(doc(db, 'notifications', notifId), {
+      read: true,
+      actionCompleted: true,
+      actionCompletedDoc: createdDocNumber,
+      updatedAt: new Date().toISOString(),
+      updatedBy: currentUser?.email || 'admin'
+    });
+  } catch (e) {}
+
+  updateNotificationBadge();
+  renderNotificationDropdown();
+  render();
+  showToast(`✅ Demande acceptée ! Document ${createdDocNumber} émis et disponible pour le client.`);
+}
+window.handleAcceptDocumentRequestFromAlert = handleAcceptDocumentRequestFromAlert;
+
+function handleOpenDocumentFromAlert(type, docId) {
+  closeNotificationDropdown();
+  const canon = type === 'facture' ? 'factures' : 'proformas';
+  const docList = list(canon);
+  const idx = docList.findIndex(x => x.number === docId || x.id === docId);
+  if (idx !== -1) {
+    printDocument(type, idx);
+  } else {
+    go(canon);
+    showToast(`Document ${docId} sélectionné.`);
+  }
+}
+window.handleOpenDocumentFromAlert = handleOpenDocumentFromAlert;
 
 async function createProformaFromReservation(index) {
   const roles = normalizeRoles(currentUserRoles);
