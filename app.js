@@ -591,6 +591,7 @@ const SCHEMAS = {
     ["amount", "Montant HTG", "number"],
     ["driver", "Chauffeur", "text"],
     ["vehicle", "Véhicule", "text"],
+    ["demandeProforma", "Demander un devis Proforma", "select:Oui|Non"],
     ["status", "Statut", "select:À confirmer|Confirmée|En cours|Effectuée|Annulée|Archivée"],
     ["notes", "Notes", "textarea"]
   ],
@@ -4908,6 +4909,18 @@ function openForm(key, index = -1) {
         if (!savedItem.createdBy) savedItem.createdBy = uid;
         savedItem.updatedBy = uid;
 
+        // Détection de la demande de devis Proforma dès la réservation
+        const callerRoles = normalizeRoles(currentUserRoles);
+        const isProspectOrClient = callerRoles.includes(ROLES.PROSPECT) || callerRoles.includes(ROLES.CLIENT);
+        const wantsProforma = savedItem.demandeProforma === 'Oui' || savedItem.demandeProforma === true || (index < 0 && isProspectOrClient && savedItem.demandeProforma !== 'Non');
+
+        if (wantsProforma) {
+          savedItem.demandeProforma = true;
+          savedItem.dateDemandeProforma = new Date().toISOString();
+        } else if (savedItem.demandeProforma === 'Non') {
+          savedItem.demandeProforma = false;
+        }
+
         await setDoc(doc(db, "reservations", String(savedItem.id)), {
           ...savedItem,
           clientId: effectiveClientId,
@@ -4919,6 +4932,47 @@ function openForm(key, index = -1) {
           updatedAt: new Date().toISOString(),
           archived: savedItem.archived === true
         });
+
+        // Double synchronisation (Instantanée locale + Cloud Firestore) :
+        // Lorsqu'un prospect réserve pour la première fois et souhaite un devis, générer automatiquement l'alerte de demande de proforma
+        if (wantsProforma && index < 0) {
+          const resCode = savedItem.code || savedItem.id || `#${rawList("reservations").length}`;
+          const clientName = savedItem.nomClient || savedItem.client || currentUserProfile?.name || currentUser?.displayName || currentUser?.email || 'Client';
+          const phone = savedItem.telephone || savedItem.phone || currentUserProfile?.telephone || '';
+          const routeDesc = savedItem.trajet || savedItem.route || (savedItem.origin && savedItem.destination ? `${savedItem.origin} ➔ ${savedItem.destination}` : '');
+
+          const notifId = `NOTIF-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+          const notifPayload = {
+            id: notifId,
+            title: `🔔 Demande de devis Proforma (${resCode})`,
+            message: `Le client ${clientName} (${phone || 'sans tél'}) a demandé un devis Proforma pour la réservation ${resCode}${routeDesc ? ` (${routeDesc})` : ''}.`,
+            type: 'finance',
+            priority: 'high',
+            actionType: 'demande_proforma',
+            docType: 'proforma',
+            forRole: 'admin',
+            targetUid: 'staff',
+            targetRole: 'staff',
+            isInternal: true,
+            broadcast: false,
+            read: false,
+            date: new Date().toISOString(),
+            reservationId: savedItem.id || savedItem.code || '',
+            clientId: effectiveClientId
+          };
+
+          if (!Array.isArray(state.notifications)) state.notifications = [];
+          state.notifications.unshift({ ...notifPayload });
+          newlyArrivedNotificationIds.add(notifId);
+          updateNotificationBadge();
+          if (isNotifDropdownOpen) renderNotificationDropdown();
+
+          try {
+            await createNotification(notifPayload, notifId);
+          } catch (notifErr) {
+            console.warn("Erreur alerte auto réservation proforma:", notifErr);
+          }
+        }
       } else {
         await saveDocumentToFirestore(canon, savedItem);
       }
@@ -5029,6 +5083,20 @@ function fieldHTMLLinked(id, label, type, val, key) {
         <select name="client">
           <option value="">-- Sélectionner un client --</option>
           ${clients.map(c => `<option value="${esc(c.name)}" ${c.name === val || c.id === val ? "selected" : ""}>${esc(c.name)} (${esc(c.id)})</option>`).join("")}
+        </select>
+      </div>
+    `;
+  }
+  if (canon === "reservations" && id === "demandeProforma") {
+    const callerRoles = normalizeRoles(currentUserRoles);
+    const isProspectOrClient = callerRoles.includes(ROLES.PROSPECT) || callerRoles.includes(ROLES.CLIENT);
+    const isYes = val === "Oui" || val === true || (!val && isProspectOrClient);
+    return `
+      <div class="field">
+        <label>Demande de devis Proforma officiel</label>
+        <select name="demandeProforma">
+          <option value="Oui" ${isYes ? "selected" : ""}>Oui - Envoyer une demande de devis Proforma</option>
+          <option value="Non" ${!isYes ? "selected" : ""}>Non - Réservation directe</option>
         </select>
       </div>
     `;
@@ -6643,23 +6711,35 @@ async function requestDocumentFromReservation(index, type = 'proforma') {
   await saveDocumentToFirestore('reservations', r);
 
   // Alerte instantanée dans la cloche du Staff / Administration
+  const notifId = `NOTIF-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  const notifPayload = {
+    id: notifId,
+    title: `🔔 Demande de ${docTypeLabel} (${resCode})`,
+    message: `Le client ${clientName} (${phone || 'sans tél'}) a demandé un(e) ${docTypeLabel} pour la course ${resCode} (${r.origin || ''} ➔ ${r.destination || r.trajet || ''}).`,
+    type: 'finance',
+    priority: 'high',
+    actionType: isProforma ? 'demande_proforma' : 'demande_facture',
+    docType: type,
+    forRole: 'admin',
+    targetUid: 'staff',
+    targetRole: 'staff',
+    isInternal: true,
+    broadcast: false,
+    read: false,
+    date: new Date().toISOString(),
+    reservationId: r.id || r.code || '',
+    clientId: r.clientId || currentUser?.uid || ''
+  };
+
+  // Double synchronisation : Instantanée locale dans state.notifications + Cloud Firestore
+  if (!Array.isArray(state.notifications)) state.notifications = [];
+  state.notifications.unshift({ ...notifPayload });
+  newlyArrivedNotificationIds.add(notifId);
+  updateNotificationBadge();
+  if (isNotifDropdownOpen) renderNotificationDropdown();
+
   try {
-    await createNotification({
-      title: `🔔 Demande de ${docTypeLabel} (${resCode})`,
-      message: `Le client ${clientName} (${phone || 'sans tél'}) a demandé un(e) ${docTypeLabel} pour la course ${resCode} (${r.origin || ''} ➔ ${r.destination || r.trajet || ''}).`,
-      type: 'finance',
-      priority: 'high',
-      actionType: isProforma ? 'demande_proforma' : 'demande_facture',
-      docType: type,
-      targetUid: 'staff',
-      targetRole: 'staff',
-      isInternal: true,
-      broadcast: false,
-      read: false,
-      date: new Date().toISOString(),
-      reservationId: r.id || r.code || '',
-      clientId: r.clientId || currentUser?.uid || ''
-    });
+    await createNotification(notifPayload, notifId);
   } catch (err) {
     console.warn("Erreur envoi notification demande doc:", err);
   }

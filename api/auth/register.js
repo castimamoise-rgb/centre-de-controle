@@ -87,6 +87,8 @@ export default async function handler(req, res) {
       const snap = await tx.get(ref);
       if (snap.exists) {
         const existing = snap.data();
+        const profileCreatedAt = timestampMillis(existing.createdAt);
+        const profilePredatesAuthAccount = authCreatedAt !== null && profileCreatedAt !== null && profileCreatedAt < authCreatedAt;
         const identityVerified = existing.uid === user.uid && existing.id === user.uid &&
           String(existing.email || '').trim().toLowerCase() === email;
         const isSuper = isSuperAdminEmail(email);

@@ -80,12 +80,13 @@ export const DEFAULT_SERVICE_ALERTS: Partial<NotificationData>[] = [
   }
 ];
 
-export async function createNotification(data: Partial<NotificationData>, customId?: string): Promise<NotificationData> {
-  const id = customId || `NOTIF-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+export async function createNotification(data: Partial<NotificationData> = {}, customId?: string): Promise<NotificationData> {
+  const id = customId || data.id || `NOTIF-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
   const now = new Date().toISOString();
   const userEmail = auth.currentUser?.email || 'system';
 
   const payload: NotificationData = {
+    ...data,
     id,
     title: (data.title || 'Information LAPERLE TOUR').trim().substring(0, 150),
     message: (data.message || '').trim().substring(0, 500),
@@ -94,9 +95,11 @@ export async function createNotification(data: Partial<NotificationData>, custom
     targetUid: data.targetUid || 'all',
     broadcast: data.broadcast !== undefined ? data.broadcast : (data.targetUid === 'all' || !data.targetUid),
     date: data.date || now,
-    read: data.read || false,
+    read: data.read !== undefined ? data.read : false,
     link: data.link || '',
-    createdBy: userEmail,
+    forRole: data.forRole || (data.targetRole === 'admin' || data.targetRole === 'staff' ? 'admin' : undefined),
+    targetRole: data.targetRole || (data.forRole === 'admin' ? 'staff' : undefined),
+    createdBy: data.createdBy || userEmail,
     updatedBy: userEmail,
     createdAt: data.createdAt || now,
     updatedAt: now
