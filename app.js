@@ -4596,13 +4596,40 @@ function drawTable(key) {
                     return btns;
                   })() : `<button class="tiny edit" onclick="openForm('${canon}',${i})">Modifier</button>`) : ""}
                   <button class="tiny" onclick="viewRow('${canon}',${i})">Voir</button>
-                  ${(canon === "reservations" || canon === "bookings") ? `
-                    <button class="tiny" style="color:#082b70;border-color:#bfdbfe;background:#eff6ff" onclick="createProformaFromReservation(${i})" title="Convertir cette réservation en devis proforma">Proforma</button>
-                  ` : ""}
-                  ${canon === "proformas" ? `
-                    <button class="tiny" onclick="createInvoiceFromQuote(${i})">Facture</button>
-                    <button class="tiny" onclick="printDocument('proforma',${i})">PDF Proforma</button>
-                  ` : ""}
+                  ${(canon === "reservations" || canon === "bookings") ? (() => {
+                    const roles = normalizeRoles(currentUserRoles);
+                    const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
+                    if (isStaff) {
+                      let tag = "";
+                      if (o.demandeProforma) tag += `<span class="badge" style="background:#fef3c7;color:#92400e;font-size:10px;padding:2px 6px;margin-right:2px" title="Demande de proforma reçue">🔔 Demande Proforma</span>`;
+                      if (o.demandeFacture) tag += `<span class="badge" style="background:#e0f2fe;color:#0369a1;font-size:10px;padding:2px 6px;margin-right:2px" title="Demande de facture reçue">🔔 Demande Facture</span>`;
+                      return `
+                        ${tag}
+                        <button class="tiny" style="color:#082b70;border-color:#bfdbfe;background:#eff6ff" onclick="createProformaFromReservation(${i})" title="Convertir cette réservation en devis proforma">Proforma</button>
+                      `;
+                    } else {
+                      let clientBtns = "";
+                      if (!o.demandeProforma && !o.proformaGenerated) {
+                        clientBtns += `<button class="tiny" style="color:#0369a1;border-color:#bae6fd;background:#f0f9ff" onclick="requestDocumentFromReservation(${i}, 'proforma')" title="Demander un devis proforma à l'administration">Demander Proforma</button>`;
+                      } else if (o.demandeProforma) {
+                        clientBtns += `<span class="badge" style="background:#fef3c7;color:#92400e;font-size:10px;padding:2px 6px">⏳ Proforma demandée</span>`;
+                      }
+                      if (!o.demandeFacture) {
+                        clientBtns += `<button class="tiny" style="color:#15803d;border-color:#bbf7d0;background:#f0fdf4" onclick="requestDocumentFromReservation(${i}, 'facture')" title="Demander une facture officielle à l'administration">Demander Facture</button>`;
+                      } else {
+                        clientBtns += `<span class="badge" style="background:#e0f2fe;color:#0369a1;font-size:10px;padding:2px 6px">⏳ Facture demandée</span>`;
+                      }
+                      return clientBtns;
+                    }
+                  })() : ""}
+                  ${canon === "proformas" ? (() => {
+                    const roles = normalizeRoles(currentUserRoles);
+                    const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
+                    return `
+                      ${isStaff ? `<button class="tiny" onclick="createInvoiceFromQuote(${i})">Facture</button>` : ""}
+                      <button class="tiny" onclick="printDocument('proforma',${i})">PDF Proforma</button>
+                    `;
+                  })() : ""}
                   ${canon === "factures" ? `
                     <button class="tiny" onclick="printDocument('facture',${i})">PDF Facture</button>
                   ` : ""}
@@ -5135,16 +5162,38 @@ function viewRow(key, index) {
     </div>
   `).join("");
 
+  const roles = normalizeRoles(currentUserRoles);
+  const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
+
   let extraButtons = "";
   if (canon === "reservations" || canon === "bookings") {
-    extraButtons = `
-      <button class="primary" style="background:#082b70;border-color:#082b70;display:inline-flex;align-items:center;gap:6px" onclick="closeModal();createProformaFromReservation(${index})">
-        <span>📄</span> <span>Convertir en Proforma</span>
-      </button>
-    `;
+    if (isStaff) {
+      extraButtons = `
+        <button class="primary" style="background:#082b70;border-color:#082b70;display:inline-flex;align-items:center;gap:6px" onclick="closeModal();createProformaFromReservation(${index})">
+          <span>📄</span> <span>Convertir en Proforma</span>
+        </button>
+      `;
+    } else {
+      let reqBtns = "";
+      if (!o.demandeProforma && !o.proformaGenerated) {
+        reqBtns += `
+          <button class="primary" style="background:#0284c7;border-color:#0284c7;display:inline-flex;align-items:center;gap:6px" onclick="requestDocumentFromReservation(${index}, 'proforma')">
+            <span>📩</span> <span>Demander un devis Proforma</span>
+          </button>
+        `;
+      }
+      if (!o.demandeFacture) {
+        reqBtns += `
+          <button class="primary" style="background:#16a34a;border-color:#16a34a;display:inline-flex;align-items:center;gap:6px" onclick="requestDocumentFromReservation(${index}, 'facture')">
+            <span>📩</span> <span>Demander une Facture</span>
+          </button>
+        `;
+      }
+      extraButtons = reqBtns;
+    }
   } else if (canon === "proformas") {
     extraButtons = `
-      <button class="primary green" onclick="closeModal();createInvoiceFromQuote(${index})">🧾 Convertir en Facture</button>
+      ${isStaff ? `<button class="primary green" onclick="closeModal();createInvoiceFromQuote(${index})">🧾 Convertir en Facture</button>` : ""}
       <button class="primary" onclick="closeModal();printDocument('proforma',${index})">🖨️ PDF Proforma</button>
     `;
   } else if (canon === "factures") {
@@ -6511,7 +6560,61 @@ function executeResetData() {
   render();
 }
 
+async function requestDocumentFromReservation(index, type = 'proforma') {
+  const r = list("reservations")[index];
+  if (!r) return;
+  const isProforma = type === 'proforma';
+  const docTypeLabel = isProforma ? 'devis Proforma' : 'Facture';
+  const resCode = r.code || r.id || `#${index + 1}`;
+  const clientName = r.nomClient || r.client || currentUserProfile?.name || currentUser?.displayName || currentUser?.email || 'Client';
+  const phone = r.telephone || r.phone || currentUserProfile?.telephone || '';
+
+  if (isProforma) {
+    r.demandeProforma = true;
+    r.dateDemandeProforma = new Date().toISOString();
+  } else {
+    r.demandeFacture = true;
+    r.dateDemandeFacture = new Date().toISOString();
+  }
+  save();
+  await saveDocumentToFirestore('reservations', r);
+
+  // Alerte instantanée dans la cloche du Staff / Administration
+  try {
+    await createNotification({
+      title: `🔔 Demande de ${docTypeLabel} (${resCode})`,
+      message: `Le client ${clientName} (${phone || 'sans tél'}) a demandé un(e) ${docTypeLabel} pour la course ${resCode} (${r.origin || ''} ➔ ${r.destination || r.trajet || ''}).`,
+      type: 'finance',
+      priority: 'high',
+      targetUid: 'staff',
+      targetRole: 'staff',
+      isInternal: true,
+      broadcast: false,
+      read: false,
+      date: new Date().toISOString(),
+      reservationId: r.id || r.code || '',
+      clientId: r.clientId || currentUser?.uid || ''
+    });
+  } catch (err) {
+    console.warn("Erreur envoi notification demande doc:", err);
+  }
+
+  if (document.getElementById("modalBackdrop")?.classList.contains("open")) {
+    closeModal();
+  }
+  render();
+  showToast(`✅ Votre demande de ${docTypeLabel} a été transmise à l'Administration LAPERLE TOUR HT.`);
+}
+window.requestDocumentFromReservation = requestDocumentFromReservation;
+
 async function createProformaFromReservation(index) {
+  const roles = normalizeRoles(currentUserRoles);
+  const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
+  if (!isStaff) {
+    showToast("⚠️ Action réservée à l'Administration LAPERLE TOUR HT.", "error");
+    return;
+  }
+
   const r = list("reservations")[index];
   if (!r) return;
 
@@ -6541,18 +6644,47 @@ async function createProformaFromReservation(index) {
 
   try {
     list("proformas").push(newQuote);
+    r.demandeProforma = false;
+    r.proformaGenerated = quoteNumber;
     save();
     await saveDocumentToFirestore("proformas", newQuote);
+    await saveDocumentToFirestore("reservations", r);
+
+    // Notification instantanée vers le Client / Prospect dans son alerte
+    if (targetUid || clientEmail) {
+      try {
+        await createNotification({
+          title: `📄 Devis Proforma ${quoteNumber} prêt !`,
+          message: `Votre devis proforma officiel ${quoteNumber} (${money(newQuote.amount)}) pour votre réservation #${r.code || r.id || ''} est prêt et disponible auprès de LAPERLE TOUR HT.`,
+          type: 'finance',
+          priority: 'high',
+          targetUid: targetUid || 'all',
+          broadcast: !targetUid,
+          email: clientEmail,
+          read: false,
+          date: new Date().toISOString()
+        });
+      } catch (notifErr) {
+        console.warn("Erreur alerte client proforma:", notifErr);
+      }
+    }
+
     go("proformas");
-    showToast(`✅ Devis Proforma ${quoteNumber} créé avec succès.`);
+    showToast(`✅ Devis Proforma ${quoteNumber} créé et notification envoyée au client.`);
   } catch (error) {
     showToast(error?.message || "La proforma n’a pas pu être enregistrée.", "error");
   }
 }
 window.createProformaFromReservation = createProformaFromReservation;
-window.createInvoiceFromQuote = createInvoiceFromQuote;
 
 async function createInvoiceFromQuote(index) {
+  const roles = normalizeRoles(currentUserRoles);
+  const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
+  if (!isStaff) {
+    showToast("⚠️ Action réservée à l'Administration LAPERLE TOUR HT.", "error");
+    return;
+  }
+
   const q = list("proformas")[index];
   if (!q) return;
 
@@ -6568,6 +6700,9 @@ async function createInvoiceFromQuote(index) {
     id: invoiceNumber,
     number: invoiceNumber,
     client: q.client || "",
+    clientId: q.clientId || q.clientUid || "",
+    clientUid: q.clientUid || q.clientId || "",
+    email: q.email || "",
     date: today(),
     proforma: q.number || q.id,
     amount: q.amount || 0,
@@ -6577,13 +6712,39 @@ async function createInvoiceFromQuote(index) {
     notes: `Facture générée automatiquement depuis la proforma ${q.number || q.id}`
   };
 
-  list("factures").push(newInvoice);
-  save();
-  await saveDocumentToFirestore("factures", newInvoice);
+  try {
+    list("factures").push(newInvoice);
+    save();
+    await saveDocumentToFirestore("factures", newInvoice);
 
-  go("factures");
-  showToast(`Facture ${invoiceNumber} créée avec succès.`);
+    // Notification instantanée vers le Client / Prospect dans son alerte
+    const targetUid = q.clientUid || q.clientId || "";
+    const clientEmail = (q.email || "").toLowerCase().trim();
+    if (targetUid || clientEmail) {
+      try {
+        await createNotification({
+          title: `🧾 Facture ${invoiceNumber} émise !`,
+          message: `LAPERLE TOUR HT a émis votre facture officielle ${invoiceNumber} (${money(newInvoice.amount)}) pour la proforma ${q.number || q.id}.`,
+          type: 'finance',
+          priority: 'normal',
+          targetUid: targetUid || 'all',
+          broadcast: !targetUid,
+          email: clientEmail,
+          read: false,
+          date: new Date().toISOString()
+        });
+      } catch (notifErr) {
+        console.warn("Erreur alerte client facture:", notifErr);
+      }
+    }
+
+    go("factures");
+    showToast(`Facture ${invoiceNumber} créée avec succès et notification transmise.`);
+  } catch (err) {
+    showToast("Erreur lors de la création de la facture.", "error");
+  }
 }
+window.createInvoiceFromQuote = createInvoiceFromQuote;
 
 function printDocument(type, index) {
   const isQuote = type === "proforma" || type === "quote";
