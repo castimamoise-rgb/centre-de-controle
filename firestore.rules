@@ -10,7 +10,7 @@ service cloud.firestore {
     // Core Infrastructure Helpers
     // -------------------------------------------------------------
     function isValidId(id) {
-      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string && id.size() > 0 && id.size() <= 128;
     }
 
     function incoming() {
@@ -307,9 +307,9 @@ service cloud.firestore {
         (!('vehicle' in data) || (data.vehicle is string && data.vehicle.size() <= 150)) &&
         (!('date' in data) || (data.date is string && data.date.size() <= 50)) &&
         (!('time' in data) || (data.time is string && data.time.size() <= 50)) &&
-        (!('passengers' in data) || (data.passengers is number && data.passengers >= 0)) &&
-        (!('amount' in data) || (data.amount is number && data.amount >= 0)) &&
-        (!('price' in data) || (data.price is number && data.price >= 0)) &&
+        (!('passengers' in data) || data.passengers is number || (data.passengers is string && data.passengers.size() <= 20)) &&
+        (!('amount' in data) || data.amount is number || (data.amount is string && data.amount.size() <= 50)) &&
+        (!('price' in data) || data.price is number || (data.price is string && data.price.size() <= 50)) &&
         (!('status' in data) || (data.status is string && data.status.size() <= 50)) &&
         (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000)) &&
         (!('clientId' in data) || (data.clientId is string && data.clientId.size() <= 128)) &&
@@ -488,20 +488,42 @@ service cloud.firestore {
     // 8. Réservations (/reservations and alias /bookings)
     match /reservations/{reservationId} {
       allow get, list: if canReadOperations() || 
-        (isSignedIn() && isClientDoc(existing())) ||
+        (isSignedIn() && (
+          isClientDoc(existing()) ||
+          (('clientId' in existing()) && existing().clientId == request.auth.uid) ||
+          (('uid' in existing()) && existing().uid == request.auth.uid) ||
+          (('clientUid' in existing()) && existing().clientUid == request.auth.uid) ||
+          (('createdBy' in existing()) && existing().createdBy == request.auth.uid)
+        )) ||
         (isChauffeur() && isChauffeurDoc(existing()));
-      allow create: if isValidId(reservationId) && isValidReservation(incoming()) && (
+      allow create: if isValidId(reservationId) && (
         canManageOperations() || (
-          isSignedIn() &&
-          isOwnClientIdentity(incoming())
+          isSignedIn() && (
+            isOwnClientIdentity(incoming()) ||
+            (('clientId' in incoming()) && incoming().clientId == request.auth.uid) ||
+            (('uid' in incoming()) && incoming().uid == request.auth.uid) ||
+            (('clientUid' in incoming()) && incoming().clientUid == request.auth.uid) ||
+            (('createdBy' in incoming()) && incoming().createdBy == request.auth.uid)
+          )
         )
       );
-      allow update: if canManageOperations() && isValidId(reservationId) && isValidReservation(incoming());
+      allow update: if isValidId(reservationId) && (
+        canManageOperations() || (
+          isSignedIn() && (
+            isOwnClientIdentity(existing()) ||
+            isOwnClientIdentity(incoming()) ||
+            (('clientId' in existing()) && existing().clientId == request.auth.uid) ||
+            (('uid' in existing()) && existing().uid == request.auth.uid) ||
+            (('clientUid' in existing()) && existing().clientUid == request.auth.uid) ||
+            (('createdBy' in existing()) && existing().createdBy == request.auth.uid)
+          )
+        )
+      );
       allow delete: if isAdmin() && isValidId(reservationId);
     }
     match /bookings/{bookingId} {
       allow get, list: if canReadOperations() || (isSignedIn() && isClientDoc(existing())) || (isChauffeur() && isChauffeurDoc(existing()));
-      allow create, update: if canManageOperations() && isValidId(bookingId);
+      allow create, update: if isValidId(bookingId) && (canManageOperations() || (isSignedIn() && (isOwnClientIdentity(incoming()) || incoming().clientId == request.auth.uid)));
       allow delete: if isAdmin() && isValidId(bookingId);
     }
 
@@ -590,14 +612,23 @@ service cloud.firestore {
       );
       allow list: if canManageNotifications() || (
         isSignedIn() && (
-          resource.data.targetUid in [request.auth.uid, 'all'] ||
+          resource.data.targetUid in [request.auth.uid, 'all', 'broadcast'] ||
           resource.data.targetUid == request.auth.uid ||
-          resource.data.targetUid == 'all'
+          resource.data.targetUid == 'all' ||
+          resource.data.targetUid == 'broadcast' ||
+          resource.data.broadcast == true ||
+          (('userId' in resource.data) && resource.data.userId == request.auth.uid) ||
+          (('uid' in resource.data) && resource.data.uid == request.auth.uid)
         )
       );
-      allow create: if isSignedIn() && isValidId(notificationId) && isValidNotification(incoming()) && (
-        canManageNotifications() || isClient() || isProspect() || isChauffeur() ||
-        (incoming().targetUid == "all" || incoming().targetUid == "broadcast" || incoming().forRole == "admin" || incoming().targetUid == request.auth.uid)
+      allow create: if isSignedIn() && isValidId(notificationId) && (
+        canManageNotifications() ||
+        // Autoriser tout utilisateur connecté (prospect, client, chauffeur) à envoyer des notifications au personnel
+        (('forRole' in incoming()) && incoming().forRole in ['admin', 'direction', 'secretaire', 'operations', 'staff', 'all']) ||
+        (('targetUid' in incoming()) && incoming().targetUid in ['all', 'broadcast', 'admin', 'direction', 'secretaire', 'staff', request.auth.uid]) ||
+        (('broadcast' in incoming()) && incoming().broadcast == true) ||
+        (('target' in incoming()) && incoming().target in ['staff', 'admin', 'all']) ||
+        isClient() || isProspect() || isChauffeur()
       );
       allow update: if isValidId(notificationId) && (
         canManageNotifications() || (

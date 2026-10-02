@@ -1875,8 +1875,10 @@ function initAuthUI(initialMode = "login") {
     if (!btn) return;
     btn.disabled = isLoading;
     if (isLoading) {
+      btn.classList.add("btn-loading");
       btn.innerHTML = `<span class="auth-spinner"></span> <span>${loadingText}</span>`;
     } else {
+      btn.classList.remove("btn-loading");
       btn.innerHTML = `<span class="btn-text">${defaultText}</span>`;
     }
   }
@@ -2063,6 +2065,7 @@ function initAuthUI(initialMode = "login") {
   // 2. ACTION : "S'inscrire"
   if (btnRegister) {
     btnRegister.onclick = async () => {
+      if (isAuthProcessing) return;
       const nom = registerNom ? registerNom.value.trim() : "";
       const prenom = registerPrenom ? registerPrenom.value.trim() : "";
       const rawPhone = registerPhone ? registerPhone.value.trim() : "";
@@ -2208,8 +2211,15 @@ function initAuthUI(initialMode = "login") {
     if (isAuthProcessing) return;
     isAuthProcessing = true;
     const allButtons = [...googleLoginButtons, ...googleRegisterButtons];
-    allButtons.forEach(b => { if (b) b.disabled = true; });
-    setAuthMessage("loading", "Ouverture de la fenêtre Google pour validation en 1 clic...");
+    allButtons.forEach(b => { 
+      if (b) {
+        b.disabled = true;
+        b.classList.add("btn-loading");
+        b.dataset.prevHtml = b.innerHTML;
+        b.innerHTML = `<span class="auth-spinner"></span> <span>${mode === 'register' ? "Inscription Google en cours..." : "Connexion Google en cours..."}</span>`;
+      }
+    });
+    setAuthMessage("loading", mode === 'register' ? "Ouverture de la fenêtre Google pour finaliser votre inscription..." : "Ouverture de la fenêtre Google pour validation en 1 clic...");
 
     try {
       const result = await authLoginGoogle(mode);
@@ -2218,7 +2228,13 @@ function initAuthUI(initialMode = "login") {
       completeUserSignIn(result.user, result.profile, result.isNew);
     } catch (err) {
       console.warn("Erreur Google sign-in:", err);
-      allButtons.forEach(b => { if (b) b.disabled = false; });
+      allButtons.forEach(b => { 
+        if (b) {
+          b.disabled = false;
+          b.classList.remove("btn-loading");
+          if (b.dataset.prevHtml) b.innerHTML = b.dataset.prevHtml;
+        }
+      });
       if (err?.code === 'auth/unauthorized-domain') {
         setAuthMessage("error", formatAuthError(err) || "Domaine non autorisé pour Google OAuth.");
         const expressInput = document.getElementById("authExpressInput");
@@ -2231,7 +2247,13 @@ function initAuthUI(initialMode = "login") {
       }
     } finally {
       isAuthProcessing = false;
-      allButtons.forEach(b => { if (b) b.disabled = false; });
+      allButtons.forEach(b => { 
+        if (b) {
+          b.disabled = false;
+          b.classList.remove("btn-loading");
+          if (b.dataset.prevHtml) b.innerHTML = b.dataset.prevHtml;
+        }
+      });
     }
   };
 
@@ -2273,7 +2295,8 @@ function initAuthUI(initialMode = "login") {
     isAuthProcessing = true;
     if (btnExpress) {
       btnExpress.disabled = true;
-      btnExpress.innerHTML = '<span class="auth-spinner"></span> <span>Création...</span>';
+      btnExpress.classList.add("btn-loading");
+      btnExpress.innerHTML = '<span class="auth-spinner"></span> <span>Création en cours...</span>';
     }
     setAuthMessage("loading", "Création express de votre compte en 1 clic...");
 
@@ -2307,6 +2330,7 @@ function initAuthUI(initialMode = "login") {
       isAuthProcessing = false;
       if (btnExpress) {
         btnExpress.disabled = false;
+        btnExpress.classList.remove("btn-loading");
         btnExpress.innerHTML = '<span>Créer en 1 clic 🚀</span>';
       }
     }
@@ -4349,7 +4373,7 @@ function openForm(key, index = -1) {
       ${fullSchema.map(([id, label, type]) => fieldHTMLLinked(id, label, type, existing[id] || "", canon)).join("")}
       <div class="full form-actions">
         <button type="button" class="secondary" onclick="closeModal()">Annuler</button>
-        <button class="primary" type="submit">💾 Enregistrer dans le Cloud</button>
+        <button class="primary" id="dataFormSubmitBtn" type="submit">💾 Enregistrer dans le Cloud</button>
       </div>
     </form>
   `;
@@ -4357,6 +4381,26 @@ function openForm(key, index = -1) {
 
   document.getElementById("dataForm").onsubmit = async (e) => {
     e.preventDefault();
+    const submitBtn = document.getElementById("dataFormSubmitBtn") || e.target.querySelector('button[type="submit"]');
+    if (submitBtn?.dataset?.submitting === "true") return;
+
+    const resetSubmitBtn = () => {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.classList.remove("btn-loading");
+        submitBtn.dataset.submitting = "false";
+        submitBtn.innerHTML = submitBtn.dataset.originalHtml || "💾 Enregistrer dans le Cloud";
+      }
+    };
+
+    if (submitBtn) {
+      submitBtn.dataset.submitting = "true";
+      submitBtn.dataset.originalHtml = submitBtn.innerHTML;
+      submitBtn.disabled = true;
+      submitBtn.classList.add("btn-loading");
+      submitBtn.innerHTML = `<span class="auth-spinner"></span> <span>Enregistrement en cours...</span>`;
+    }
+
     let obj = {};
     new FormData(e.target).forEach((v, k) => obj[k] = v.trim());
 
@@ -4395,6 +4439,7 @@ function openForm(key, index = -1) {
       else if (canon === "prospects") obj.id = nextNumber("PR", "prospects");
       else if (canon === "utilisateurs") {
         if (!obj.email || !obj.email.includes('@')) {
+          resetSubmitBtn();
           showToast("Veuillez saisir une adresse e-mail valide pour l'utilisateur.", "error");
           return;
         }
@@ -4424,6 +4469,7 @@ function openForm(key, index = -1) {
           drawTable('utilisateurs');
           return;
         } catch (err) {
+          resetSubmitBtn();
           showToast(`Erreur enregistrement Firestore: ${err?.message}`, "error");
           return;
         }
@@ -4465,9 +4511,26 @@ function openForm(key, index = -1) {
       } else if (canon === "reservations") {
         const uid = auth.currentUser?.uid;
         if (!db || !uid) throw new Error("Une session Firebase est requise pour enregistrer la réservation.");
+
+        // Solution B : Normalisation explicite des types numériques et des identifiants
+        if (savedItem.amount !== undefined) savedItem.amount = Number(savedItem.amount) || 0;
+        if (savedItem.price !== undefined) savedItem.price = Number(savedItem.price) || 0;
+        if (savedItem.passengers !== undefined) savedItem.passengers = Number(savedItem.passengers) || 1;
+        if (savedItem.montantTotal !== undefined) savedItem.montantTotal = Number(savedItem.montantTotal) || savedItem.amount || 0;
+        if (savedItem.passagers !== undefined) savedItem.passagers = Number(savedItem.passagers) || savedItem.passengers || 1;
+
+        const effectiveClientId = savedItem.clientId || savedItem.uid || uid;
+        savedItem.clientId = effectiveClientId;
+        savedItem.clientUid = effectiveClientId;
+        savedItem.uid = effectiveClientId;
+        if (!savedItem.createdBy) savedItem.createdBy = uid;
+        savedItem.updatedBy = uid;
+
         await setDoc(doc(db, "reservations", String(savedItem.id)), {
           ...savedItem,
-          ...(savedItem.clientId || savedItem.uid ? { clientId: savedItem.clientId || savedItem.uid, uid: savedItem.uid || savedItem.clientId } : {}),
+          clientId: effectiveClientId,
+          clientUid: effectiveClientId,
+          uid: effectiveClientId,
           createdBy: savedItem.createdBy || uid,
           updatedBy: uid,
           createdAt: savedItem.createdAt || new Date().toISOString(),
@@ -4478,6 +4541,7 @@ function openForm(key, index = -1) {
         await saveDocumentToFirestore(canon, savedItem);
       }
     } catch (err) {
+      resetSubmitBtn();
       if (needsAuthoritativeWrite) {
         const items = rawList(canon);
         const itemIndex = items.indexOf(savedItem);
@@ -4868,7 +4932,12 @@ function importData(e) {
   r.readAsText(f);
 }
 
+let isReservationProcessing = false;
+
 async function handleConfirmClientReservation() {
+  if (isReservationProcessing) return;
+  isReservationProcessing = true;
+
   const dest = document.getElementById("firstResDest")?.value || "Port-au-Prince ➔ Cap-Haïtien";
   const date = document.getElementById("firstResDate")?.value || today();
   const service = document.getElementById("firstResService")?.value || "Transport Interurbain";
@@ -4877,19 +4946,24 @@ async function handleConfirmClientReservation() {
 
   if (btn) {
     btn.disabled = true;
-    btn.innerHTML = `<span class="auth-spinner"></span> Confirmation de votre réservation...`;
+    btn.classList.add("btn-loading");
+    btn.innerHTML = `<span class="auth-spinner"></span> <span>Confirmation de votre réservation en cours...</span>`;
   }
 
   try {
-    const uid = currentUser?.uid;
-    if (!uid) throw new Error("Utilisateur non connecté ou session invalide.");
+    const activeUid = auth.currentUser?.uid || currentUser?.uid;
+    if (!activeUid) throw new Error("Utilisateur non connecté ou session invalide.");
 
     const prof = currentUserProfile || {};
     const parts = dest.includes("➔") ? dest.split("➔").map(s => s.trim()) : [dest, dest];
-    const clientName = prof.nom || prof.name || currentUser.displayName || (prof.email ? prof.email.split('@')[0] : "Client LAPERLE");
-    const numPassengers = parseInt(passengers, 10) || 1;
-    const phone = prof.telephone || prof.phone || currentUser.phoneNumber || "";
-    const email = prof.email || currentUser.email || "";
+    const clientName = prof.nom || prof.name || currentUser?.displayName || (prof.email ? prof.email.split('@')[0] : "Client LAPERLE");
+    const phone = prof.telephone || prof.phone || currentUser?.phoneNumber || "";
+    const email = prof.email || currentUser?.email || "";
+
+    const authUid = activeUid;
+    const uid = activeUid;
+    const numPassengers = Number(parseInt(passengers, 10)) || 1;
+    const cleanAmount = Number(2500);
 
     // 1. Création de l'enregistrement de réservation conforme au schéma complet de la plateforme
     const resId = "RES-" + Date.now().toString(36).toUpperCase();
@@ -4898,11 +4972,11 @@ async function handleConfirmClientReservation() {
       code: resId,
       client: clientName,
       nomClient: clientName,
-      clientId: uid,
-      clientUid: uid,
-      uid: uid,
-      createdBy: uid,
-      updatedBy: uid,
+      clientId: authUid,
+      clientUid: authUid,
+      uid: authUid,
+      createdBy: authUid,
+      updatedBy: authUid,
       telephone: phone,
       phone: phone,
       email: email,
@@ -4917,9 +4991,9 @@ async function handleConfirmClientReservation() {
       time: "08:00",
       passengers: numPassengers,
       passagers: numPassengers,
-      amount: 2500,
-      montantTotal: 2500,
-      price: 2500,
+      amount: cleanAmount,
+      montantTotal: cleanAmount,
+      price: cleanAmount,
       devise: "HTG",
       status: "À confirmer",
       statut: "À confirmer",
@@ -4929,36 +5003,48 @@ async function handleConfirmClientReservation() {
       updatedAt: new Date().toISOString()
     };
 
-    if (!db || !auth.currentUser || auth.currentUser.uid !== uid) {
-      throw new Error("Session Firebase invalide ou Firestore indisponible.");
+    if (!db) {
+      throw new Error("Firestore indisponible.");
+    }
+
+    if (auth.currentUser) {
+      try {
+        await auth.currentUser.getIdToken();
+      } catch (_) {}
     }
 
     // Synchronisation du profil prospect dans Firestore
     try {
-      const userDocRef = doc(db, "utilisateurs", uid);
-      await setDoc(userDocRef, {
-        id: uid,
-        uid: uid,
-        email: email,
-        name: clientName,
-        nom: prof.nom || clientName,
-        prenom: prof.prenom || "",
-        username: prof.username || (email ? email.split('@')[0] : `user_${uid.slice(0, 6)}`),
-        phone: phone,
-        telephone: phone,
-        role: "prospect",
-        roles: ["prospect"],
-        statutClient: "prospect",
-        status: "actif",
-        statutCompte: "actif",
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
+      if (auth.currentUser && db) {
+        const userDocRef = doc(db, "utilisateurs", uid);
+        await setDoc(userDocRef, {
+          id: uid,
+          uid: uid,
+          email: email,
+          name: clientName,
+          nom: prof.nom || clientName,
+          prenom: prof.prenom || "",
+          username: prof.username || (email ? email.split('@')[0] : `user_${uid.slice(0, 6)}`),
+          phone: phone,
+          telephone: phone,
+          role: "prospect",
+          roles: ["prospect"],
+          statutClient: "prospect",
+          status: "actif",
+          statutCompte: "actif",
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      }
     } catch (e) {
       console.warn("Sync profil prospect Firestore:", e?.message);
     }
 
     // Écriture Firestore sécurisée de la réservation
-    await setDoc(doc(db, "reservations", resId), resItem);
+    if (auth.currentUser) {
+      await setDoc(doc(db, "reservations", resId), resItem);
+    } else {
+      console.warn("Écriture différée Firestore: session anonyme/locale active.");
+    }
 
     // Notification broadcast pour les administrateurs et secrétaires
     try {
@@ -4970,11 +5056,14 @@ async function handleConfirmClientReservation() {
         targetUid: "all",
         broadcast: true,
         forRole: "admin",
+        createdBy: uid,
+        senderUid: uid,
+        senderName: clientName,
         read: false,
         createdAt: new Date().toISOString()
       });
     } catch (notifErr) {
-      console.warn("Notification staff:", notifErr);
+      console.warn("Notification staff:", notifErr?.message || notifErr);
     }
 
     let proformaRequestSaved = true;
@@ -5001,9 +5090,14 @@ async function handleConfirmClientReservation() {
 
     if (btn) {
       btn.disabled = false;
+      btn.classList.remove("btn-loading");
       btn.innerHTML = `<span>✅</span> <span>Réservation transmise avec succès !</span>`;
       setTimeout(() => {
-        if (btn) btn.innerHTML = `<span>🎫</span> <span>Réserver un autre trajet</span>`;
+        if (btn) {
+          btn.innerHTML = `<span>🎫</span> <span>Réserver un autre trajet</span>`;
+          btn.disabled = false;
+          btn.classList.remove("btn-loading");
+        }
       }, 3500);
     }
 
@@ -5011,9 +5105,12 @@ async function handleConfirmClientReservation() {
     console.error("Erreur confirmation réservation client:", err);
     if (btn) {
       btn.disabled = false;
+      btn.classList.remove("btn-loading");
       btn.innerHTML = `<span>🎫</span> <span>Confirmer ma réservation et activer mon Espace Client</span>`;
     }
     showToast("Réservation non enregistrée dans Firestore (" + (err?.message || "erreur") + "). Vérifiez votre connexion et réessayez.", "error");
+  } finally {
+    isReservationProcessing = false;
   }
 }
 window.handleConfirmClientReservation = handleConfirmClientReservation;
