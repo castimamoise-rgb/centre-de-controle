@@ -5506,11 +5506,120 @@ function importData(e) {
 
 let isReservationProcessing = false;
 
+const LAPERLE_PRESET_ROUTES = [
+  "Delmas 33 ➔ Pétion-Ville",
+  "Delmas 33 ➔ Tabarre",
+  "Delmas 33 ➔ Gérald Bataille",
+  "Delmas 33 ➔ Siloë",
+  "Delmas 32 ➔ Lalue / Centre-Ville",
+  "Delmas 30 ➔ Nazon",
+  "Delmas 19 ➔ Saint-Martin",
+  "Delmas 18 ➔ Bas Peu de Chose",
+  "Delmas 24 ➔ Bel Air",
+  "Delmas 40B ➔ Christ-Roi",
+  "Delmas 48 ➔ Musseau",
+  "Delmas 60 ➔ Musseau",
+  "Delmas 65 ➔ Frères",
+  "Delmas 75 ➔ Frères",
+  "Delmas 75 ➔ Péguy-Ville",
+  "Delmas 83 ➔ Laboule",
+  "Delmas 95 ➔ Pétion-Ville (Place St-Pierre)",
+  "Carrefour Aéroport ➔ Champ de Mars",
+  "Carrefour Aéroport ➔ Fleuriot",
+  "Carrefour Fleuriot ➔ Bon Repos",
+  "Catalpa ➔ Turgeau",
+  "Clercine ➔ Bon Repos",
+  "Clercine ➔ Croix-des-Bouquets",
+  "Tabarre 27 ➔ Boulevard 15 Octobre",
+  "Gérald Bataille ➔ Carrefour Rita",
+  "Nazon ➔ Poste Marchand",
+  "Lalue ➔ Canapé-Vert",
+  "Bourdon ➔ Bois Verna",
+  "Pétion-Ville ➔ Thomassin",
+  "Pétion-Ville ➔ Kenscoff"
+];
+
+// Toutes les suggestions de départ sont suggérées à l'arrivée et vice versa
+const LAPERLE_ALL_PLACES = [
+  "Aéroport International Toussaint Louverture",
+  "Bas Peu de Chose",
+  "Bel Air",
+  "Bois Verna",
+  "Bon Repos",
+  "Boulevard 15 Octobre",
+  "Bourdon",
+  "Canapé-Vert",
+  "Cap-Haïtien",
+  "Carrefour Aéroport",
+  "Carrefour Fleuriot",
+  "Carrefour Rita",
+  "Catalpa",
+  "Centre-Ville (Port-au-Prince)",
+  "Champ de Mars",
+  "Christ-Roi",
+  "Clercine",
+  "Croix-des-Bouquets",
+  "Delmas 18",
+  "Delmas 19",
+  "Delmas 24",
+  "Delmas 30",
+  "Delmas 32",
+  "Delmas 33",
+  "Delmas 40B",
+  "Delmas 48",
+  "Delmas 60",
+  "Delmas 65",
+  "Delmas 75",
+  "Delmas 83",
+  "Delmas 95",
+  "Fleuriot",
+  "Frères",
+  "Gérald Bataille",
+  "Gonaïves",
+  "Jacmel",
+  "Kenscoff",
+  "Laboule",
+  "Lalue",
+  "Lalue / Centre-Ville",
+  "Les Cayes",
+  "Musseau",
+  "Nazon",
+  "Péguy-Ville",
+  "Pétion-Ville",
+  "Pétion-Ville (Place St-Pierre)",
+  "Port-au-Prince",
+  "Poste Marchand",
+  "Saint-Martin",
+  "Siloë",
+  "Tabarre",
+  "Tabarre 27",
+  "Thomassin",
+  "Turgeau"
+];
+
+function handleQuickPresetRouteSelect(selectEl) {
+  const val = selectEl.value;
+  if (!val) return;
+  const parts = val.split("➔").map(s => s.trim());
+  if (parts.length >= 2) {
+    const originEl = document.getElementById("firstResOrigin");
+    const destEl = document.getElementById("firstResDest");
+    if (originEl) originEl.value = parts[0];
+    if (destEl) destEl.value = parts[1];
+  }
+}
+window.handleQuickPresetRouteSelect = handleQuickPresetRouteSelect;
+
 async function handleConfirmClientReservation() {
   if (isReservationProcessing) return;
   isReservationProcessing = true;
 
-  const dest = document.getElementById("firstResDest")?.value || "Port-au-Prince ➔ Cap-Haïtien";
+  const originInput = (document.getElementById("firstResOrigin")?.value || "").trim();
+  const destInput = (document.getElementById("firstResDest")?.value || "").trim();
+  const origin = originInput || "Delmas 33";
+  const destination = destInput || "Pétion-Ville";
+  const dest = `${origin} ➔ ${destination}`;
+
   const date = document.getElementById("firstResDate")?.value || today();
   const service = document.getElementById("firstResService")?.value || "Transport Interurbain";
   const passengers = document.getElementById("firstResPass")?.value || "1";
@@ -5527,7 +5636,6 @@ async function handleConfirmClientReservation() {
     if (!activeUid) throw new Error("Utilisateur non connecté ou session invalide.");
 
     const prof = currentUserProfile || {};
-    const parts = dest.includes("➔") ? dest.split("➔").map(s => s.trim()) : [dest, dest];
     const clientName = prof.nom || prof.name || currentUser?.displayName || (prof.email ? prof.email.split('@')[0] : "Client LAPERLE");
     const phone = prof.telephone || prof.phone || currentUser?.phoneNumber || "";
     const email = prof.email || currentUser?.email || "";
@@ -5535,7 +5643,8 @@ async function handleConfirmClientReservation() {
     const authUid = activeUid;
     const uid = activeUid;
     const numPassengers = Number(parseInt(passengers, 10)) || 1;
-    const cleanAmount = Number(2500);
+    // Retrait du prix forfaitaire : tarification sur devis par les responsables
+    const cleanAmount = 0;
 
     // 1. Création de l'enregistrement de réservation conforme au schéma complet de la plateforme
     const resId = "RES-" + Date.now().toString(36).toUpperCase();
@@ -5552,8 +5661,8 @@ async function handleConfirmClientReservation() {
       telephone: phone,
       phone: phone,
       email: email,
-      origin: parts[0] || dest,
-      destination: parts[1] || dest,
+      origin: origin,
+      destination: destination,
       trajet: dest,
       route: dest,
       service: service,
@@ -5569,7 +5678,9 @@ async function handleConfirmClientReservation() {
       devise: "HTG",
       status: "À confirmer",
       statut: "À confirmer",
-      notes: `${service} • ${dest} • ${numPassengers} passager(s) • Réservé en ligne`,
+      demandeProforma: true,
+      dateDemandeProforma: new Date().toISOString(),
+      notes: `${service} • ${dest} • ${numPassengers} passager(s) • Trajet personnalisé • En attente de tarification par nos responsables`,
       archived: false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -5618,24 +5729,35 @@ async function handleConfirmClientReservation() {
       console.warn("Écriture différée Firestore: session anonyme/locale active.");
     }
 
-    // Notification broadcast pour les administrateurs et secrétaires
+    // Notification instantanée pour les administrateurs avec action directe d'émission de proforma
     try {
       const notifId = "NOTIF-" + Date.now().toString(36).toUpperCase();
-      await setDoc(doc(db, "notifications", notifId), {
+      const notifData = {
         id: notifId,
-        title: "Nouvelle réservation prospect",
-        message: `${clientName} (@${prof.username || uid.slice(0, 6)}) a réservé : ${dest} pour le ${date} (${numPassengers} passager(s)).`,
-        targetUid: "staff",
-        targetRole: "staff",
-        broadcast: false,
+        title: "🔔 Nouvelle réservation & devis à tarifer",
+        message: `${clientName} a réservé un trajet personnalisé : ${dest} pour le ${date} (${numPassengers} passager(s)). En attente de tarification et devis proforma.`,
+        type: 'finance',
+        priority: 'high',
+        actionType: 'demande_proforma',
+        docType: 'proforma',
+        forRole: 'admin',
+        targetUid: 'staff',
+        targetRole: 'staff',
         isInternal: true,
-        forRole: "admin",
-        createdBy: uid,
-        senderUid: uid,
-        senderName: clientName,
+        broadcast: false,
         read: false,
-        createdAt: new Date().toISOString()
-      });
+        date: new Date().toISOString(),
+        reservationId: resId,
+        clientId: uid
+      };
+
+      if (!Array.isArray(state.notifications)) state.notifications = [];
+      state.notifications.unshift({ ...notifData });
+      newlyArrivedNotificationIds.add(notifId);
+      updateNotificationBadge();
+      if (isNotifDropdownOpen) renderNotificationDropdown();
+
+      await createNotification(notifData, notifId);
     } catch (notifErr) {
       console.warn("Notification staff:", notifErr?.message || notifErr);
     }
@@ -5982,17 +6104,40 @@ function renderLectureSeuleProfilePage() {
           </span>
         </div>
 
+        <!-- Raccourci 30 Itinéraires Fréquents -->
+        <div style="margin-bottom: 16px; background: #f8fafc; border: 1px dashed #93c5fd; border-radius: 10px; padding: 12px 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 4px;">
+            <label style="font-size: 12px; font-weight: 700; color: #1e3a8a; display: flex; align-items: center; gap: 6px;">
+              <span>⚡</span> <span>Raccourci : 30 itinéraires fréquents pré-remplis</span>
+            </label>
+            <span style="font-size: 11px; color: #0284c7; font-weight: 600;">(ou écrivez librement votre trajet ci-dessous)</span>
+          </div>
+          <select id="quickPresetRouteSelect" onchange="handleQuickPresetRouteSelect(this)" style="width: 100%; padding: 9px 12px; border: 1px solid #94a3b8; border-radius: 8px; font-size: 13px; background: #ffffff; font-weight: 600; color: #0f172a;">
+            <option value="">-- Sélectionnez un itinéraire fréquent ou composez librement ci-dessous --</option>
+            ${LAPERLE_PRESET_ROUTES.map(r => `<option value="${r}">${r}</option>`).join("")}
+          </select>
+        </div>
+
+        <!-- Datalist unique partagée : les suggestions de départ sont suggérées à l'arrivée et vice versa -->
+        <datalist id="laperlePlacesList">
+          ${LAPERLE_ALL_PLACES.map(p => `<option value="${p}"></option>`).join("")}
+        </datalist>
+
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 16px;">
           <div>
-            <label style="display: block; font-size: 12px; font-weight: 700; color: #334e68; margin-bottom: 4px;">Destination / Trajet</label>
-            <select id="firstResDest" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; background: #f8fafc; font-weight: 600;">
-              <option value="Port-au-Prince ➔ Cap-Haïtien">Port-au-Prince ➔ Cap-Haïtien</option>
-              <option value="Port-au-Prince ➔ Jacmel">Port-au-Prince ➔ Jacmel</option>
-              <option value="Port-au-Prince ➔ Les Cayes">Port-au-Prince ➔ Les Cayes</option>
-              <option value="Port-au-Prince ➔ Gonaïves">Port-au-Prince ➔ Gonaïves</option>
-              <option value="Course Privée VIP Port-au-Prince / Pétion-Ville">Course Privée VIP (Pétion-Ville)</option>
-              <option value="Navette Aéroport International Toussaint Louverture">Navette Aéroport International</option>
-            </select>
+            <label style="display: block; font-size: 12px; font-weight: 700; color: #334e68; margin-bottom: 4px;">
+              📍 Lieu de départ / Ramassage
+            </label>
+            <input type="text" id="firstResOrigin" list="laperlePlacesList" value="Delmas 33" placeholder="Ex: Delmas 33, Pétion-Ville..." autocomplete="off" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; background: #f8fafc; font-weight: 600;">
+            <small style="display:block; color: #64748b; font-size: 11px; margin-top: 3px;">Choisissez une suggestion ou écrivez librement</small>
+          </div>
+
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 700; color: #334e68; margin-bottom: 4px;">
+              🏁 Lieu d'arrivée / Destination
+            </label>
+            <input type="text" id="firstResDest" list="laperlePlacesList" value="Pétion-Ville" placeholder="Ex: Pétion-Ville, Tabarre, Kenscoff..." autocomplete="off" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; background: #f8fafc; font-weight: 600;">
+            <small style="display:block; color: #64748b; font-size: 11px; margin-top: 3px;">Toutes les zones sont suggérées à l'arrivée aussi</small>
           </div>
 
           <div>
@@ -6018,6 +6163,14 @@ function renderLectureSeuleProfilePage() {
               <option value="3">3 passagers</option>
               <option value="4">4 passagers ou plus</option>
             </select>
+          </div>
+
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 700; color: #334e68; margin-bottom: 4px;">Tarification</label>
+            <div style="padding: 9px 12px; background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 8px; font-size: 12px; font-weight: 700; color: #15803d; display: flex; align-items: center; gap: 6px;">
+              <span>💰</span> <span>Sur devis officiel LAPERLE</span>
+            </div>
+            <small style="display:block; color: #15803d; font-size: 11px; margin-top: 3px;">Le prix officiel vous sera transmis par nos responsables</small>
           </div>
         </div>
 
@@ -6785,6 +6938,18 @@ async function handleAcceptDocumentRequestFromAlert(notifId, reservationId, type
   if (type === 'proforma') {
     const quoteNumber = nextProformaNumber();
     createdDocNumber = quoteNumber;
+
+    let quoteAmount = Number(r.montantTotal || r.amount || 0);
+    if (quoteAmount <= 0) {
+      const userInput = prompt(`💰 Tarification du trajet personnalisé (${r.origin || ''} ➔ ${r.destination || r.trajet || ''}) :\nEntrez le montant officiel en HTG fixé par la Direction pour ce devis proforma :`, "3500");
+      if (userInput === null) return;
+      const parsed = parseFloat(String(userInput).replace(/[^0-9.]/g, ''));
+      quoteAmount = (!isNaN(parsed) && parsed > 0) ? parsed : 0;
+      r.amount = quoteAmount;
+      r.montantTotal = quoteAmount;
+      r.price = quoteAmount;
+    }
+
     const newQuote = {
       id: quoteNumber,
       number: quoteNumber,
@@ -6794,7 +6959,7 @@ async function handleAcceptDocumentRequestFromAlert(notifId, reservationId, type
       email: clientEmail,
       telephone: phone,
       date: today(),
-      amount: Number(r.montantTotal || r.amount || 2500),
+      amount: quoteAmount,
       status: "Envoyée",
       validUntil: today(),
       archived: false,
@@ -7205,6 +7370,17 @@ async function createProformaFromReservation(index) {
   const phone = r.telephone || r.phone || "";
   const routeDesc = r.trajet || r.route || (r.origin && r.destination ? `${r.origin} ➔ ${r.destination}` : "");
 
+  let proformaAmount = Number(r.montantTotal || r.amount || 0);
+  if (proformaAmount <= 0) {
+    const userInput = prompt(`💰 Tarification du trajet personnalisé (${r.origin || ''} ➔ ${r.destination || r.trajet || ''}) :\nEntrez le montant officiel en HTG fixé par la Direction pour ce devis proforma :`, "3500");
+    if (userInput === null) return;
+    const parsed = parseFloat(String(userInput).replace(/[^0-9.]/g, ''));
+    proformaAmount = (!isNaN(parsed) && parsed > 0) ? parsed : 0;
+    r.amount = proformaAmount;
+    r.montantTotal = proformaAmount;
+    r.price = proformaAmount;
+  }
+
   const newQuote = {
     id: quoteNumber,
     number: quoteNumber,
@@ -7214,7 +7390,7 @@ async function createProformaFromReservation(index) {
     email: clientEmail,
     telephone: phone,
     date: today(),
-    amount: Number(r.montantTotal || r.amount || 2500),
+    amount: proformaAmount,
     status: "Envoyée",
     validUntil: today(),
     archived: false,
