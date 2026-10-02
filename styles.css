@@ -1662,36 +1662,40 @@ button, input, select, textarea {
   background: #1e3a8a;
   color: #ffffff;
   font-weight: 800;
+  border: 1px solid #3b82f6;
 }
-.cal-date-cell.event-orange {
-  background: #7c2d12;
+.cal-date-cell.is-selected {
+  outline: 2px solid #38bdf8 !important;
+  outline-offset: -1px;
+}
+.cal-date-cell.has-res {
+  background: rgba(249, 115, 22, 0.16);
   color: #fdba74;
   font-weight: 700;
+  border: 1px solid rgba(249, 115, 22, 0.4);
 }
-.cal-date-cell.event-orange::after {
-  content: "3:45p";
-  font-size: 7px;
-  font-weight: 800;
-  color: #ea580c;
-  background: #ffedd5;
-  padding: 1px 3px;
-  border-radius: 3px;
-  margin-top: 1px;
+.cal-date-cell.event-orange {
+  background: rgba(234, 88, 12, 0.22);
+  color: #ffedd5;
+  border: 1px solid #f97316;
 }
 .cal-date-cell.event-green {
-  background: #064e3b;
-  color: #6ee7b7;
-  font-weight: 700;
+  background: rgba(16, 185, 129, 0.18);
+  color: #a7f3d0;
+  border: 1px solid #10b981;
 }
-.cal-date-cell.event-green::after {
-  content: "5:45p";
-  font-size: 7px;
+.cal-date-cell .res-count-chip {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  background: #f97316;
+  color: #ffffff;
+  font-size: 8px;
   font-weight: 800;
-  color: #059669;
-  background: #d1fae5;
-  padding: 1px 3px;
-  border-radius: 3px;
-  margin-top: 1px;
+  padding: 0 4px;
+  border-radius: 6px;
+  line-height: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
 /* Missions & Circuits (Style Lessons de l'image) */

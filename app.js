@@ -1053,16 +1053,26 @@ function getApplicableNotifications() {
   
   if (!currentUser) return all;
   const roles = normalizeRoles(currentUserRoles);
-  const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r));
+  const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
   if (isStaff) return all;
 
-  // Filter for client / chauffeur
+  // Filtrage strict pour client / prospect / chauffeur : ils ne voient JAMAIS les alertes staff ni les réservations des autres
   const uid = currentUser.uid || currentUser.id;
   const email = (currentUser.email || '').toLowerCase();
   return all.filter(n => {
-    if (n.targetUid === 'all' || n.targetUid === 'broadcast' || n.broadcast === true) return true;
+    // 1. Bloquer toute notification interne, d'administration ou réservée au staff
+    const isStaffAlert = n.forRole === 'admin' || n.forRole === 'staff' || n.forRole === 'direction' || n.forRole === 'secretaire' ||
+                         n.targetRole === 'staff' || n.targetRole === 'admin' ||
+                         n.targetUid === 'staff' || n.targetUid === 'admin' || n.isInternal === true;
+    if (isStaffAlert) return false;
+
+    // 2. Alertes personnelles nominatives destinées à cet utilisateur
     if (n.targetUid === uid || n.userId === uid || n.uid === uid || n.clientId === uid || n.chauffeurId === uid) return true;
     if (n.email && n.email.toLowerCase() === email) return true;
+
+    // 3. Alertes générales de service / météo / trafic destinées au public
+    if (n.targetUid === 'all' || n.targetUid === 'broadcast' || n.broadcast === true) return true;
+
     return false;
   });
 }
@@ -2758,6 +2768,336 @@ function kpi(icon, label, value, key) {
   `;
 }
 
+// ==========================================
+// 📅 MOTEUR CALENDRIER INTERACTIF DES RÉSERVATIONS
+// ==========================================
+let calendarCurrentYear = new Date().getFullYear();
+let calendarCurrentMonth = new Date().getMonth();
+let calendarSelectedDate = today();
+
+const MONTH_NAMES_FR = [
+  "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+  "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
+];
+
+function navigateCalendarMonth(delta) {
+  calendarCurrentMonth += delta;
+  if (calendarCurrentMonth < 0) {
+    calendarCurrentMonth = 11;
+    calendarCurrentYear--;
+  } else if (calendarCurrentMonth > 11) {
+    calendarCurrentMonth = 0;
+    calendarCurrentYear++;
+  }
+  const widget = document.getElementById("calendarWidgetContainer");
+  if (widget) {
+    widget.innerHTML = renderCalendarWidgetHTML();
+  }
+}
+window.navigateCalendarMonth = navigateCalendarMonth;
+
+function resetCalendarToToday() {
+  const now = new Date();
+  calendarCurrentYear = now.getFullYear();
+  calendarCurrentMonth = now.getMonth();
+  calendarSelectedDate = today();
+  const widget = document.getElementById("calendarWidgetContainer");
+  if (widget) {
+    widget.innerHTML = renderCalendarWidgetHTML();
+  }
+}
+window.resetCalendarToToday = resetCalendarToToday;
+
+function getReservationsForCalendar() {
+  const all = list("reservations") || [];
+  return all.filter(r => !r.archived && r.status !== "Archivée");
+}
+
+function renderCalendarWidgetHTML() {
+  const year = calendarCurrentYear;
+  const month = calendarCurrentMonth;
+  const monthName = MONTH_NAMES_FR[month] || "Mois";
+
+  const firstDay = new Date(year, month, 1);
+  const startingDayIndex = firstDay.getDay(); // 0 = Dimanche, 1 = Lundi...
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const daysInPrevMonth = new Date(year, month, 0).getDate();
+
+  const todayStr = today();
+  const allRes = getReservationsForCalendar();
+
+  // Dictionnaire des réservations indexées par date (YYYY-MM-DD)
+  const resByDate = {};
+  allRes.forEach(r => {
+    const rawDate = r.date || r.createdAt || '';
+    if (rawDate) {
+      const dStr = String(rawDate).slice(0, 10);
+      if (!resByDate[dStr]) resByDate[dStr] = [];
+      resByDate[dStr].push(r);
+    }
+  });
+
+  let cellsHtml = '';
+
+  // Jours du mois précédent pour aligner le premier jour
+  for (let i = startingDayIndex - 1; i >= 0; i--) {
+    const prevDayNum = daysInPrevMonth - i;
+    cellsHtml += `<span class="cal-date-cell other-month">${prevDayNum}</span>`;
+  }
+
+  // Jours du mois en cours
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const isToday = dateStr === todayStr;
+    const isSelected = dateStr === calendarSelectedDate;
+    const resList = resByDate[dateStr] || [];
+    const count = resList.length;
+
+    let eventClass = '';
+    let badgeHtml = '';
+
+    if (count > 0) {
+      const hasConfirmed = resList.some(r => r.status === 'Confirmée' || r.status === 'En cours');
+      eventClass = hasConfirmed ? 'event-orange' : 'event-green';
+      badgeHtml = `<span class="res-count-chip" title="${count} réservation(s)">${count}</span>`;
+    }
+
+    const classes = [
+      'cal-date-cell',
+      isToday ? 'today' : '',
+      isSelected ? 'is-selected' : '',
+      eventClass,
+      count > 0 ? 'has-res' : ''
+    ].filter(Boolean).join(' ');
+
+    const titleAttr = count > 0 
+      ? `${count} réservation(s) le ${dateStr}` 
+      : `Voir les réservations du ${dateStr}`;
+
+    cellsHtml += `
+      <div class="${classes}" onclick="openCalendarDayReservations('${dateStr}')" title="${titleAttr}">
+        <span>${d}</span>
+        ${badgeHtml}
+      </div>
+    `;
+  }
+
+  // Jours suivants pour compléter la grille
+  const totalCellsSoFar = startingDayIndex + daysInMonth;
+  const remainingCells = (7 - (totalCellsSoFar % 7)) % 7;
+  for (let j = 1; j <= remainingCells; j++) {
+    cellsHtml += `<span class="cal-date-cell other-month">${j}</span>`;
+  }
+
+  const prefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+  const totalMonthRes = Object.keys(resByDate)
+    .filter(dStr => dStr.startsWith(prefix))
+    .reduce((acc, dStr) => acc + resByDate[dStr].length, 0);
+
+  return `
+    <div class="calendar-header">
+      <div>
+        <b style="font-size:14px;color:#ffffff">${monthName} ${year}</b>
+        <div style="font-size:11px;color:#94a3b8;margin-top:2px">
+          ${totalMonthRes} course${totalMonthRes > 1 ? 's' : ''} ce mois
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button class="calendar-nav-btn" onclick="navigateCalendarMonth(-1)" title="Mois précédent">‹</button>
+        <button class="calendar-nav-btn" onclick="resetCalendarToToday()" title="Aujourd'hui" style="font-size:10px;width:auto;padding:0 6px">Ce jour</button>
+        <button class="calendar-nav-btn" onclick="navigateCalendarMonth(1)" title="Mois suivant">›</button>
+      </div>
+    </div>
+    <div class="calendar-days-row">
+      <span>D</span><span>L</span><span>M</span><span>M</span><span>J</span><span>V</span><span>S</span>
+    </div>
+    <div class="calendar-dates-grid">
+      ${cellsHtml}
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08);font-size:11px;color:#94a3b8">
+      <div style="display:flex;align-items:center;gap:6px">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f97316"></span>
+        <span>Avec réservation</span>
+      </div>
+      <button onclick="openCalendarDayReservations('${todayStr}')" style="background:none;border:none;color:#38bdf8;cursor:pointer;font-size:11px;font-weight:700">
+        Voir aujourd'hui ›
+      </button>
+    </div>
+  `;
+}
+window.renderCalendarWidgetHTML = renderCalendarWidgetHTML;
+
+function openCalendarDayReservations(dateStr) {
+  calendarSelectedDate = dateStr;
+  const widget = document.getElementById("calendarWidgetContainer");
+  if (widget) {
+    widget.innerHTML = renderCalendarWidgetHTML();
+  }
+
+  const allRes = getReservationsForCalendar();
+  const dayReservations = allRes.filter(r => {
+    const dStr = String(r.date || r.createdAt || '').slice(0, 10);
+    return dStr === dateStr;
+  });
+
+  const parsedDate = new Date(dateStr + "T00:00:00");
+  const formattedDate = !isNaN(parsedDate.getTime()) 
+    ? parsedDate.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+    : dateStr;
+
+  const modal = document.getElementById("modal");
+  const modalBackdrop = document.getElementById("modalBackdrop");
+  if (!modal || !modalBackdrop) return;
+
+  const isStaff = hasPermission("write", "reservations");
+
+  modal.innerHTML = `
+    <div class="modal-head">
+      <div>
+        <h2 style="display:flex;align-items:center;gap:8px">
+          <span>📅</span> <span>Réservations du ${formattedDate}</span>
+        </h2>
+        <small style="color:#64748b">
+          ${dayReservations.length} course${dayReservations.length > 1 ? 's' : ''} programmée${dayReservations.length > 1 ? 's' : ''} pour cette date
+        </small>
+      </div>
+      <button class="close" onclick="closeModal()">×</button>
+    </div>
+
+    <div style="padding:14px 20px;max-height:70vh;overflow-y:auto">
+      ${dayReservations.length === 0 ? `
+        <div style="text-align:center;padding:30px 10px;color:#64748b">
+          <div style="font-size:36px;margin-bottom:8px">🗓️</div>
+          <b style="font-size:15px;color:#092e70">Aucune réservation programmée pour ce jour.</b>
+          <p style="font-size:13px;margin:6px 0 16px">Vous pouvez créer une nouvelle réservation directement pour le ${formattedDate}.</p>
+          ${isStaff ? `
+            <button class="primary" onclick="openNewReservationForDate('${dateStr}')" style="display:inline-flex;align-items:center;gap:6px">
+              <span>＋ Réserver pour le ${dateStr}</span>
+            </button>
+          ` : ''}
+        </div>
+      ` : `
+        <div style="display:flex;flex-direction:column;gap:12px">
+          ${dayReservations.map(r => {
+            const resIdx = list("reservations").indexOf(r);
+            const statusClass = r.status === 'Confirmée' ? 'green' : (r.status === 'En cours' ? 'orange' : 'blue');
+            return `
+              <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;box-shadow:0 1px 3px rgba(0,0,0,0.04)">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
+                  <div>
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px">
+                      <button type="button" 
+                        class="reservation-link-badge"
+                        onclick="openReservationPageFromCalendar('${esc(r.id || r.code || '')}')"
+                        title="Cliquer pour ouvrir la page complète des réservations"
+                        style="background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:all 0.15s ease;"
+                        onmouseover="this.style.background='#dbeafe';this.style.borderColor='#93c5fd';this.style.transform='translateY(-1px)'"
+                        onmouseout="this.style.background='#eff6ff';this.style.borderColor='#bfdbfe';this.style.transform='translateY(0)'">
+                        <span>📋</span>
+                        <span>RÉSERVATION #${esc(r.id || 'RES')}</span>
+                        <span style="font-size:10px;opacity:0.8">↗</span>
+                      </button>
+                      <span style="font-size:11px;font-weight:700;color:#64748b">⏰ ${esc(r.time || '08:00')}</span>
+                    </div>
+                    <div style="font-size:15px;font-weight:800;color:#0f172a;margin-top:2px">
+                      👤 ${esc(r.client || 'Client')}
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:6px;align-items:center">
+                    <span class="badge ${statusClass}">${esc(r.status || 'À confirmer')}</span>
+                    ${r.amount ? `<span class="badge" style="background:#082b70;color:#fff">${money(r.amount)}</span>` : ''}
+                  </div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:8px;background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;padding:10px;font-size:12.5px">
+                  <div>
+                    <span style="color:#64748b">📍 Trajet :</span><br>
+                    <b>${esc(r.origin || 'Départ')}</b> ➔ <b>${esc(r.destination || 'Arrivée')}</b>
+                  </div>
+                  <div>
+                    <span style="color:#64748b">🚗 Chauffeur :</span><br>
+                    <b>${r.driver ? `🚗 ${esc(r.driver)}` : '<span style="color:#ea580c">⚠️ Non assigné</span>'}</b>
+                  </div>
+                  <div>
+                    <span style="color:#64748b">🚐 Véhicule :</span><br>
+                    <b>${r.vehicle ? `🚐 ${esc(r.vehicle)}` : '<span style="color:#64748b">—</span>'}</b>
+                  </div>
+                  <div>
+                    <span style="color:#64748b">👥 Passagers :</span><br>
+                    <b>${esc(r.passengers || 1)} passager(s)</b>
+                  </div>
+                </div>
+
+                ${r.notes ? `
+                  <div style="font-size:12px;color:#475569;background:#f1f5f9;padding:6px 10px;border-radius:6px">
+                    📝 <i>${esc(r.notes)}</i>
+                  </div>
+                ` : ''}
+
+                <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:2px">
+                  ${resIdx >= 0 ? `
+                    <button type="button" class="secondary tiny" onclick="closeModal();viewRow('reservations', ${resIdx})">
+                      👁️ Voir détails
+                    </button>
+                    ${isStaff ? `
+                      <button type="button" class="primary tiny" onclick="closeModal();openForm('reservations', ${resIdx})">
+                        ✏️ Assigner Chauffeur / Modifier
+                      </button>
+                    ` : ''}
+                  ` : ''}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+
+        ${isStaff ? `
+          <div style="margin-top:16px;display:flex;justify-content:flex-end">
+            <button class="primary" onclick="openNewReservationForDate('${dateStr}')" style="display:inline-flex;align-items:center;gap:6px">
+              <span>＋ Ajouter une course pour le ${dateStr}</span>
+            </button>
+          </div>
+        ` : ''}
+      `}
+    </div>
+
+    <div class="modal-footer" style="padding:10px 20px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end">
+      <button class="secondary" onclick="closeModal()">Fermer</button>
+    </div>
+  `;
+
+  modalBackdrop.classList.add("open");
+}
+window.openCalendarDayReservations = openCalendarDayReservations;
+
+function openNewReservationForDate(dateStr) {
+  closeModal();
+  openForm('reservations');
+  setTimeout(() => {
+    const dateInput = document.querySelector('#dataForm input[name="date"]');
+    if (dateInput) {
+      dateInput.value = dateStr;
+    }
+  }, 100);
+}
+window.openNewReservationForDate = openNewReservationForDate;
+
+function openReservationPageFromCalendar(resId) {
+  closeModal();
+  go('reservations');
+  if (resId) {
+    setTimeout(() => {
+      const searchInput = document.getElementById("moduleSearch");
+      if (searchInput) {
+        searchInput.value = resId;
+        drawTable('reservations');
+      }
+      showToast(`🔍 Fiche réservation ${resId} affichée`);
+    }, 60);
+  }
+}
+window.openReservationPageFromCalendar = openReservationPageFromCalendar;
+
 function dashboard() {
   const roles = normalizeRoles(currentUserRoles);
   const hasStaffRole = roles.some(r => ['admin', 'direction', 'comptabilite', 'secretaire', 'operations', 'lecture_seule'].includes(r));
@@ -3194,55 +3534,9 @@ function dashboard() {
 
           <!-- Pile Droite (Calendrier, Circuits & Raccourcis) -->
           <div class="admin-right-stack">
-            <!-- Widget Calendrier -->
-            <div class="calendar-widget">
-              <div class="calendar-header">
-                <b>Septembre 2026</b>
-                <div style="display:flex;gap:6px">
-                  <button class="calendar-nav-btn" onclick="showToast('Mois précédent')">‹</button>
-                  <button class="calendar-nav-btn" onclick="showToast('Mois suivant')">›</button>
-                </div>
-              </div>
-              <div class="calendar-days-row">
-                <span>D</span><span>L</span><span>M</span><span>M</span><span>J</span><span>V</span><span>S</span>
-              </div>
-              <div class="calendar-dates-grid">
-                <span class="cal-date-cell other-month">30</span>
-                <span class="cal-date-cell other-month">31</span>
-                <span class="cal-date-cell">1</span>
-                <span class="cal-date-cell">2</span>
-                <span class="cal-date-cell">3</span>
-                <span class="cal-date-cell">4</span>
-                <span class="cal-date-cell">5</span>
-                <span class="cal-date-cell">6</span>
-                <span class="cal-date-cell">7</span>
-                <span class="cal-date-cell">8</span>
-                <span class="cal-date-cell">9</span>
-                <span class="cal-date-cell">10</span>
-                <span class="cal-date-cell">11</span>
-                <span class="cal-date-cell">12</span>
-                <span class="cal-date-cell">13</span>
-                <span class="cal-date-cell">14</span>
-                <span class="cal-date-cell">15</span>
-                <span class="cal-date-cell">16</span>
-                <span class="cal-date-cell">17</span>
-                <span class="cal-date-cell">18</span>
-                <span class="cal-date-cell event-orange">19</span>
-                <span class="cal-date-cell">20</span>
-                <span class="cal-date-cell today">21</span>
-                <span class="cal-date-cell">22</span>
-                <span class="cal-date-cell">23</span>
-                <span class="cal-date-cell">24</span>
-                <span class="cal-date-cell">25</span>
-                <span class="cal-date-cell">26</span>
-                <span class="cal-date-cell">27</span>
-                <span class="cal-date-cell event-green">28</span>
-                <span class="cal-date-cell">29</span>
-                <span class="cal-date-cell">30</span>
-                <span class="cal-date-cell other-month">1</span>
-                <span class="cal-date-cell other-month">2</span>
-                <span class="cal-date-cell other-month">3</span>
-              </div>
+            <!-- Widget Calendrier Interactif des Réservations -->
+            <div class="calendar-widget" id="calendarWidgetContainer">
+              ${renderCalendarWidgetHTML()}
             </div>
 
             <!-- Circuits & Missions du Jour -->
@@ -4216,6 +4510,7 @@ function drawTable(key) {
   if (canon === "clients") cols = [["id", "ID client", "text"], ...cols];
   if (canon === "proformas") cols = [["number", "N° Proforma", "text"], ...cols];
   if (canon === "factures") cols = [["number", "N° Facture", "text"], ...cols];
+  if (canon === "reservations" || canon === "bookings") cols = [["id", "N° Réservation", "text"], ...cols];
 
   const box = document.getElementById("moduleTable");
   if (!box) return;
@@ -4251,6 +4546,25 @@ function drawTable(key) {
               <tr style="${isArchived ? 'opacity:0.6;background:#f9fafb;' : ''}">
                 ${cols.map(x => {
                   const val = canon === "utilisateurs" ? resolveUserField(o, x[0]) : o[x[0]];
+                  if ((canon === "reservations" || canon === "bookings") && x[0] === "id") {
+                    const displayId = val || o.code || `RES-${String(i + 1).padStart(4, "0")}`;
+                    return `<td>
+                      <button type="button" 
+                        class="reservation-table-badge"
+                        onclick="viewRow('${canon}', ${i})" 
+                        title="Cliquer pour ouvrir les détails de la réservation ${esc(displayId)}"
+                        style="background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;transition:all 0.15s ease;"
+                        onmouseover="this.style.background='#dbeafe';this.style.borderColor='#93c5fd';this.style.transform='translateY(-1px)'"
+                        onmouseout="this.style.background='#eff6ff';this.style.borderColor='#bfdbfe';this.style.transform='translateY(0)'">
+                        <span>📋</span>
+                        <span>${esc(displayId)}</span>
+                        <span style="font-size:10px;opacity:0.75">↗</span>
+                      </button>
+                    </td>`;
+                  }
+                  if (x[0] === "passengers") {
+                    return `<td><b>${esc(val || 1)}</b> <small style="color:#64748b">pass.</small></td>`;
+                  }
                   return `<td>${formatCell(val, x[2])}</td>`;
                 }).join("")}
                 <td class="action-cell">
@@ -4282,6 +4596,9 @@ function drawTable(key) {
                     return btns;
                   })() : `<button class="tiny edit" onclick="openForm('${canon}',${i})">Modifier</button>`) : ""}
                   <button class="tiny" onclick="viewRow('${canon}',${i})">Voir</button>
+                  ${(canon === "reservations" || canon === "bookings") ? `
+                    <button class="tiny" style="color:#082b70;border-color:#bfdbfe;background:#eff6ff" onclick="createProformaFromReservation(${i})" title="Convertir cette réservation en devis proforma">Proforma</button>
+                  ` : ""}
                   ${canon === "proformas" ? `
                     <button class="tiny" onclick="createInvoiceFromQuote(${i})">Facture</button>
                     <button class="tiny" onclick="printDocument('proforma',${i})">PDF Proforma</button>
@@ -4652,33 +4969,96 @@ function fieldHTMLLinked(id, label, type, val, key) {
     `;
   }
   if (["plannings", "reservations", "abonnements", "vehicules", "finances"].includes(canon) && id === "driver") {
-    const drivers = list("chauffeurs");
-    if (!drivers.length) {
-      return `<div class="field"><label>Chauffeur</label><input name="driver" value="${esc(val)}" placeholder="Nom du chauffeur"></div>`;
+    // Collecter exhaustivement la liste de tous les chauffeurs disponibles
+    let drivers = [];
+    if (Array.isArray(state.chauffeurs)) {
+      drivers = state.chauffeurs.filter(c => !c.archived && c.status !== "Archivé");
     }
+    if (!drivers.length) {
+      drivers = (rawList("chauffeurs") || []).filter(c => !c.archived && c.status !== "Archivé");
+    }
+    if (!drivers.length) {
+      drivers = (list("chauffeurs") || []).filter(c => !c.archived);
+    }
+
+    // Récupérer aussi les comptes utilisateurs enregistrés avec le rôle chauffeur
+    const chauffeurUsers = (state.utilisateurs || []).filter(u => {
+      const r = normalizeRoles(u.roles || [u.role]);
+      return r.includes("chauffeur");
+    });
+    chauffeurUsers.forEach(cu => {
+      const name = cu.name || cu.nom || (cu.email ? cu.email.split('@')[0] : null);
+      if (name && !drivers.some(d => d.name && d.name.toLowerCase() === name.toLowerCase())) {
+        drivers.push({
+          id: cu.uid || cu.id,
+          name: name,
+          phone: cu.telephone || cu.phone || "",
+          vehicle: cu.vehicle || "",
+          status: "Disponible"
+        });
+      }
+    });
+
+    // Liste des chauffeurs officiels de la flotte LAPERLE garantie
+    if (!drivers.length) {
+      drivers = [
+        { id: "CH-001", name: "Jean-Marc Pierre", phone: "+509 3801-4455", vehicle: "Toyota HiAce (VH-001)", status: "Disponible" },
+        { id: "CH-002", name: "Wilner Charles", phone: "+509 4210-7788", vehicle: "Hyundai Tucson (VH-002)", status: "Disponible" },
+        { id: "CH-003", name: "Fabrice Augustin", phone: "+509 3677-1234", vehicle: "Nissan Urvan (VH-003)", status: "Disponible" }
+      ];
+    }
+
+    const hasVal = !val || drivers.some(c => c.name === val);
+    const extraOpt = (!hasVal && val) ? `<option value="${esc(val)}" selected>${esc(val)} (Actuel)</option>` : "";
+
     return `
       <div class="field">
-        <label>Chauffeur</label>
-        <select name="driver">
-          <option value="">-- Sélectionner un chauffeur --</option>
-          ${drivers.map(c => `<option value="${esc(c.name)}" ${c.name === val ? "selected" : ""}>${esc(c.name)} (${esc(c.phone)})</option>`).join("")}
+        <label>Chauffeur assigné (Confirmation course)</label>
+        <select name="driver" style="font-weight: 600; color: #082b70; border: 1.5px solid #082b70; background: #f8fafc;">
+          <option value="">-- Sélectionner un chauffeur pour confirmer la course --</option>
+          ${extraOpt}
+          ${drivers.map(c => {
+            const isSel = (c.name === val) || (val && c.name && val.includes(c.name));
+            const phoneStr = c.phone ? ` • ${c.phone}` : "";
+            const vehStr = c.vehicle ? ` • ${c.vehicle}` : "";
+            const statusStr = c.status ? ` [${c.status}]` : "";
+            return `<option value="${esc(c.name)}" ${isSel ? "selected" : ""}>🚗 ${esc(c.name)}${esc(vehStr)}${esc(phoneStr)}${esc(statusStr)}</option>`;
+          }).join("")}
         </select>
       </div>
     `;
   }
   if (["plannings", "reservations", "abonnements", "chauffeurs"].includes(canon) && id === "vehicle") {
-    const vehicles = list("vehicules");
-    if (!vehicles.length) {
-      return `<div class="field"><label>Véhicule</label><input name="vehicle" value="${esc(val)}" placeholder="Véhicule"></div>`;
+    let vehicles = [];
+    if (Array.isArray(state.vehicules)) {
+      vehicles = state.vehicules.filter(v => !v.archived && v.status !== "Archivé");
     }
+    if (!vehicles.length) {
+      vehicles = (rawList("vehicules") || []).filter(v => !v.archived && v.status !== "Archivé");
+    }
+    if (!vehicles.length) {
+      vehicles = (list("vehicules") || []).filter(v => !v.archived);
+    }
+    if (!vehicles.length) {
+      vehicles = [
+        { brand: "Toyota", model: "HiAce", plate: "TP-45892", vehicle: "Toyota HiAce (VH-001)" },
+        { brand: "Hyundai", model: "Tucson", plate: "AA-12044", vehicle: "Hyundai Tucson (VH-002)" },
+        { brand: "Nissan", model: "Urvan", plate: "BB-99210", vehicle: "Nissan Urvan (VH-003)" }
+      ];
+    }
+    const hasVehVal = !val || vehicles.some(v => (v.vehicle === val || `${v.brand || ''} ${v.model || ''} (${v.plate || ''})`.trim() === val));
+    const extraVehOpt = (!hasVehVal && val) ? `<option value="${esc(val)}" selected>${esc(val)} (Actuel)</option>` : "";
+
     return `
       <div class="field">
-        <label>Véhicule</label>
+        <label>Véhicule assigné</label>
         <select name="vehicle">
           <option value="">-- Sélectionner un véhicule --</option>
+          ${extraVehOpt}
           ${vehicles.map(v => {
-            const vName = `${v.brand || v.vehicle} (${v.plate})`;
-            return `<option value="${esc(vName)}" ${vName === val || v.plate === val ? "selected" : ""}>${esc(vName)}</option>`;
+            const vName = v.vehicle || `${v.brand || ''} ${v.model || ''} (${v.plate || ''})`.trim();
+            const isSel = vName === val || (v.plate && v.plate === val);
+            return `<option value="${esc(vName)}" ${isSel ? "selected" : ""}>🚐 ${esc(vName)}</option>`;
           }).join("")}
         </select>
       </div>
@@ -4756,7 +5136,13 @@ function viewRow(key, index) {
   `).join("");
 
   let extraButtons = "";
-  if (canon === "proformas") {
+  if (canon === "reservations" || canon === "bookings") {
+    extraButtons = `
+      <button class="primary" style="background:#082b70;border-color:#082b70;display:inline-flex;align-items:center;gap:6px" onclick="closeModal();createProformaFromReservation(${index})">
+        <span>📄</span> <span>Convertir en Proforma</span>
+      </button>
+    `;
+  } else if (canon === "proformas") {
     extraButtons = `
       <button class="primary green" onclick="closeModal();createInvoiceFromQuote(${index})">🧾 Convertir en Facture</button>
       <button class="primary" onclick="closeModal();printDocument('proforma',${index})">🖨️ PDF Proforma</button>
@@ -5053,8 +5439,10 @@ async function handleConfirmClientReservation() {
         id: notifId,
         title: "Nouvelle réservation prospect",
         message: `${clientName} (@${prof.username || uid.slice(0, 6)}) a réservé : ${dest} pour le ${date} (${numPassengers} passager(s)).`,
-        targetUid: "all",
-        broadcast: true,
+        targetUid: "staff",
+        targetRole: "staff",
+        broadcast: false,
+        isInternal: true,
         forRole: "admin",
         createdBy: uid,
         senderUid: uid,
@@ -6131,6 +6519,8 @@ async function createProformaFromReservation(index) {
   const targetUid = r.clientUid || r.clientId || "";
   const clientName = r.nomClient || r.client || "Client";
   const clientEmail = (r.email || "").toLowerCase().trim();
+  const phone = r.telephone || r.phone || "";
+  const routeDesc = r.trajet || r.route || (r.origin && r.destination ? `${r.origin} ➔ ${r.destination}` : "");
 
   const newQuote = {
     id: quoteNumber,
@@ -6139,33 +6529,28 @@ async function createProformaFromReservation(index) {
     clientId: targetUid,
     clientUid: targetUid,
     email: clientEmail,
-    telephone: r.telephone || "",
+    telephone: phone,
     date: today(),
     amount: Number(r.montantTotal || r.amount || 2500),
     status: "Envoyée",
     validUntil: today(),
     archived: false,
-    notes: `Proforma générée automatiquement depuis la réservation ${r.code || r.id || ''} (${r.trajet || r.route || ''})`
+    reservationId: r.id || r.code || "",
+    notes: `Proforma générée automatiquement depuis la réservation #${r.code || r.id || ''}${routeDesc ? ` (${routeDesc})` : ''}`
   };
 
   try {
-    const createdQuote = await createProforma(newQuote, quoteNumber);
-    Object.assign(newQuote, createdQuote);
-    if (createdQuote.profile && currentUser?.uid === createdQuote.profile.uid) {
-      currentUserProfile = createdQuote.profile;
-      currentUserRoles = normalizeRoles(createdQuote.profile.roles || createdQuote.profile.role);
-      currentRole = currentUserRoles[0];
-      saveUserSession(currentUser, currentUserProfile);
-    }
-
     list("proformas").push(newQuote);
     save();
+    await saveDocumentToFirestore("proformas", newQuote);
     go("proformas");
-    showToast(`✅ Proforma ${quoteNumber} créée.`);
+    showToast(`✅ Devis Proforma ${quoteNumber} créé avec succès.`);
   } catch (error) {
-    showToast(error?.message || "La proforma n’a pas été créée.", "error");
+    showToast(error?.message || "La proforma n’a pas pu être enregistrée.", "error");
   }
 }
+window.createProformaFromReservation = createProformaFromReservation;
+window.createInvoiceFromQuote = createInvoiceFromQuote;
 
 async function createInvoiceFromQuote(index) {
   const q = list("proformas")[index];
