@@ -4666,6 +4666,7 @@ function drawTable(key) {
                     const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
                     return `
                       ${isStaff ? `<button class="tiny" onclick="createInvoiceFromQuote(${i})">Facture</button>` : ""}
+                      ${isStaff ? `<button class="tiny" style="color:#0284c7;border-color:#bae6fd;background:#f0f9ff" onclick="sendProformaToClient(${i})" title="Envoyer le devis proforma directement au client">✉️ Envoyer</button>` : ""}
                       <button class="tiny" onclick="printDocument('proforma',${i})">PDF Proforma</button>
                     `;
                   })() : ""}
@@ -4885,6 +4886,10 @@ function openForm(key, index = -1) {
       if (canon === "proformas" && index < 0) {
         const created = await createProforma(savedItem, savedItem.number);
         Object.assign(savedItem, created);
+        const targetUid = savedItem.clientId || savedItem.clientUid || "";
+        if (targetUid) {
+          await promoteProspectToClient(targetUid, savedItem.client, savedItem.telephone, savedItem.email);
+        }
         if (created.profile && currentUser?.uid === created.profile.uid) {
           currentUserProfile = created.profile;
           currentUserRoles = normalizeRoles(created.profile.roles || created.profile.role);
@@ -5324,6 +5329,7 @@ function viewRow(key, index) {
     }
   } else if (canon === "proformas") {
     extraButtons = `
+      ${isStaff ? `<button class="primary" style="background:#0284c7;border-color:#0284c7" onclick="closeModal();sendProformaToClient(${index})">✉️ Envoyer au client</button>` : ""}
       ${isStaff ? `<button class="primary green" onclick="closeModal();createInvoiceFromQuote(${index})">🧾 Convertir en Facture</button>` : ""}
       <button class="primary" onclick="closeModal();printDocument('proforma',${index})">🖨️ PDF Proforma</button>
     `;
@@ -6803,9 +6809,16 @@ async function handleAcceptDocumentRequestFromAlert(notifId, reservationId, type
     await saveDocumentToFirestore("proformas", newQuote);
     await saveDocumentToFirestore("reservations", r);
 
+    // Promotion automatique du prospect en client lors de la validation du premier proforma
+    if (targetUid) {
+      await promoteProspectToClient(targetUid, clientName, phone, clientEmail);
+    }
+
     if (targetUid || clientEmail) {
       try {
-        await createNotification({
+        const notifId = `NOTIF-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const notifPayload = {
+          id: notifId,
           title: `✅ Devis Proforma ${quoteNumber} validé !`,
           message: `Votre demande a été acceptée par la Direction LAPERLE TOUR HT. Votre devis proforma officiel ${quoteNumber} (${money(newQuote.amount)}) est prêt.`,
           type: 'finance',
@@ -6817,7 +6830,15 @@ async function handleAcceptDocumentRequestFromAlert(notifId, reservationId, type
           date: new Date().toISOString(),
           proformaId: quoteNumber,
           reservationId: r.id || r.code || ''
-        });
+        };
+
+        if (!Array.isArray(state.notifications)) state.notifications = [];
+        state.notifications.unshift({ ...notifPayload });
+        newlyArrivedNotificationIds.add(notifId);
+        updateNotificationBadge();
+        if (isNotifDropdownOpen) renderNotificationDropdown();
+
+        await createNotification(notifPayload, notifId);
       } catch (err) {
         console.warn("Erreur alerte client proforma:", err);
       }
@@ -6852,7 +6873,9 @@ async function handleAcceptDocumentRequestFromAlert(notifId, reservationId, type
 
     if (targetUid || clientEmail) {
       try {
-        await createNotification({
+        const notifId = `NOTIF-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const notifPayload = {
+          id: notifId,
           title: `✅ Facture ${invoiceNumber} validée et émise !`,
           message: `Votre demande a été acceptée par la Direction LAPERLE TOUR HT. Votre facture officielle ${invoiceNumber} (${money(newInvoice.amount)}) est prête.`,
           type: 'finance',
@@ -6864,7 +6887,15 @@ async function handleAcceptDocumentRequestFromAlert(notifId, reservationId, type
           date: new Date().toISOString(),
           factureId: invoiceNumber,
           reservationId: r.id || r.code || ''
-        });
+        };
+
+        if (!Array.isArray(state.notifications)) state.notifications = [];
+        state.notifications.unshift({ ...notifPayload });
+        newlyArrivedNotificationIds.add(notifId);
+        updateNotificationBadge();
+        if (isNotifDropdownOpen) renderNotificationDropdown();
+
+        await createNotification(notifPayload, notifId);
       } catch (err) {
         console.warn("Erreur alerte client facture:", err);
       }
@@ -6909,6 +6940,253 @@ function handleOpenDocumentFromAlert(type, docId) {
 }
 window.handleOpenDocumentFromAlert = handleOpenDocumentFromAlert;
 
+/**
+ * Promotion automatique : après validation / émission du premier proforma,
+ * le profil utilisateur de type 'prospect' ou 'lecture_seule' devient officiellement 'client'.
+ */
+async function promoteProspectToClient(targetUid, clientName = '', phone = '', email = '') {
+  if (!targetUid) return;
+  try {
+    // 1. Rechercher et promouvoir dans state.utilisateurs
+    const userObj = (state.utilisateurs || []).find(u => u.uid === targetUid || u.id === targetUid || (email && u.email && u.email.toLowerCase() === email.toLowerCase()));
+    if (userObj) {
+      const currentRoles = normalizeRoles(userObj.roles || [userObj.role]);
+      if (currentRoles.includes('prospect') || currentRoles.includes('lecture_seule') || !currentRoles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite', 'chauffeur', 'client'].includes(r))) {
+        userObj.role = 'client';
+        userObj.roles = ['client'];
+        userObj.statutClient = 'client';
+        userObj.updatedAt = new Date().toISOString();
+      }
+    }
+    save();
+
+    // 2. Mettre à jour dans Firestore collection utilisateurs
+    const userRef = doc(db, 'utilisateurs', targetUid);
+    try {
+      await updateDoc(userRef, {
+        role: 'client',
+        roles: ['client'],
+        statutClient: 'client',
+        updatedAt: new Date().toISOString()
+      });
+    } catch (e) {
+      await setDoc(userRef, {
+        id: targetUid,
+        uid: targetUid,
+        ...(clientName ? { name: clientName, nom: clientName } : {}),
+        ...(email ? { email: email.toLowerCase() } : {}),
+        ...(phone ? { telephone: phone, phone: phone } : {}),
+        role: 'client',
+        roles: ['client'],
+        statutClient: 'client',
+        status: 'actif',
+        statutCompte: 'actif',
+        updatedAt: new Date().toISOString()
+      }, { merge: true }).catch(() => {});
+    }
+
+    // 3. S'assurer de la présence dans l'annuaire de la collection 'clients'
+    if (clientName) {
+      const existingClient = (state.clients || []).find(c => 
+        (c.id === targetUid || c.uid === targetUid || c.clientId === targetUid) ||
+        (email && c.email && c.email.toLowerCase() === email.toLowerCase()) ||
+        (c.name && c.name.toLowerCase() === clientName.toLowerCase())
+      );
+      if (!existingClient) {
+        const newClientEntry = {
+          id: nextNumber("CL", "clients"),
+          uid: targetUid,
+          clientId: targetUid,
+          name: clientName,
+          email: email || '',
+          phone: phone || '',
+          zone: 'Port-au-Prince',
+          service: 'Transport & Circuits',
+          status: 'Actif',
+          archived: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        list("clients").push(newClientEntry);
+        save();
+        await saveDocumentToFirestore("clients", newClientEntry).catch(() => {});
+      }
+    }
+
+    // 4. Si c'est l'utilisateur actuellement connecté qui a été promu
+    if (currentUser && (currentUser.uid === targetUid || currentUser.id === targetUid)) {
+      if (currentUserProfile) {
+        currentUserProfile.role = 'client';
+        currentUserProfile.roles = ['client'];
+        currentUserProfile.statutClient = 'client';
+      }
+      currentUserRoles = ['client'];
+      currentRole = 'client';
+      saveUserSession(currentUser, currentUserProfile);
+    }
+  } catch (err) {
+    console.warn("Erreur promotion prospect vers client:", err?.message);
+  }
+}
+window.promoteProspectToClient = promoteProspectToClient;
+
+/**
+ * Envoi direct d'un devis proforma à un client depuis la page Proformas
+ * (Notification in-app dans l'Espace Client + Envoi direct WhatsApp pré-rempli)
+ */
+function sendProformaToClient(index) {
+  const q = list("proformas")[index];
+  if (!q) return;
+
+  const quoteNumber = q.number || q.id || '';
+  const clientName = q.client || 'Client';
+  const targetUid = q.clientId || q.clientUid || '';
+  const clientEmail = (q.email || '').toLowerCase().trim();
+  const phone = q.telephone || q.phone || '';
+  const amountStr = money(q.amount || 0);
+  const cleanPhone = formatPhoneForWhatsApp(phone);
+
+  document.getElementById("modal").innerHTML = `
+    <div class="modal-head">
+      <div>
+        <h2 style="color:#082b70">✉️ Transmettre le Devis Proforma ${esc(quoteNumber)}</h2>
+        <small>Client : <b>${esc(clientName)}</b> • Montant : <b>${esc(amountStr)}</b></small>
+      </div>
+      <button class="close" onclick="closeModal()">×</button>
+    </div>
+    <div class="info" style="margin-bottom:14px;background:#f0f7ff;border:1px solid #bfdbfe;color:#082b70">
+      Transmettez directement ce devis proforma officiel au client. Vous pouvez notifier son espace en ligne Laperle en 1 clic et lui envoyer un message WhatsApp pré-formaté.
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:15px">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;background:#fff;border:1.5px solid #dbeafe;border-radius:12px;gap:12px">
+        <div>
+          <b style="color:#082b70;font-size:13px;display:flex;align-items:center;gap:6px">
+            <span>🔔</span> <span>Notification Espace Client Laperle</span>
+          </b>
+          <div style="font-size:11.5px;color:#475569;margin-top:2px">Alerte instantanée sur le portail du client avec bouton d'accès au document PDF</div>
+          <div style="font-size:11px;color:#0369a1;margin-top:3px">Destinataire : <b>${esc(clientEmail || targetUid || 'Profil client associé')}</b></div>
+        </div>
+        <button class="primary" style="background:#082b70;white-space:nowrap;padding:9px 14px" onclick="executeSendProformaNotification(${index})">
+          🚀 Notifier en 1 clic
+        </button>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;background:#fff;border:1.5px solid #dcfce7;border-radius:12px;gap:12px">
+        <div>
+          <b style="color:#15803d;font-size:13px;display:flex;align-items:center;gap:6px">
+            <span>💬</span> <span>Envoi direct WhatsApp</span>
+          </b>
+          <div style="font-size:11.5px;color:#475569;margin-top:2px">Message officiel pré-rempli avec devis, validité, montant et contacts LAPERLE</div>
+          <div style="font-size:11px;color:#15803d;margin-top:3px">Numéro client : <b>${esc(phone || 'Non renseigné')}</b></div>
+        </div>
+        <button class="primary green" style="white-space:nowrap;padding:9px 14px" onclick="executeSendProformaWhatsApp(${index})" ${!cleanPhone ? 'disabled title="Numéro client manquant"' : ''}>
+          💬 Ouvrir WhatsApp
+        </button>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="secondary" onclick="closeModal()">Fermer</button>
+    </div>
+  `;
+  document.getElementById("modalBackdrop").classList.add("open");
+}
+window.sendProformaToClient = sendProformaToClient;
+
+async function executeSendProformaNotification(index) {
+  const q = list("proformas")[index];
+  if (!q) return;
+
+  const quoteNumber = q.number || q.id || '';
+  const clientName = q.client || 'Client';
+  const targetUid = q.clientId || q.clientUid || '';
+  const clientEmail = (q.email || '').toLowerCase().trim();
+  const phone = q.telephone || q.phone || '';
+  const amountStr = money(q.amount || 0);
+
+  const notifId = `NOTIF-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  const notifPayload = {
+    id: notifId,
+    title: `📄 Devis Proforma officiel ${quoteNumber}`,
+    message: `Bonjour ${clientName}, votre devis proforma officiel ${quoteNumber} (${amountStr}) de LAPERLE TOUR HT a été validé et est disponible sur votre espace.`,
+    type: 'finance',
+    priority: 'high',
+    targetUid: targetUid || 'all',
+    broadcast: !targetUid,
+    email: clientEmail,
+    read: false,
+    date: new Date().toISOString(),
+    proformaId: quoteNumber,
+    reservationId: q.reservationId || ''
+  };
+
+  // Double synchronisation : locale + Firestore
+  if (!Array.isArray(state.notifications)) state.notifications = [];
+  state.notifications.unshift({ ...notifPayload });
+  newlyArrivedNotificationIds.add(notifId);
+  updateNotificationBadge();
+  if (isNotifDropdownOpen) renderNotificationDropdown();
+
+  try {
+    await createNotification(notifPayload, notifId);
+    q.status = "Envoyée";
+    save();
+    await saveDocumentToFirestore("proformas", q);
+
+    // Promotion automatique après validation du premier proforma
+    if (targetUid) {
+      await promoteProspectToClient(targetUid, clientName, phone, clientEmail);
+    }
+
+    closeModal();
+    render();
+    showToast(`✅ Devis Proforma ${quoteNumber} transmis au client avec succès !`);
+  } catch (err) {
+    showToast(`Erreur d'envoi: ${err?.message}`, "error");
+  }
+}
+window.executeSendProformaNotification = executeSendProformaNotification;
+
+function executeSendProformaWhatsApp(index) {
+  const q = list("proformas")[index];
+  if (!q) return;
+
+  const quoteNumber = q.number || q.id || '';
+  const clientName = q.client || 'Client';
+  const phone = q.telephone || q.phone || '';
+  const amountStr = money(q.amount || 0);
+  const dateStr = q.date || today();
+  const targetUid = q.clientId || q.clientUid || '';
+  const clientEmail = (q.email || '').toLowerCase().trim();
+
+  const cleanPhone = formatPhoneForWhatsApp(phone);
+  if (!cleanPhone) {
+    showToast("Numéro de téléphone invalide pour WhatsApp.", "error");
+    return;
+  }
+
+  const msg = `Bonjour ${clientName}, voici votre devis proforma officiel *${quoteNumber}* émis par *LAPERLE TOUR HT*.\n\n` +
+    `• Montant total : *${amountStr}*\n` +
+    `• Date : ${dateStr}\n` +
+    `• Statut : Validé et émis\n\n` +
+    `Pour confirmer votre réservation ou effectuer votre règlement MonCash, contactez-nous au +509 4440 8687.\n` +
+    `LAPERLE TOUR HT • Un coup d'œil sur Haïti.`;
+
+  window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank');
+
+  q.status = "Envoyée";
+  save();
+  saveDocumentToFirestore("proformas", q);
+
+  if (targetUid) {
+    promoteProspectToClient(targetUid, clientName, phone, clientEmail);
+  }
+
+  closeModal();
+  render();
+  showToast(`✅ WhatsApp ouvert pour le devis ${quoteNumber}.`);
+}
+window.executeSendProformaWhatsApp = executeSendProformaWhatsApp;
+
 async function createProformaFromReservation(index) {
   const roles = normalizeRoles(currentUserRoles);
   const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
@@ -6952,10 +7230,17 @@ async function createProformaFromReservation(index) {
     await saveDocumentToFirestore("proformas", newQuote);
     await saveDocumentToFirestore("reservations", r);
 
-    // Notification instantanée vers le Client / Prospect dans son alerte
+    // Promotion automatique : après validation du premier proforma, le prospect devient client
+    if (targetUid) {
+      await promoteProspectToClient(targetUid, clientName, phone, clientEmail);
+    }
+
+    // Notification instantanée vers le Client dans son alerte avec bouton PDF direct
     if (targetUid || clientEmail) {
       try {
-        await createNotification({
+        const notifId = `NOTIF-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const notifPayload = {
+          id: notifId,
           title: `📄 Devis Proforma ${quoteNumber} prêt !`,
           message: `Votre devis proforma officiel ${quoteNumber} (${money(newQuote.amount)}) pour votre réservation #${r.code || r.id || ''} est prêt et disponible auprès de LAPERLE TOUR HT.`,
           type: 'finance',
@@ -6964,15 +7249,25 @@ async function createProformaFromReservation(index) {
           broadcast: !targetUid,
           email: clientEmail,
           read: false,
-          date: new Date().toISOString()
-        });
+          date: new Date().toISOString(),
+          proformaId: quoteNumber,
+          reservationId: r.id || r.code || ''
+        };
+
+        if (!Array.isArray(state.notifications)) state.notifications = [];
+        state.notifications.unshift({ ...notifPayload });
+        newlyArrivedNotificationIds.add(notifId);
+        updateNotificationBadge();
+        if (isNotifDropdownOpen) renderNotificationDropdown();
+
+        await createNotification(notifPayload, notifId);
       } catch (notifErr) {
         console.warn("Erreur alerte client proforma:", notifErr);
       }
     }
 
     go("proformas");
-    showToast(`✅ Devis Proforma ${quoteNumber} créé et notification envoyée au client.`);
+    showToast(`✅ Devis Proforma ${quoteNumber} créé, client notifié et compte promu au statut Client.`);
   } catch (error) {
     showToast(error?.message || "La proforma n’a pas pu être enregistrée.", "error");
   }
@@ -7019,12 +7314,14 @@ async function createInvoiceFromQuote(index) {
     save();
     await saveDocumentToFirestore("factures", newInvoice);
 
-    // Notification instantanée vers le Client / Prospect dans son alerte
+    // Notification instantanée vers le Client dans son alerte avec bouton PDF direct
     const targetUid = q.clientUid || q.clientId || "";
     const clientEmail = (q.email || "").toLowerCase().trim();
     if (targetUid || clientEmail) {
       try {
-        await createNotification({
+        const notifId = `NOTIF-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const notifPayload = {
+          id: notifId,
           title: `🧾 Facture ${invoiceNumber} émise !`,
           message: `LAPERLE TOUR HT a émis votre facture officielle ${invoiceNumber} (${money(newInvoice.amount)}) pour la proforma ${q.number || q.id}.`,
           type: 'finance',
@@ -7033,15 +7330,25 @@ async function createInvoiceFromQuote(index) {
           broadcast: !targetUid,
           email: clientEmail,
           read: false,
-          date: new Date().toISOString()
-        });
+          date: new Date().toISOString(),
+          factureId: invoiceNumber,
+          proformaId: q.number || q.id || ''
+        };
+
+        if (!Array.isArray(state.notifications)) state.notifications = [];
+        state.notifications.unshift({ ...notifPayload });
+        newlyArrivedNotificationIds.add(notifId);
+        updateNotificationBadge();
+        if (isNotifDropdownOpen) renderNotificationDropdown();
+
+        await createNotification(notifPayload, notifId);
       } catch (notifErr) {
         console.warn("Erreur alerte client facture:", notifErr);
       }
     }
 
     go("factures");
-    showToast(`Facture ${invoiceNumber} créée avec succès et notification transmise.`);
+    showToast(`Facture ${invoiceNumber} créée avec succès et notification transmise au client.`);
   } catch (err) {
     showToast("Erreur lors de la création de la facture.", "error");
   }
