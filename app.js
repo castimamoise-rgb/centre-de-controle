@@ -1094,6 +1094,8 @@ function getApplicableNotifications() {
   }
 
   // Filtrage strict pour client / prospect / chauffeur : ils ne voient JAMAIS les alertes staff ni les réservations des autres
+  const myName = (currentUserProfile?.nom || currentUserProfile?.name || currentUser.displayName || '').toLowerCase().trim();
+
   return all.filter(n => {
     // 1. Bloquer toute notification interne, d'administration ou réservée au staff
     const isStaffAlert = n.forRole === 'admin' || n.forRole === 'staff' || n.forRole === 'direction' || n.forRole === 'secretaire' ||
@@ -1103,7 +1105,29 @@ function getApplicableNotifications() {
 
     // 2. Alertes personnelles nominatives destinées à cet utilisateur
     if (n.targetUid === uid || n.userId === uid || n.uid === uid || n.clientId === uid || n.chauffeurId === uid) return true;
-    if (n.email && n.email.toLowerCase().trim() === email) return true;
+    if (n.email && email && n.email.toLowerCase().trim() === email) return true;
+    if (myName && n.clientName && n.clientName.toLowerCase().trim() === myName) return true;
+    if (myName && n.client && n.client.toLowerCase().trim() === myName) return true;
+
+    // 2b. Correspondance par proforma ou facture appartenant à cet utilisateur
+    if (n.proformaId) {
+      const matchPf = (state.proformas || []).find(p => (p.number === n.proformaId || p.id === n.proformaId));
+      if (matchPf) {
+        const pfUid = matchPf.clientId || matchPf.clientUid || matchPf.uid;
+        if (pfUid === uid) return true;
+        if (matchPf.email && email && matchPf.email.toLowerCase().trim() === email) return true;
+        if (myName && matchPf.client && matchPf.client.toLowerCase().trim() === myName) return true;
+      }
+    }
+    if (n.factureId) {
+      const matchFac = (state.factures || []).find(f => (f.number === n.factureId || f.id === n.factureId));
+      if (matchFac) {
+        const facUid = matchFac.clientId || matchFac.clientUid || matchFac.uid;
+        if (facUid === uid) return true;
+        if (matchFac.email && email && matchFac.email.toLowerCase().trim() === email) return true;
+        if (myName && matchFac.client && matchFac.client.toLowerCase().trim() === myName) return true;
+      }
+    }
 
     // 3. Alertes générales de service / météo / trafic destinées au public
     if (n.targetUid === 'all' || n.targetUid === 'broadcast' || n.broadcast === true) return true;
@@ -1112,9 +1136,121 @@ function getApplicableNotifications() {
   });
 }
 
+let isReconcilingNotifications = false;
+
+function reconcileClientDocumentNotifications() {
+  if (isReconcilingNotifications || !currentUser) return;
+  const roles = normalizeRoles(currentUserRoles);
+  const isClientOrProspect = (roles.includes(ROLES.CLIENT) || roles.includes(ROLES.PROSPECT)) && !roles.includes(ROLES.ADMIN);
+  if (!isClientOrProspect) return;
+
+  isReconcilingNotifications = true;
+  try {
+    const uid = currentUser.uid || currentUser.id || '';
+    const email = (currentUser.email || '').toLowerCase().trim();
+    const myName = (currentUserProfile?.nom || currentUserProfile?.name || currentUser.displayName || '').toLowerCase().trim();
+
+    if (!Array.isArray(state.notifications)) state.notifications = [];
+    let hasAdded = false;
+
+    // 1. Proformas de ce client
+    (state.proformas || []).forEach(p => {
+      if (p.archived) return;
+      const pUid = p.clientId || p.clientUid || p.uid;
+      const isMine = (pUid && pUid === uid) ||
+                     (p.email && email && p.email.toLowerCase().trim() === email) ||
+                     (myName && p.client && p.client.toLowerCase().trim() === myName);
+      if (!isMine) return;
+
+      const pNum = p.number || p.id;
+      if (!pNum) return;
+
+      const exists = state.notifications.some(n => n.proformaId === pNum || n.id === `NOTIF-AUTO-PF-${pNum}` || (n.message && n.message.includes(pNum)));
+      if (!exists) {
+        const notifId = `NOTIF-AUTO-PF-${pNum}`;
+        const notifPayload = {
+          id: notifId,
+          title: `📄 Devis Proforma ${pNum} prêt !`,
+          message: `Votre devis proforma officiel ${pNum} (${money(p.amount || 0)}) de LAPERLE TOUR HT est disponible sur votre espace.`,
+          type: 'finance',
+          priority: 'high',
+          targetUid: uid,
+          clientId: uid,
+          clientUid: uid,
+          client: p.client || myName,
+          email: email || p.email || '',
+          read: false,
+          date: p.date || p.createdAt || new Date().toISOString(),
+          proformaId: pNum,
+          reservationId: p.reservationId || '',
+          senderUid: 'staff',
+          senderName: 'Direction LAPERLE',
+          createdAt: p.createdAt || new Date().toISOString()
+        };
+        state.notifications.unshift(notifPayload);
+        hasAdded = true;
+        if (typeof createNotification === 'function') {
+          createNotification(notifPayload, notifId).catch(() => {});
+        }
+      }
+    });
+
+    // 2. Factures de ce client
+    (state.factures || []).forEach(f => {
+      if (f.archived) return;
+      const fUid = f.clientId || f.clientUid || f.uid;
+      const isMine = (fUid && fUid === uid) ||
+                     (f.email && email && f.email.toLowerCase().trim() === email) ||
+                     (myName && f.client && f.client.toLowerCase().trim() === myName);
+      if (!isMine) return;
+
+      const fNum = f.number || f.id;
+      if (!fNum) return;
+
+      const exists = state.notifications.some(n => n.factureId === fNum || n.id === `NOTIF-AUTO-FAC-${fNum}` || (n.message && n.message.includes(fNum)));
+      if (!exists) {
+        const notifId = `NOTIF-AUTO-FAC-${fNum}`;
+        const notifPayload = {
+          id: notifId,
+          title: `🧾 Facture ${fNum} émise !`,
+          message: `Votre facture officielle ${fNum} (${money(f.amount || 0)}) de LAPERLE TOUR HT est disponible sur votre espace.`,
+          type: 'finance',
+          priority: 'normal',
+          targetUid: uid,
+          clientId: uid,
+          clientUid: uid,
+          client: f.client || myName,
+          email: email || f.email || '',
+          read: false,
+          date: f.date || f.createdAt || new Date().toISOString(),
+          factureId: fNum,
+          proformaId: f.proforma || '',
+          senderUid: 'staff',
+          senderName: 'Comptabilité LAPERLE',
+          createdAt: f.createdAt || new Date().toISOString()
+        };
+        state.notifications.unshift(notifPayload);
+        hasAdded = true;
+        if (typeof createNotification === 'function') {
+          createNotification(notifPayload, notifId).catch(() => {});
+        }
+      }
+    });
+
+    if (hasAdded) {
+      save();
+    }
+  } finally {
+    isReconcilingNotifications = false;
+  }
+}
+window.reconcileClientDocumentNotifications = reconcileClientDocumentNotifications;
+
 function updateNotificationBadge() {
   const notifDot = document.getElementById("notifDot");
   if (!notifDot) return;
+
+  reconcileClientDocumentNotifications();
 
   const notifs = getApplicableNotifications();
   const unreadList = notifs.filter(n => !n.read);
@@ -1656,7 +1792,7 @@ function setupFirestoreListeners() {
       { col: 'paiements', q: query(collection(db, 'paiements'), where('clientId', '==', currentUser.uid)) },
       { col: 'proformas', q: query(collection(db, 'proformas'), where('clientId', '==', currentUser.uid)) },
       { col: 'factures', q: query(collection(db, 'factures'), where('clientId', '==', currentUser.uid)) },
-      { col: 'notifications', q: query(collection(db, 'notifications'), where('targetUid', 'in', [currentUser.uid, 'all'])) }
+      { col: 'notifications', q: query(collection(db, 'notifications'), where('targetUid', 'in', [currentUser.uid, 'all', 'broadcast'])) }
     ];
 
     clientCols.forEach(({ col, q }) => {
@@ -1668,8 +1804,13 @@ function setupFirestoreListeners() {
           save();
           if (col === 'notifications') {
             registerIncomingNotifications(items);
+            reconcileClientDocumentNotifications();
             updateNotificationBadge();
             if (isNotifDropdownOpen) renderNotificationDropdown();
+          }
+          if (['proformas', 'factures', 'reservations'].includes(col)) {
+            reconcileClientDocumentNotifications();
+            updateNotificationBadge();
           }
           if (current === col || canonicalCol(current) === col || current === "dashboard") render();
         }, (err) => console.warn(`Lecture client [${col}]:`, err?.message));
@@ -1696,7 +1837,7 @@ function setupFirestoreListeners() {
   if (isProspectOnly) {
     const prospectCols = [
       { col: 'reservations', q: query(collection(db, 'reservations'), where('clientId', '==', currentUser.uid)) },
-      { col: 'notifications', q: query(collection(db, 'notifications'), where('targetUid', 'in', [currentUser.uid, 'all'])) }
+      { col: 'notifications', q: query(collection(db, 'notifications'), where('targetUid', 'in', [currentUser.uid, 'all', 'broadcast'])) }
     ];
 
     prospectCols.forEach(({ col, q }) => {
@@ -1708,8 +1849,13 @@ function setupFirestoreListeners() {
           save();
           if (col === 'notifications') {
             registerIncomingNotifications(items);
+            reconcileClientDocumentNotifications();
             updateNotificationBadge();
             if (isNotifDropdownOpen) renderNotificationDropdown();
+          }
+          if (col === 'reservations') {
+            reconcileClientDocumentNotifications();
+            updateNotificationBadge();
           }
           if (current === col || canonicalCol(current) === col || current === "profile") render();
         }, (err) => console.warn(`Lecture prospect [${col}]:`, err?.message));
@@ -4908,6 +5054,20 @@ function openForm(key, index = -1) {
         }
       }
 
+      // Résolution automatique universelle de l'identité Client pour TOUT créateur (Admin, Direction, etc.)
+      if (obj.client && (!obj.clientId || !obj.email)) {
+        const cName = String(obj.client).trim().toLowerCase();
+        const found = (state.clients || []).find(c => (c.name && c.name.trim().toLowerCase() === cName) || c.id === obj.client || c.clientId === obj.client)
+          || (state.utilisateurs || []).find(u => (u.name && u.name.trim().toLowerCase() === cName) || (u.nom && u.nom.trim().toLowerCase() === cName) || (u.email && u.email.toLowerCase() === cName) || u.id === obj.client || u.uid === obj.client)
+          || (state.prospects || []).find(p => (p.name && p.name.trim().toLowerCase() === cName) || (p.nom && p.nom.trim().toLowerCase() === cName) || p.id === obj.client);
+        if (found) {
+          obj.clientId = found.clientId || found.uid || found.id;
+          obj.clientUid = obj.clientId;
+          if (!obj.email && found.email) obj.email = found.email;
+          if (!obj.telephone && (found.telephone || found.phone)) obj.telephone = found.telephone || found.phone;
+        }
+      }
+
       rawList(canon).push(obj);
     }
 
@@ -4929,6 +5089,62 @@ function openForm(key, index = -1) {
           currentUserRoles = normalizeRoles(created.profile.roles || created.profile.role);
           currentRole = currentUserRoles[0];
           saveUserSession(currentUser, currentUserProfile);
+        }
+
+        // Notification instantanée vers le Client / Prospect
+        if (targetUid || savedItem.email) {
+          try {
+            const notifId = `NOTIF-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+            const notifPayload = {
+              id: notifId,
+              title: `📄 Devis Proforma ${savedItem.number || savedItem.id} prêt !`,
+              message: `Votre devis proforma officiel ${savedItem.number || savedItem.id} (${money(savedItem.amount || 0)}) de LAPERLE TOUR HT est disponible sur votre espace.`,
+              type: 'finance',
+              priority: 'high',
+              targetUid: targetUid || 'all',
+              clientId: targetUid || '',
+              clientUid: targetUid || '',
+              broadcast: !targetUid,
+              email: (savedItem.email || '').toLowerCase().trim(),
+              read: false,
+              date: new Date().toISOString(),
+              proformaId: savedItem.number || savedItem.id,
+              reservationId: savedItem.reservationId || '',
+              senderUid: currentUser?.uid || 'staff',
+              senderName: currentUserProfile?.nom || currentUser?.displayName || 'Direction LAPERLE'
+            };
+            await createNotification(notifPayload, notifId);
+          } catch (notifErr) {
+            console.warn("Erreur auto-notification proforma:", notifErr);
+          }
+        }
+      } else if (canon === "proformas" && index >= 0 && savedItem.status === "Envoyée") {
+        const targetUid = savedItem.clientId || savedItem.clientUid || "";
+        if (targetUid || savedItem.email) {
+          try {
+            const notifId = `NOTIF-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+            const notifPayload = {
+              id: notifId,
+              title: `📄 Devis Proforma ${savedItem.number || savedItem.id} envoyé !`,
+              message: `Votre devis proforma officiel ${savedItem.number || savedItem.id} (${money(savedItem.amount || 0)}) est prêt et consultable sur votre espace.`,
+              type: 'finance',
+              priority: 'high',
+              targetUid: targetUid || 'all',
+              clientId: targetUid || '',
+              clientUid: targetUid || '',
+              broadcast: !targetUid,
+              email: (savedItem.email || '').toLowerCase().trim(),
+              read: false,
+              date: new Date().toISOString(),
+              proformaId: savedItem.number || savedItem.id,
+              reservationId: savedItem.reservationId || '',
+              senderUid: currentUser?.uid || 'staff',
+              senderName: currentUserProfile?.nom || currentUser?.displayName || 'Direction LAPERLE'
+            };
+            await createNotification(notifPayload, notifId);
+          } catch (notifErr) {
+            console.warn("Erreur auto-notification update proforma:", notifErr);
+          }
         }
       } else if (canon === "reservations") {
         const uid = auth.currentUser?.uid;

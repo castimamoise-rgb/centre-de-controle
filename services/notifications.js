@@ -66,6 +66,8 @@ export async function createNotification(data = {}, customId) {
   const now = new Date().toISOString();
   const userEmail = auth.currentUser?.email || 'system';
 
+  const resolvedTargetUid = data.targetUid || data.clientId || data.clientUid || data.uid || data.userId || (data.broadcast ? 'all' : 'all');
+
   const payload = {
     ...data,
     id,
@@ -73,8 +75,9 @@ export async function createNotification(data = {}, customId) {
     message: (data.message || '').trim().substring(0, 500),
     type: data.type || 'service', // 'service', 'alerte', 'update', 'transport', 'finance', 'info'
     priority: data.priority || 'normal', // 'high', 'normal', 'low'
-    targetUid: data.targetUid || 'all',
-    broadcast: data.broadcast !== undefined ? data.broadcast : (data.targetUid === 'all' || !data.targetUid),
+    targetUid: resolvedTargetUid,
+    clientId: data.clientId || (resolvedTargetUid !== 'all' && resolvedTargetUid !== 'staff' && resolvedTargetUid !== 'admin' ? resolvedTargetUid : ''),
+    broadcast: data.broadcast !== undefined ? data.broadcast : (resolvedTargetUid === 'all'),
     date: data.date || now,
     read: data.read !== undefined ? data.read : false,
     link: data.link || '',
