@@ -3227,6 +3227,7 @@ button, input, select, textarea, .nav-item, .tiny, .firebase-chip, .user-btn {
   text-align: left;
   animation: notifFadeIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
   will-change: opacity, transform;
+  cursor: pointer;
 }
 
 .notif-item.notif-new-arrival {
@@ -3236,6 +3237,8 @@ button, input, select, textarea, .nav-item, .tiny, .firebase-chip, .user-btn {
 .notif-item:hover {
   background: #f1f5fa;
   border-color: #cbd5e1;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(8, 43, 112, 0.08);
 }
 
 .notif-item.unread {

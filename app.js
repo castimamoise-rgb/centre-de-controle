@@ -1287,6 +1287,7 @@ function updateNotificationBadge() {
     }
   } else {
     notifDot.style.display = "none";
+    notifDot.textContent = "0";
     notifDot.classList.remove("pulse");
   }
 
@@ -1306,6 +1307,24 @@ function openNotificationDropdown() {
   if (!dropdown) return;
   isNotifDropdownOpen = true;
   dropdown.style.display = "flex";
+
+  // Réinitialiser immédiatement le badge et le compteur à 0 dès l'ouverture de la cloche
+  const notifDot = document.getElementById("notifDot");
+  if (notifDot) {
+    notifDot.style.display = "none";
+    notifDot.textContent = "0";
+    notifDot.classList.remove("pulse");
+  }
+  previousUnreadCount = 0;
+
+  // Marquer immédiatement toutes les notifications comme lues
+  const unreadNotifs = getApplicableNotifications().filter(n => !n.read);
+  if (unreadNotifs.length > 0) {
+    unreadNotifs.forEach(n => { n.read = true; });
+    save();
+    markAllNotificationsRead(unreadNotifs).catch(e => console.warn("Erreur auto-read notifications:", e));
+  }
+
   renderNotificationDropdown();
 }
 
@@ -1413,7 +1432,7 @@ function renderNotificationDropdown() {
           const btnLabel = reqType === 'facture' ? '✅ Accepter & Émettre la Facture' : '✅ Accepter & Émettre la Proforma';
           actionHtml = `
             <div style="margin: 8px 0 6px 0; display: flex; gap: 6px; flex-wrap: wrap;">
-              <button class="notif-action-btn" style="background:#082b70;color:#fff;border-color:#082b70;font-weight:700;padding:5px 10px;font-size:11px" onclick="handleAcceptDocumentRequestFromAlert('${item.id}', '${item.reservationId}', '${reqType}')">
+              <button class="notif-action-btn" style="background:#082b70;color:#fff;border-color:#082b70;font-weight:700;padding:5px 10px;font-size:11px" onclick="event.stopPropagation(); handleAcceptDocumentRequestFromAlert('${item.id}', '${item.reservationId}', '${reqType}')">
                 ${btnLabel}
               </button>
             </div>
@@ -1421,10 +1440,10 @@ function renderNotificationDropdown() {
         } else if (isStaff && (item.actionType === 'proforma_accepted' || item.title?.includes('validé')) && item.proformaId && !item.actionCompleted) {
           actionHtml = `
             <div style="margin: 8px 0 6px 0; display: flex; gap: 6px; flex-wrap: wrap;">
-              <button class="notif-action-btn" style="background:#ea580c;color:#fff;border-color:#ea580c;font-weight:700;padding:5px 10px;font-size:11px" onclick="handleCreateInvoiceFromQuoteId('${item.proformaId}', '${item.id}')">
+              <button class="notif-action-btn" style="background:#ea580c;color:#fff;border-color:#ea580c;font-weight:700;padding:5px 10px;font-size:11px" onclick="event.stopPropagation(); handleCreateInvoiceFromQuoteId('${item.proformaId}', '${item.id}')">
                 ⚡ Émettre la Facture Officielle (${escapeHtml(item.proformaId)})
               </button>
-              <button class="notif-action-btn" style="background:#082b70;color:#fff;border-color:#082b70;font-weight:700;padding:5px 10px;font-size:11px" onclick="handleOpenDocumentFromAlert('proforma', '${item.proformaId}')">
+              <button class="notif-action-btn" style="background:#082b70;color:#fff;border-color:#082b70;font-weight:700;padding:5px 10px;font-size:11px" onclick="event.stopPropagation(); handleOpenDocumentFromAlert('proforma', '${item.proformaId}')">
                 📄 Voir Devis
               </button>
             </div>
@@ -1442,16 +1461,16 @@ function renderNotificationDropdown() {
           const hasRequestedInvoice = pDoc?.demandeFacture || pDoc?.factureGenerated;
           actionHtml = `
             <div style="margin: 8px 0 6px 0; display: flex; gap: 6px; flex-wrap: wrap;">
-              <button class="notif-action-btn" style="background:#082b70;color:#fff;border-color:#082b70;font-weight:700;padding:5px 10px;font-size:11px" onclick="handleOpenDocumentFromAlert('${docType}', '${docId}')">
+              <button class="notif-action-btn" style="background:#082b70;color:#fff;border-color:#082b70;font-weight:700;padding:5px 10px;font-size:11px" onclick="event.stopPropagation(); handleOpenDocumentFromAlert('${docType}', '${docId}')">
                 📄 Consulter le document PDF (${escapeHtml(docId)})
               </button>
               ${!item.factureId && item.proformaId && !hasRequestedInvoice ? `
-                <button class="notif-action-btn" style="background:#15803d;color:#fff;border-color:#15803d;font-weight:700;padding:5px 10px;font-size:11px" onclick="openRequestInvoiceFromQuoteById('${item.proformaId}')">
+                <button class="notif-action-btn" style="background:#15803d;color:#fff;border-color:#15803d;font-weight:700;padding:5px 10px;font-size:11px" onclick="event.stopPropagation(); openRequestInvoiceFromQuoteById('${item.proformaId}')">
                   💳 Accepter & Demander Facture
                 </button>
               ` : ''}
               ${!item.factureId && pDoc?.factureGenerated ? `
-                <button class="notif-action-btn" style="background:#15803d;color:#fff;border-color:#15803d;font-weight:700;padding:5px 10px;font-size:11px" onclick="handleOpenDocumentFromAlert('facture', '${pDoc.factureGenerated}')">
+                <button class="notif-action-btn" style="background:#15803d;color:#fff;border-color:#15803d;font-weight:700;padding:5px 10px;font-size:11px" onclick="event.stopPropagation(); handleOpenDocumentFromAlert('facture', '${pDoc.factureGenerated}')">
                   🧾 Facture disponible (${escapeHtml(pDoc.factureGenerated)})
                 </button>
               ` : ''}
@@ -1460,7 +1479,7 @@ function renderNotificationDropdown() {
         }
 
         return `
-          <div class="notif-item ${isNewArrival ? 'notif-new-arrival' : ''} ${!item.read ? 'unread' : ''} ${isUrgent ? 'is-urgent' : ''} ${isTransport ? 'is-transport' : ''}" style="animation-delay: ${animDelay};">
+          <div class="notif-item ${isNewArrival ? 'notif-new-arrival' : ''} ${!item.read ? 'unread' : ''} ${isUrgent ? 'is-urgent' : ''} ${isTransport ? 'is-transport' : ''}" style="animation-delay: ${animDelay}; cursor:pointer;" onclick="handleNotificationClick('${item.id}')" title="Cliquer pour ouvrir">
             <div class="notif-item-top">
               <span class="notif-type-pill ${typePillClass}">
                 <span>${typeEmoji}</span>
@@ -1474,11 +1493,11 @@ function renderNotificationDropdown() {
             <p class="notif-message">${escapeHtml(item.message || '')}</p>
             ${actionHtml}
             <div class="notif-actions">
-              <button class="notif-action-btn" onclick="handleToggleRead('${item.id}', ${!item.read})">
+              <button class="notif-action-btn" onclick="event.stopPropagation(); handleToggleRead('${item.id}', ${!item.read})">
                 ${item.read ? 'Marquer non lu' : '✓ Marquer lu'}
               </button>
               ${canDeleteNotif ? `
-                <button class="notif-action-btn delete" onclick="handleDeleteNotification('${item.id}')">
+                <button class="notif-action-btn delete" onclick="event.stopPropagation(); handleDeleteNotification('${item.id}')">
                   🗑️ Supprimer
                 </button>
               ` : ''}
@@ -1543,6 +1562,82 @@ async function handleMarkAllRead() {
     console.warn("Erreur marquage global:", e);
   }
 }
+
+function handleNotificationClick(notifId) {
+  const notif = (state.notifications || []).find(n => n.id === notifId);
+  if (!notif) return;
+
+  // 1. Facture officielle liée
+  if (notif.factureId) {
+    handleOpenDocumentFromAlert('facture', notif.factureId);
+    return;
+  }
+
+  // 2. Devis proforma officiel lié
+  if (notif.proformaId) {
+    handleOpenDocumentFromAlert('proforma', notif.proformaId);
+    return;
+  }
+
+  // 3. Réservation liée
+  if (notif.reservationId) {
+    closeNotificationDropdown();
+    const resList = list('reservations') || [];
+    const idx = resList.findIndex(r => r.id === notif.reservationId || r.code === notif.reservationId);
+    if (idx !== -1) {
+      viewRow('reservations', idx);
+    } else {
+      go('reservations');
+    }
+    return;
+  }
+
+  // 4. Message général / alerte
+  closeNotificationDropdown();
+  openNotificationDetailModal(notif);
+}
+window.handleNotificationClick = handleNotificationClick;
+
+function openNotificationDetailModal(notif) {
+  const modal = document.getElementById("modal");
+  const modalBackdrop = document.getElementById("modalBackdrop");
+  if (!modal || !modalBackdrop) return;
+
+  const dateStr = notif.date || notif.createdAt ? new Date(notif.date || notif.createdAt).toLocaleString('fr-FR') : today();
+  
+  modal.innerHTML = `
+    <div class="modal-head">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:24px;">🔔</span>
+        <div>
+          <h2 style="margin:0;font-size:16px;">${escapeHtml(notif.title || 'Alerte & Notification')}</h2>
+          <small style="color:#64748b;">${escapeHtml(dateStr)} • Émetteur : ${escapeHtml(notif.senderName || 'Direction LAPERLE')}</small>
+        </div>
+      </div>
+      <button class="close" onclick="closeModal()">×</button>
+    </div>
+    <div style="padding:20px;display:flex;flex-direction:column;gap:14px;font-size:14px;color:#1e293b;line-height:1.6;">
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;">
+        <p style="margin:0;white-space:pre-wrap;">${escapeHtml(notif.message || '')}</p>
+      </div>
+      ${notif.proformaId ? `
+        <div style="display:flex;gap:8px;margin-top:6px;">
+          <button class="primary" onclick="closeModal();handleOpenDocumentFromAlert('proforma', '${escapeHtml(notif.proformaId)}')">📄 Consulter le Devis (${escapeHtml(notif.proformaId)})</button>
+        </div>
+      ` : ''}
+      ${notif.factureId ? `
+        <div style="display:flex;gap:8px;margin-top:6px;">
+          <button class="primary green" onclick="closeModal();handleOpenDocumentFromAlert('facture', '${escapeHtml(notif.factureId)}')">🧾 Consulter la Facture (${escapeHtml(notif.factureId)})</button>
+        </div>
+      ` : ''}
+    </div>
+    <div class="modal-actions" style="padding:12px 20px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;">
+      <button class="secondary" onclick="closeModal()">Fermer</button>
+    </div>
+  `;
+  modalBackdrop.classList.add("open");
+}
+window.openNotificationDetailModal = openNotificationDetailModal;
 
 async function handleDeleteNotification(id) {
   if (!confirm("Voulez-vous supprimer cette alerte / notification ?")) return;
