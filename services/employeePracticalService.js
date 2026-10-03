@@ -135,12 +135,16 @@ export async function submitDriverIncident(tripId, category, description, locati
 
   try {
     await createNotification({
+      id: `NOTIF-SOS-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       title,
       message,
-      type: 'incident',
-      priority: 'urgente',
-      targetUid: 'all',
-      broadcast: true,
+      type: 'alerte',
+      priority: 'urgent',
+      targetRole: 'staff',
+      forRole: 'staff',
+      targetUid: 'staff',
+      broadcast: false,
+      reservationId: tripId || '',
       read: false,
       date: now
     });

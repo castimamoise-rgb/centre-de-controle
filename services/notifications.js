@@ -66,7 +66,10 @@ export async function createNotification(data = {}, customId) {
   const now = new Date().toISOString();
   const userEmail = auth.currentUser?.email || 'system';
 
-  const resolvedTargetUid = data.targetUid || data.clientId || data.clientUid || data.uid || data.userId || (data.broadcast ? 'all' : 'all');
+  // Standardisation stricte de l'aiguillage de destination
+  const targetRole = data.targetRole || data.forRole || (data.targetUid === 'staff' || data.targetUid === 'admin' ? 'staff' : undefined);
+  const targetUid = data.targetUid || data.clientId || data.clientUid || data.uid || data.userId || (data.broadcast ? 'all' : (targetRole ? 'staff' : 'all'));
+  const isBroadcast = data.broadcast === true || (targetUid === 'all' && !targetRole);
 
   const payload = {
     ...data,
@@ -74,26 +77,41 @@ export async function createNotification(data = {}, customId) {
     title: (data.title || 'Information LAPERLE TOUR').trim().substring(0, 150),
     message: (data.message || '').trim().substring(0, 500),
     type: data.type || 'service', // 'service', 'alerte', 'update', 'transport', 'finance', 'info'
-    priority: data.priority || 'normal', // 'high', 'normal', 'low'
-    targetUid: resolvedTargetUid,
-    clientId: data.clientId || (resolvedTargetUid !== 'all' && resolvedTargetUid !== 'staff' && resolvedTargetUid !== 'admin' ? resolvedTargetUid : ''),
-    broadcast: data.broadcast !== undefined ? data.broadcast : (resolvedTargetUid === 'all'),
+    priority: data.priority || 'normal', // 'urgent', 'high', 'normal', 'low'
+    targetUid: targetUid,
+    targetRole: targetRole || '',
+    forRole: targetRole || '',
+    clientId: data.clientId || (targetUid !== 'all' && targetUid !== 'staff' && targetUid !== 'admin' ? targetUid : ''),
+    clientUid: data.clientUid || data.clientId || (targetUid !== 'all' && targetUid !== 'staff' && targetUid !== 'admin' ? targetUid : ''),
+    broadcast: isBroadcast,
     date: data.date || now,
     read: data.read !== undefined ? data.read : false,
     link: data.link || '',
-    forRole: data.forRole || (data.targetRole === 'admin' || data.targetRole === 'staff' ? 'admin' : undefined),
-    targetRole: data.targetRole || (data.forRole === 'admin' ? 'staff' : undefined),
+    proformaId: data.proformaId || '',
+    factureId: data.factureId || '',
+    reservationId: data.reservationId || '',
+    vehiculeId: data.vehiculeId || '',
+    senderUid: data.senderUid || auth.currentUser?.uid || 'system',
+    senderName: data.senderName || auth.currentUser?.displayName || 'Direction LAPERLE',
     createdBy: data.createdBy || userEmail,
     updatedBy: userEmail,
     createdAt: data.createdAt || now,
     updatedAt: now
   };
 
+  const cleanPayload = {};
+  for (const [k, v] of Object.entries(payload)) {
+    if (v !== undefined) {
+      cleanPayload[k] = v;
+    }
+  }
+
   try {
-    await setDoc(doc(db, COLLECTION_NAME, id), payload, { merge: true });
-    return payload;
+    await setDoc(doc(db, COLLECTION_NAME, id), cleanPayload, { merge: true });
+    return cleanPayload;
   } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, `${COLLECTION_NAME}/${id}`);
+    console.warn(`[Notification write notice for ${id}]:`, error?.message);
+    return cleanPayload;
   }
 }
 
@@ -105,7 +123,8 @@ export async function getNotifications() {
     list.sort((a, b) => new Date(b.createdAt || b.date || 0).getTime() - new Date(a.createdAt || a.date || 0).getTime());
     return list;
   } catch (error) {
-    handleFirestoreError(error, OperationType.LIST, COLLECTION_NAME);
+    console.warn("[getNotifications notice]:", error?.message);
+    return [];
   }
 }
 
@@ -118,7 +137,7 @@ export async function markNotificationRead(id) {
       updatedBy: auth.currentUser?.email || 'user'
     });
   } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, `${COLLECTION_NAME}/${id}`);
+    console.warn(`[markNotificationRead notice for ${id}]:`, error?.message);
   }
 }
 

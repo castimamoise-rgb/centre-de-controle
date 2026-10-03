@@ -625,6 +625,7 @@ service cloud.firestore {
         canManageNotifications() ||
         // Autoriser tout utilisateur connecté (prospect, client, chauffeur) à envoyer des notifications au personnel
         (('forRole' in incoming()) && incoming().forRole in ['admin', 'direction', 'secretaire', 'operations', 'staff', 'all']) ||
+        (('targetRole' in incoming()) && incoming().targetRole in ['admin', 'direction', 'secretaire', 'operations', 'comptabilite', 'staff', 'all']) ||
         (('targetUid' in incoming()) && incoming().targetUid in ['all', 'broadcast', 'admin', 'direction', 'secretaire', 'staff', request.auth.uid]) ||
         (('broadcast' in incoming()) && incoming().broadcast == true) ||
         (('target' in incoming()) && incoming().target in ['staff', 'admin', 'all']) ||

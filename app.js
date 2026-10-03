@@ -1093,7 +1093,23 @@ function getApplicableNotifications() {
     });
   }
 
-  // Filtrage strict pour client / prospect / chauffeur : ils ne voient JAMAIS les alertes staff ni les réservations des autres
+  const isChauffeur = roles.includes('chauffeur');
+  if (isChauffeur) {
+    return all.filter(n => {
+      // 1. Bloquer strictement les documents financiers ou devis clients
+      if (n.type === 'finance' || n.proformaId || n.factureId) return false;
+      // 2. Alertes personnelles destinées à ce chauffeur
+      if (n.targetUid === uid || n.chauffeurId === uid || n.driverId === uid) return true;
+      if (n.email && email && n.email.toLowerCase().trim() === email) return true;
+      // 3. Alertes destinées au corps des chauffeurs
+      if (n.targetRole === 'chauffeur' || n.forRole === 'chauffeur') return true;
+      // 4. Alertes générales de trafic / météo / diffusion
+      if (n.targetUid === 'all' || n.targetUid === 'broadcast' || n.broadcast === true) return true;
+      return false;
+    });
+  }
+
+  // Filtrage strict pour client / prospect : ils ne voient JAMAIS les alertes staff ni les réservations des autres
   const myName = (currentUserProfile?.nom || currentUserProfile?.name || currentUser.displayName || '').toLowerCase().trim();
 
   return all.filter(n => {
@@ -1189,9 +1205,6 @@ function reconcileClientDocumentNotifications() {
         };
         state.notifications.unshift(notifPayload);
         hasAdded = true;
-        if (typeof createNotification === 'function') {
-          createNotification(notifPayload, notifId).catch(() => {});
-        }
       }
     });
 
@@ -1231,9 +1244,6 @@ function reconcileClientDocumentNotifications() {
         };
         state.notifications.unshift(notifPayload);
         hasAdded = true;
-        if (typeof createNotification === 'function') {
-          createNotification(notifPayload, notifId).catch(() => {});
-        }
       }
     });
 
