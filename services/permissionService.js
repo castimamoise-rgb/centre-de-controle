@@ -397,28 +397,48 @@ export function filterDataForUser(moduleKey, items, userProfile) {
   const userPhone = (userProfile.telephone || userProfile.phone || '').replace(/[^0-9]/g, '');
   const userUid = userProfile.uid || userProfile.id || '';
 
-  // Helper pour vérifier si un document appartient à ce CLIENT
+  // Helper pour vérifier si un document appartient à ce CLIENT avec étanchéité stricte
   function matchesClientDoc(doc) {
     if (!doc) return false;
-    // 1. Concordance directe sur les identifiants UID / ID
-    if (userUid && (doc.clientId === userUid || doc.uid === userUid || doc.id === userUid)) return true;
-    // 2. Concordance sur l'adresse e-mail
+
+    // 1. Concordance directe sur les identifiants UID / ID Client
+    if (userUid) {
+      if (doc.clientId === userUid || doc.clientUid === userUid || doc.uid === userUid || doc.userId === userUid) {
+        return true;
+      }
+      // Dans la collection clients, doc.id peut être l'UID du client
+      if (m === 'clients' && doc.id === userUid) {
+        return true;
+      }
+    }
+
+    // Si le document possède explicitement un autre clientId, il est formellement interdit à cet utilisateur
+    if (doc.clientId && userUid && doc.clientId !== userUid) {
+      return false;
+    }
+    if (doc.clientUid && userUid && doc.clientUid !== userUid) {
+      return false;
+    }
+
+    // 2. Concordance sur l'adresse e-mail vérifiée (insensible à la casse)
     if (userEmail) {
       const docEmail = String(doc.email || doc.clientEmail || '').toLowerCase().trim();
       if (docEmail && docEmail === userEmail) return true;
     }
-    // 3. Concordance sur le numéro de téléphone
+
+    // 3. Concordance sur le numéro de téléphone exact (au moins 8 chiffres)
     if (userPhone && userPhone.length >= 8) {
       const docPhone = String(doc.phone || doc.telephone || '').replace(/[^0-9]/g, '');
-      if (docPhone && (docPhone === userPhone || docPhone.endsWith(userPhone) || userPhone.endsWith(docPhone))) return true;
+      if (docPhone && docPhone === userPhone) return true;
     }
-    // 4. Concordance sur le Nom / Nom de profil
-    const docClient = String(doc.client || doc.name || doc.nom || doc.parent || '').toLowerCase().trim();
-    if (docClient) {
-      if (userName && (docClient === userName || docClient.includes(userName) || userName.includes(docClient))) return true;
-      if (userPrenom && userPrenom.length >= 3 && docClient.includes(userPrenom)) return true;
-      if (userUsername && docClient.includes(userUsername)) return true;
+
+    // 4. Concordance stricte sur le Nom complet (SEULEMENT si aucun clientId contradictoire et nom non-générique)
+    const docClient = String(doc.client || doc.nomClient || doc.name || doc.nom || '').toLowerCase().trim();
+    const isGeneric = (w) => !w || ['client', 'prospect', 'utilisateur', 'user', 'nouveau client', 'admin'].includes(w) || w.length < 3;
+    if (docClient && !isGeneric(docClient) && userName && !isGeneric(userName)) {
+      if (docClient === userName) return true;
     }
+
     return false;
   }
 
@@ -474,10 +494,13 @@ export function filterDataForUser(moduleKey, items, userProfile) {
     return [];
   }
 
-  // 7. PROSPECT : voit UNIQUEMENT ses propres réservations et son profil
+  // 7. PROSPECT : voit UNIQUEMENT ses propres réservations, devis proforma et notifications
   if (roles.includes(ROLES.PROSPECT)) {
-    if (m === 'reservations') {
+    if (['reservations', 'proformas'].includes(m)) {
       return items.filter(matchesClientDoc);
+    }
+    if (m === 'notifications') {
+      return items.filter(n => matchesClientDoc(n) || n.targetUid === userUid || n.forRole === 'client' || n.forRole === 'prospect');
     }
     return [];
   }

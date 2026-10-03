@@ -185,7 +185,8 @@ service cloud.firestore {
     function isOwnClientIdentity(data) {
       return (('clientId' in data) && data.clientId == request.auth.uid) ||
              (('uid' in data) && data.uid == request.auth.uid) ||
-             (('clientUid' in data) && data.clientUid == request.auth.uid);
+             (('clientUid' in data) && data.clientUid == request.auth.uid) ||
+             (('email' in data) && ('email' in request.auth.token) && data.email == request.auth.token.email);
     }
 
     function isClientDoc(data) {

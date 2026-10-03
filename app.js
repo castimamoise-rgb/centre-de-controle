@@ -1774,6 +1774,12 @@ function setupFirestoreListeners() {
 
   // 1. CHAUFFEUR ONLY: Read ONLY assigned documents via indexed queries
   if (isChauffeurOnly) {
+    // Purger immédiatement les collections inaccessibles pour éviter l'affichage de données historiques
+    ['finances', 'expenses', 'proformas', 'factures', 'paiements', 'clients', 'abonnements'].forEach(k => {
+      state[k] = [];
+    });
+    save();
+
     const chauffeurCols = [
       { col: 'plannings', q: query(collection(db, 'plannings'), where('chauffeurId', '==', currentUser.uid)) },
       { col: 'reservations', q: query(collection(db, 'reservations'), where('chauffeurId', '==', currentUser.uid)) },
@@ -1817,6 +1823,19 @@ function setupFirestoreListeners() {
 
   // 2. CLIENT ONLY: Read ONLY own documents via indexed queries
   if (isClientOnly) {
+    // Purger immédiatement les collections confidentielles et les fausses données de démonstration
+    ['finances', 'expenses', 'vehicules', 'chauffeurs', 'plannings', 'utilisateurs'].forEach(k => {
+      state[k] = [];
+    });
+    // Nettoyer strictement la mémoire locale des documents qui n'appartiennent pas à ce client
+    ['clients', 'eleves', 'abonnements', 'reservations', 'paiements', 'proformas', 'factures'].forEach(k => {
+      if (!Array.isArray(state[k])) state[k] = [];
+      state[k] = state[k].filter(item => {
+        return (item.clientId === currentUser.uid || item.clientUid === currentUser.uid || item.uid === currentUser.uid || (currentUser.email && item.email === currentUser.email));
+      });
+    });
+    save();
+
     const clientCols = [
       { col: 'clients', q: query(collection(db, 'clients'), where('clientId', '==', currentUser.uid)) },
       { col: 'eleves', q: query(collection(db, 'eleves'), where('clientId', '==', currentUser.uid)) },
@@ -1868,8 +1887,21 @@ function setupFirestoreListeners() {
   // 2b. PROSPECT ONLY: Read ONLY own reservations and own profile; react to role upgrades
   const isProspectOnly = !hasStaffRole && !roles.includes('chauffeur') && !roles.includes('client') && roles.includes('prospect');
   if (isProspectOnly) {
+    // Purger les données inaccessibles pour le prospect
+    ['finances', 'expenses', 'vehicules', 'chauffeurs', 'plannings', 'utilisateurs', 'clients', 'eleves', 'abonnements', 'factures', 'paiements'].forEach(k => {
+      state[k] = [];
+    });
+    ['reservations', 'proformas'].forEach(k => {
+      if (!Array.isArray(state[k])) state[k] = [];
+      state[k] = state[k].filter(item => {
+        return (item.clientId === currentUser.uid || item.clientUid === currentUser.uid || item.uid === currentUser.uid || (currentUser.email && item.email === currentUser.email));
+      });
+    });
+    save();
+
     const prospectCols = [
       { col: 'reservations', q: query(collection(db, 'reservations'), where('clientId', '==', currentUser.uid)) },
+      { col: 'proformas', q: query(collection(db, 'proformas'), where('clientId', '==', currentUser.uid)) },
       { col: 'notifications', q: query(collection(db, 'notifications'), where('targetUid', 'in', [currentUser.uid, 'all', 'broadcast'])) }
     ];
 
@@ -1886,7 +1918,7 @@ function setupFirestoreListeners() {
             updateNotificationBadge();
             if (isNotifDropdownOpen) renderNotificationDropdown();
           }
-          if (col === 'reservations') {
+          if (col === 'reservations' || col === 'proformas') {
             reconcileClientDocumentNotifications();
             updateNotificationBadge();
           }
@@ -5377,17 +5409,70 @@ function fieldHTMLLinked(id, label, type, val, key) {
     `;
   }
   if (["reservations", "plannings", "paiements", "proformas", "factures", "eleves", "abonnements"].includes(canon) && id === "client") {
-    const clients = list("clients");
-    if (!clients.length) {
+    const callerRoles = normalizeRoles(currentUserRoles);
+    const isClientUser = (callerRoles.includes(ROLES.CLIENT) || callerRoles.includes(ROLES.PROSPECT)) && !callerRoles.includes(ROLES.ADMIN);
+    if (isClientUser) {
+      const myClientName = currentUserProfile?.nom
+        ? ((currentUserProfile.prenom ? currentUserProfile.prenom + " " : "") + currentUserProfile.nom).trim()
+        : (currentUserProfile?.name || currentUser?.displayName || currentUser?.email || "Client");
+      return `
+        <div class="field">
+          <label>Client (Votre compte)</label>
+          <input name="client" value="${esc(myClientName)}" readonly style="background:#f0f4f9;font-weight:700">
+          <input type="hidden" name="clientId" value="${esc(currentUser?.uid || '')}">
+          <input type="hidden" name="clientUid" value="${esc(currentUser?.uid || '')}">
+          <input type="hidden" name="email" value="${esc(currentUser?.email || '')}">
+        </div>
+      `;
+    }
+
+    // Vue Staff / Administration : Choix parmi les clients et comptes enregistrés
+    const clientsList = list("clients");
+    const registeredUsers = (state.utilisateurs || []).filter(u => {
+      const uRoles = normalizeRoles(u.roles || [u.role]);
+      return uRoles.includes(ROLES.CLIENT) || uRoles.includes(ROLES.PROSPECT);
+    });
+
+    const options = [];
+    const seenIds = new Set();
+
+    clientsList.forEach(c => {
+      const cId = c.clientId || c.id;
+      if (cId) seenIds.add(cId);
+      options.push({
+        id: c.id,
+        clientId: c.clientId || c.id,
+        name: c.name || c.nom || 'Client',
+        email: c.email || ''
+      });
+    });
+
+    registeredUsers.forEach(u => {
+      const uUid = u.uid || u.id;
+      if (uUid && !seenIds.has(uUid)) {
+        seenIds.add(uUid);
+        options.push({
+          id: uUid,
+          clientId: uUid,
+          name: u.name || u.nom || (u.email ? u.email.split('@')[0] : 'Client'),
+          email: u.email || ''
+        });
+      }
+    });
+
+    if (!options.length) {
       return `<div class="field"><label>Client</label><input name="client" value="${esc(val)}" placeholder="Nom du client"></div>`;
     }
+
     return `
       <div class="field">
         <label>Client</label>
-        <select name="client">
+        <select name="client" onchange="const sel = this.options[this.selectedIndex]; const f = this.form; if (f && sel) { if (f.clientId) f.clientId.value = sel.dataset.clientid || ''; if (f.clientUid) f.clientUid.value = sel.dataset.clientid || ''; if (f.email && sel.dataset.email) f.email.value = sel.dataset.email; }">
           <option value="">-- Sélectionner un client --</option>
-          ${clients.map(c => `<option value="${esc(c.name)}" ${c.name === val || c.id === val ? "selected" : ""}>${esc(c.name)} (${esc(c.id)})</option>`).join("")}
+          ${options.map(c => `<option value="${esc(c.name)}" data-clientid="${esc(c.clientId)}" data-email="${esc(c.email)}" ${c.name === val || c.id === val ? "selected" : ""}>${esc(c.name)}${c.email ? ' (' + esc(c.email) + ')' : ''}</option>`).join("")}
         </select>
+        <input type="hidden" name="clientId" value="">
+        <input type="hidden" name="clientUid" value="">
       </div>
     `;
   }
