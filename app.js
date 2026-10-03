@@ -1466,7 +1466,7 @@ function renderNotificationDropdown() {
               </button>
               ${!item.factureId && item.proformaId && !hasRequestedInvoice ? `
                 <button class="notif-action-btn" style="background:#15803d;color:#fff;border-color:#15803d;font-weight:700;padding:5px 10px;font-size:11px" onclick="event.stopPropagation(); openRequestInvoiceFromQuoteById('${item.proformaId}')">
-                  💳 Accepter & Demander Facture
+                  💳 DEMANDER FACTURE ET MOYEN DE PAIEMENT
                 </button>
               ` : ''}
               ${!item.factureId && pDoc?.factureGenerated ? `
@@ -5016,9 +5016,9 @@ function drawTable(key) {
                       if (o.factureGenerated) {
                         clientAction = `<button class="tiny" style="color:#15803d;border-color:#bbf7d0;background:#f0fdf4;font-weight:700" onclick="handleOpenDocumentFromAlert('facture', '${esc(o.factureGenerated)}')" title="Consulter votre facture officielle">🧾 Facture dispo</button>`;
                       } else if (o.demandeFacture) {
-                        clientAction = `<span class="badge" style="background:#e0f2fe;color:#0369a1;font-size:10px;padding:2px 6px">⏳ Facture demandée (${esc(o.moyenPaiement || '')})</span>`;
+                        clientAction = `<span class="badge" style="background:#e0f2fe;color:#0369a1;font-size:10px;padding:3px 8px;font-weight:700">⏳ Facture demandée (${esc(o.moyenPaiement || '')})</span>`;
                       } else {
-                        clientAction = `<button class="tiny" style="color:#15803d;border-color:#bbf7d0;background:#f0fdf4;font-weight:700" onclick="openRequestInvoiceFromQuoteModal(${i})" title="Accepter ce devis et choisir le moyen de paiement">💳 Accepter & Facture</button>`;
+                        clientAction = `<button class="tiny" style="color:#15803d;border-color:#bbf7d0;background:#f0fdf4;font-weight:700" onclick="openRequestInvoiceFromQuoteModal(${i})" title="Demander la facture officielle et les coordonnées de paiement">💳 DEMANDER FACTURE ET MOYEN DE PAIEMENT</button>`;
                       }
                       return `
                         ${clientAction}
@@ -7989,13 +7989,24 @@ async function createInvoiceFromQuote(index) {
     const clientEmail = (q.email || "").toLowerCase().trim();
     if (targetUid || clientEmail) {
       try {
+        let paymentInstructions = "";
+        if (paymentMethodLabel.includes("MonCash")) {
+          paymentInstructions = "\n📱 MonCash Marchand LAPERLE : +509 4440 8687 / +509 3835 1234 (Réf: " + invoiceNumber + ")";
+        } else if (paymentMethodLabel.includes("Natcash")) {
+          paymentInstructions = "\n📲 Natcash LAPERLE : +509 3835 1234 (Réf: " + invoiceNumber + ")";
+        } else if (paymentMethodLabel.includes("Virement")) {
+          paymentInstructions = "\n🏦 Coordonnées Bancaires LAPERLE TOUR HT :\n• Sogebank Gourdes : 123456789\n• Unibank Gourdes : 987654321\nMentionnez la référence : " + invoiceNumber;
+        } else {
+          paymentInstructions = "\n📍 Règlement direct à l'agence principale LAPERLE TOUR HT (Tabarre / Pétion-Ville) ou par chèque à l'ordre de LAPERLE TOUR HT.";
+        }
+
         const notifId = `NOTIF-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
         const notifPayload = {
           id: notifId,
-          title: `🧾 Facture ${invoiceNumber} émise !`,
-          message: `LAPERLE TOUR HT a émis votre facture officielle ${invoiceNumber} (${money(newInvoice.amount)}) pour la proforma ${q.number || q.id}. Mode de règlement : ${paymentMethodLabel}.`,
+          title: `🧾 Facture ${invoiceNumber} & Coordonnées de paiement`,
+          message: `LAPERLE TOUR HT a émis votre facture officielle ${invoiceNumber} (${money(newInvoice.amount)}) pour la proforma ${q.number || q.id}.\nMode retenu : ${paymentMethodLabel}.${paymentInstructions}`,
           type: 'finance',
-          priority: 'normal',
+          priority: 'high',
           targetUid: targetUid || 'all',
           broadcast: !targetUid,
           email: clientEmail,
@@ -8032,6 +8043,7 @@ function openRequestInvoiceFromQuoteModal(index) {
   const clientName = q.client || currentUserProfile?.nom || currentUser?.displayName || "Client";
   const amount = Number(q.amount || 0);
   const route = q.route || q.service || "Transport & Services";
+  const defaultPhone = currentUserProfile?.telephone || q.telephone || "";
 
   const modalEl = document.getElementById("modal");
   if (!modalEl) return;
@@ -8039,13 +8051,13 @@ function openRequestInvoiceFromQuoteModal(index) {
   modalEl.innerHTML = `
     <div class="modal-head">
       <div>
-        <h2 style="color:#082b70">💳 Accepter le Devis & Demander la Facture</h2>
-        <small>Validation officielle du devis proforma N° ${esc(pNum)}</small>
+        <h2 style="color:#082b70">💳 Demande de Facture & Moyen de Paiement</h2>
+        <small>Demande officielle auprès des responsables pour le devis N° ${esc(pNum)}</small>
       </div>
       <button class="close" onclick="closeModal()">×</button>
     </div>
 
-    <div style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:14px;margin-bottom:14px">
+    <div style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:14px;margin-bottom:12px">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
         <div>
           <b>Devis :</b> <span style="color:#082b70;font-weight:700">${esc(pNum)}</span><br>
@@ -8058,9 +8070,13 @@ function openRequestInvoiceFromQuoteModal(index) {
       </div>
     </div>
 
+    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#1e40af;line-height:1.5;">
+      ℹ️ <b>Information :</b> Dès réception de votre demande, les responsables émettront votre facture officielle et vous transmettront les coordonnées de paiement sécurisées (MonCash marchand, coordonnées bancaires Sogebank/Unibank, etc.).
+    </div>
+
     <form id="requestInvoiceFromQuoteForm" onsubmit="executeSubmitRequestInvoiceFromQuote(event, ${index})" style="display:flex;flex-direction:column;gap:12px">
       <div class="field">
-        <label><b>Mode / Moyen de Règlement prévu :</b> <span style="color:#b91c1c">*</span></label>
+        <label><b>Mode / Moyen de Règlement souhaité :</b> <span style="color:#b91c1c">*</span></label>
         <select name="moyenPaiement" required style="font-weight:700;font-size:14px">
           <option value="MonCash">📱 MonCash (Transfert ou Paiement Marchand)</option>
           <option value="Natcash">📲 Natcash</option>
@@ -8072,7 +8088,7 @@ function openRequestInvoiceFromQuoteModal(index) {
       </div>
 
       <div class="field">
-        <label><b>Modalité de Paiement :</b></label>
+        <label><b>Modalité de Paiement souhaitée :</b></label>
         <select name="modalitePaiement" style="font-size:13px">
           <option value="Paiement Intégral (100%)">Paiement Intégral (100% — ${money(amount)})</option>
           <option value="Acompte de 50%">Acompte de Réservation de 50% (${money(amount * 0.5)})</option>
@@ -8082,19 +8098,30 @@ function openRequestInvoiceFromQuoteModal(index) {
       </div>
 
       <div class="field">
-        <label><b>Référence de Transaction / Reçu (Optionnel) :</b></label>
-        <input type="text" name="referencePaiement" placeholder="Ex: N° transaction MonCash, code virement bancaire...">
+        <label><b>Nom complet ou Raison Sociale à porter sur la facture :</b> <span style="color:#b91c1c">*</span></label>
+        <input type="text" name="nomFacturation" value="${esc(clientName)}" required placeholder="Nom complet ou nom de la société">
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="field">
+          <label><b>Téléphone / WhatsApp pour le reçu :</b> <span style="color:#b91c1c">*</span></label>
+          <input type="tel" name="telephoneContact" value="${esc(defaultPhone)}" required placeholder="Ex: +509 3835 1234">
+        </div>
+        <div class="field">
+          <label><b>NIF / CIN (Optionnel) :</b></label>
+          <input type="text" name="nifCin" placeholder="NIF ou CIN (optionnel)">
+        </div>
       </div>
 
       <div class="field">
-        <label><b>Instructions de Facturation / Société (Optionnel) :</b></label>
-        <textarea name="noteFacturation" rows="2" placeholder="Ex: Établir la facture au nom de l'entreprise XYZ, adresse ou NIF spécifique..."></textarea>
+        <label><b>Instructions ou Notes pour les responsables (Optionnel) :</b></label>
+        <textarea name="noteFacturation" rows="2" placeholder="Ex: Adresse de facturation, délai de validation, référence interne..."></textarea>
       </div>
 
       <div class="form-actions" style="margin-top:8px">
         <button type="button" class="secondary" onclick="closeModal()">Annuler</button>
         <button type="submit" class="primary" style="background:#15803d;border-color:#15803d;font-weight:700">
-          ✅ Confirmer mon acceptation & Demander la Facture
+          📤 Envoyer ma Demande de Facture & Coordonnées
         </button>
       </div>
     </form>
@@ -8122,18 +8149,23 @@ async function executeSubmitRequestInvoiceFromQuote(event, index) {
   const form = event.target;
   const moyenPaiement = form.moyenPaiement.value;
   const modalitePaiement = form.modalitePaiement.value;
-  const referencePaiement = (form.referencePaiement.value || "").trim();
+  const nomFacturation = (form.nomFacturation.value || "").trim();
+  const telephoneContact = (form.telephoneContact.value || "").trim();
+  const nifCin = (form.nifCin.value || "").trim();
   const noteFacturation = (form.noteFacturation.value || "").trim();
   const pNum = q.number || q.id;
 
   // 1. Mettre à jour l'objet proforma localement
   q.demandeFacture = true;
+  q.demandeCoordonnees = true;
   q.dateDemandeFacture = new Date().toISOString();
   q.moyenPaiement = moyenPaiement;
   q.modalitePaiement = modalitePaiement;
-  q.referencePaiement = referencePaiement;
+  q.nomFacturation = nomFacturation;
+  q.telephoneContact = telephoneContact;
+  q.nifCin = nifCin;
   q.noteFacturation = noteFacturation;
-  q.status = "Acceptée (Attente Facture)";
+  q.status = "Facture et Paiement demandés";
   save();
   await saveDocumentToFirestore("proformas", q);
 
@@ -8153,8 +8185,8 @@ async function executeSubmitRequestInvoiceFromQuote(event, index) {
   const notifId = `NOTIF-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
   const notifPayload = {
     id: notifId,
-    title: `🔔 Devis ${pNum} validé par ${q.client || 'le client'} !`,
-    message: `${q.client || 'Le client'} a accepté le devis (${money(q.amount || 0)}) et demande la facture officielle.\nMoyen : ${moyenPaiement} (${modalitePaiement})${referencePaiement ? ' | Réf : ' + referencePaiement : ''}.`,
+    title: `🔔 Demande de Facture & Moyen de Paiement (${pNum})`,
+    message: `Le client ${nomFacturation || q.client || 'Client'} demande la facture officielle et les instructions de paiement pour le devis ${pNum} (${money(q.amount || 0)}) via ${moyenPaiement} (${modalitePaiement}).\nContact : ${telephoneContact || 'Non spécifié'}${nifCin ? ' | NIF : ' + nifCin : ''}${noteFacturation ? '\nNote : ' + noteFacturation : ''}`,
     type: 'finance',
     priority: 'high',
     actionType: 'proforma_accepted',
@@ -8170,7 +8202,7 @@ async function executeSubmitRequestInvoiceFromQuote(event, index) {
     read: false,
     date: new Date().toISOString(),
     senderUid: currentUser?.uid || '',
-    senderName: q.client || currentUserProfile?.nom || 'Client'
+    senderName: nomFacturation || q.client || currentUserProfile?.nom || 'Client'
   };
 
   await createNotification(notifPayload, notifId);
@@ -8178,8 +8210,8 @@ async function executeSubmitRequestInvoiceFromQuote(event, index) {
   // 4. Accusé de réception local dans la cloche du client
   const clientNotif = {
     id: `NOTIF-CLIENT-REQ-${Date.now()}`,
-    title: `✅ Demande de facture enregistrée`,
-    message: `Votre accord pour le devis ${pNum} avec règlement par ${moyenPaiement} a bien été transmis à la comptabilité LAPERLE. Votre facture officielle vous sera remise rapidement.`,
+    title: `⏳ Demande de facture & coordonnées transmise`,
+    message: `Votre demande pour le devis ${pNum} avec règlement prévu par ${moyenPaiement} a bien été transmise aux responsables LAPERLE TOUR HT. Votre facture officielle et les coordonnées de paiement vous seront communiquées sous peu.`,
     type: 'finance',
     priority: 'normal',
     targetUid: currentUser?.uid || q.clientId,
@@ -8188,7 +8220,7 @@ async function executeSubmitRequestInvoiceFromQuote(event, index) {
     proformaId: pNum,
     date: new Date().toISOString(),
     senderUid: 'staff',
-    senderName: 'Comptabilité LAPERLE'
+    senderName: 'Direction LAPERLE TOUR HT'
   };
   if (!Array.isArray(state.notifications)) state.notifications = [];
   state.notifications.unshift(clientNotif);
@@ -8197,7 +8229,7 @@ async function executeSubmitRequestInvoiceFromQuote(event, index) {
 
   closeModal();
   render();
-  showToast(`✅ Devis ${pNum} validé ! Demande de facture transmise à la comptabilité.`);
+  showToast(`✅ Demande transmise avec succès aux responsables LAPERLE TOUR HT.`);
 }
 window.executeSubmitRequestInvoiceFromQuote = executeSubmitRequestInvoiceFromQuote;
 
@@ -8303,7 +8335,7 @@ function printDocument(type, index) {
             } else if (o.demandeFacture) {
               return `<span class="badge" style="background:#e0f2fe;color:#0369a1;padding:8px 14px;font-size:12px;font-weight:700">⏳ Facture demandée via ${esc(o.moyenPaiement || 'paiement')}</span>`;
             } else {
-              return `<button class="primary" style="background:#16a34a;border-color:#16a34a;font-weight:700" onclick="closeModal();openRequestInvoiceFromQuoteModal(${index})">💳 Accepter le Devis & Demander la Facture</button>`;
+              return `<button class="primary" style="background:#16a34a;border-color:#16a34a;font-weight:700" onclick="closeModal();openRequestInvoiceFromQuoteModal(${index})">💳 DEMANDER FACTURE ET MOYEN DE PAIEMENT</button>`;
             }
           }
         })() : ""}
