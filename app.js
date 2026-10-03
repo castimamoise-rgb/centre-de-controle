@@ -1408,13 +1408,24 @@ function renderNotificationDropdown() {
         const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
 
         let actionHtml = "";
-        if (isStaff && item.reservationId && !item.actionCompleted) {
+        if (isStaff && item.reservationId && !item.actionCompleted && item.actionType !== 'proforma_accepted') {
           const reqType = item.actionType === 'demande_facture' ? 'facture' : 'proforma';
           const btnLabel = reqType === 'facture' ? '✅ Accepter & Émettre la Facture' : '✅ Accepter & Émettre la Proforma';
           actionHtml = `
             <div style="margin: 8px 0 6px 0; display: flex; gap: 6px; flex-wrap: wrap;">
               <button class="notif-action-btn" style="background:#082b70;color:#fff;border-color:#082b70;font-weight:700;padding:5px 10px;font-size:11px" onclick="handleAcceptDocumentRequestFromAlert('${item.id}', '${item.reservationId}', '${reqType}')">
                 ${btnLabel}
+              </button>
+            </div>
+          `;
+        } else if (isStaff && (item.actionType === 'proforma_accepted' || item.title?.includes('validé')) && item.proformaId && !item.actionCompleted) {
+          actionHtml = `
+            <div style="margin: 8px 0 6px 0; display: flex; gap: 6px; flex-wrap: wrap;">
+              <button class="notif-action-btn" style="background:#ea580c;color:#fff;border-color:#ea580c;font-weight:700;padding:5px 10px;font-size:11px" onclick="handleCreateInvoiceFromQuoteId('${item.proformaId}', '${item.id}')">
+                ⚡ Émettre la Facture Officielle (${escapeHtml(item.proformaId)})
+              </button>
+              <button class="notif-action-btn" style="background:#082b70;color:#fff;border-color:#082b70;font-weight:700;padding:5px 10px;font-size:11px" onclick="handleOpenDocumentFromAlert('proforma', '${item.proformaId}')">
+                📄 Voir Devis
               </button>
             </div>
           `;
@@ -1427,11 +1438,23 @@ function renderNotificationDropdown() {
         } else if (!isStaff && (item.proformaId || item.factureId)) {
           const docType = item.factureId ? 'facture' : 'proforma';
           const docId = item.factureId || item.proformaId;
+          const pDoc = item.proformaId ? (state.proformas || []).find(p => p.number === item.proformaId || p.id === item.proformaId) : null;
+          const hasRequestedInvoice = pDoc?.demandeFacture || pDoc?.factureGenerated;
           actionHtml = `
             <div style="margin: 8px 0 6px 0; display: flex; gap: 6px; flex-wrap: wrap;">
               <button class="notif-action-btn" style="background:#082b70;color:#fff;border-color:#082b70;font-weight:700;padding:5px 10px;font-size:11px" onclick="handleOpenDocumentFromAlert('${docType}', '${docId}')">
                 📄 Consulter le document PDF (${escapeHtml(docId)})
               </button>
+              ${!item.factureId && item.proformaId && !hasRequestedInvoice ? `
+                <button class="notif-action-btn" style="background:#15803d;color:#fff;border-color:#15803d;font-weight:700;padding:5px 10px;font-size:11px" onclick="openRequestInvoiceFromQuoteById('${item.proformaId}')">
+                  💳 Accepter & Demander Facture
+                </button>
+              ` : ''}
+              ${!item.factureId && pDoc?.factureGenerated ? `
+                <button class="notif-action-btn" style="background:#15803d;color:#fff;border-color:#15803d;font-weight:700;padding:5px 10px;font-size:11px" onclick="handleOpenDocumentFromAlert('facture', '${pDoc.factureGenerated}')">
+                  🧾 Facture disponible (${escapeHtml(pDoc.factureGenerated)})
+                </button>
+              ` : ''}
             </div>
           `;
         }
@@ -4854,11 +4877,27 @@ function drawTable(key) {
                   ${canon === "proformas" ? (() => {
                     const roles = normalizeRoles(currentUserRoles);
                     const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
-                    return `
-                      ${isStaff ? `<button class="tiny" onclick="createInvoiceFromQuote(${i})">Facture</button>` : ""}
-                      ${isStaff ? `<button class="tiny" style="color:#0284c7;border-color:#bae6fd;background:#f0f9ff" onclick="sendProformaToClient(${i})" title="Envoyer le devis proforma directement au client">✉️ Envoyer</button>` : ""}
-                      <button class="tiny" onclick="printDocument('proforma',${i})">PDF Proforma</button>
-                    `;
+                    if (isStaff) {
+                      return `
+                        ${o.demandeFacture && !o.factureGenerated ? `<span class="badge orange" style="font-size:10px;padding:2px 6px" title="Moyen : ${esc(o.moyenPaiement || '')}">Demande Facture (${esc(o.moyenPaiement || '')})</span>` : ''}
+                        ${o.factureGenerated ? `<button class="tiny" style="color:#15803d;border-color:#bbf7d0;background:#f0fdf4" onclick="handleOpenDocumentFromAlert('facture', '${esc(o.factureGenerated)}')" title="Consulter la facture officielle émise">Facture ${esc(o.factureGenerated)}</button>` : `<button class="tiny" onclick="createInvoiceFromQuote(${i})">${o.demandeFacture ? '⚡ Émettre Facture' : 'Facture'}</button>`}
+                        <button class="tiny" style="color:#0284c7;border-color:#bae6fd;background:#f0f9ff" onclick="sendProformaToClient(${i})" title="Envoyer le devis proforma directement au client">✉️ Envoyer</button>
+                        <button class="tiny" onclick="printDocument('proforma',${i})">PDF Proforma</button>
+                      `;
+                    } else {
+                      let clientAction = '';
+                      if (o.factureGenerated) {
+                        clientAction = `<button class="tiny" style="color:#15803d;border-color:#bbf7d0;background:#f0fdf4;font-weight:700" onclick="handleOpenDocumentFromAlert('facture', '${esc(o.factureGenerated)}')" title="Consulter votre facture officielle">🧾 Facture dispo</button>`;
+                      } else if (o.demandeFacture) {
+                        clientAction = `<span class="badge" style="background:#e0f2fe;color:#0369a1;font-size:10px;padding:2px 6px">⏳ Facture demandée (${esc(o.moyenPaiement || '')})</span>`;
+                      } else {
+                        clientAction = `<button class="tiny" style="color:#15803d;border-color:#bbf7d0;background:#f0fdf4;font-weight:700" onclick="openRequestInvoiceFromQuoteModal(${i})" title="Accepter ce devis et choisir le moyen de paiement">💳 Accepter & Facture</button>`;
+                      }
+                      return `
+                        ${clientAction}
+                        <button class="tiny" onclick="printDocument('proforma',${i})">PDF Proforma</button>
+                      `;
+                    }
                   })() : ""}
                   ${canon === "factures" ? `
                     <button class="tiny" onclick="printDocument('facture',${i})">PDF Facture</button>
@@ -7712,6 +7751,7 @@ async function createInvoiceFromQuote(index) {
   }
 
   const invoiceNumber = nextFactureNumber();
+  const paymentMethodLabel = q.moyenPaiement || "Non spécifié";
   const newInvoice = {
     id: invoiceNumber,
     number: invoiceNumber,
@@ -7722,16 +7762,47 @@ async function createInvoiceFromQuote(index) {
     date: today(),
     proforma: q.number || q.id,
     amount: q.amount || 0,
-    status: "Brouillon",
+    service: q.service || "Transport & Services LAPERLE TOUR HT",
+    route: q.route || "",
+    reservationId: q.reservationId || "",
+    paymentMethod: paymentMethodLabel,
+    paymentModality: q.modalitePaiement || "Paiement Intégral",
+    paymentReference: q.referencePaiement || "",
+    status: q.status === "Payée" ? "Payée" : "À recevoir",
     due: today(),
     archived: false,
-    notes: `Facture générée automatiquement depuis la proforma ${q.number || q.id}`
+    notes: `Facture émise depuis la proforma ${q.number || q.id}${q.moyenPaiement ? ' (Mode prévu : ' + q.moyenPaiement + ')' : ''}${q.noteFacturation ? ' | Note : ' + q.noteFacturation : ''}`
   };
 
   try {
     list("factures").push(newInvoice);
+
+    // Mettre à jour la proforma d'origine
+    q.factureGenerated = invoiceNumber;
+    q.status = "Facturée";
     save();
     await saveDocumentToFirestore("factures", newInvoice);
+    await saveDocumentToFirestore("proformas", q);
+
+    // Mettre à jour la réservation liée si existante
+    if (q.reservationId) {
+      const res = (list("reservations") || []).find(r => r.id === q.reservationId || r.code === q.reservationId);
+      if (res) {
+        res.factureGenerated = invoiceNumber;
+        res.status = "Facturée";
+        save();
+        await saveDocumentToFirestore("reservations", res);
+      }
+    }
+
+    // Marquer les notifications liées à cette proforma comme complétées
+    (state.notifications || []).forEach(n => {
+      if (n.proformaId === (q.number || q.id)) {
+        n.actionCompleted = true;
+        n.actionCompletedDoc = invoiceNumber;
+        n.read = true;
+      }
+    });
 
     // Notification instantanée vers le Client dans son alerte avec bouton PDF direct
     const targetUid = q.clientUid || q.clientId || "";
@@ -7742,7 +7813,7 @@ async function createInvoiceFromQuote(index) {
         const notifPayload = {
           id: notifId,
           title: `🧾 Facture ${invoiceNumber} émise !`,
-          message: `LAPERLE TOUR HT a émis votre facture officielle ${invoiceNumber} (${money(newInvoice.amount)}) pour la proforma ${q.number || q.id}.`,
+          message: `LAPERLE TOUR HT a émis votre facture officielle ${invoiceNumber} (${money(newInvoice.amount)}) pour la proforma ${q.number || q.id}. Mode de règlement : ${paymentMethodLabel}.`,
           type: 'finance',
           priority: 'normal',
           targetUid: targetUid || 'all',
@@ -7763,12 +7834,211 @@ async function createInvoiceFromQuote(index) {
     }
 
     go("factures");
-    showToast(`Facture ${invoiceNumber} créée avec succès et notification transmise au client.`);
+    showToast(`✅ Facture ${invoiceNumber} créée avec succès et transmise au client.`);
   } catch (err) {
     showToast("Erreur lors de la création de la facture.", "error");
   }
 }
 window.createInvoiceFromQuote = createInvoiceFromQuote;
+
+function openRequestInvoiceFromQuoteModal(index) {
+  const q = list("proformas")[index];
+  if (!q) {
+    showToast("Devis proforma introuvable.", "error");
+    return;
+  }
+
+  const pNum = q.number || q.id;
+  const clientName = q.client || currentUserProfile?.nom || currentUser?.displayName || "Client";
+  const amount = Number(q.amount || 0);
+  const route = q.route || q.service || "Transport & Services";
+
+  const modalEl = document.getElementById("modal");
+  if (!modalEl) return;
+
+  modalEl.innerHTML = `
+    <div class="modal-head">
+      <div>
+        <h2 style="color:#082b70">💳 Accepter le Devis & Demander la Facture</h2>
+        <small>Validation officielle du devis proforma N° ${esc(pNum)}</small>
+      </div>
+      <button class="close" onclick="closeModal()">×</button>
+    </div>
+
+    <div style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:14px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <b>Devis :</b> <span style="color:#082b70;font-weight:700">${esc(pNum)}</span><br>
+          <b>Prestation :</b> ${esc(route)}
+        </div>
+        <div style="text-align:right">
+          <small style="color:#64748b">Montant à régler :</small><br>
+          <span style="font-size:18px;font-weight:800;color:#15803d">${money(amount)}</span>
+        </div>
+      </div>
+    </div>
+
+    <form id="requestInvoiceFromQuoteForm" onsubmit="executeSubmitRequestInvoiceFromQuote(event, ${index})" style="display:flex;flex-direction:column;gap:12px">
+      <div class="field">
+        <label><b>Mode / Moyen de Règlement prévu :</b> <span style="color:#b91c1c">*</span></label>
+        <select name="moyenPaiement" required style="font-weight:700;font-size:14px">
+          <option value="MonCash">📱 MonCash (Transfert ou Paiement Marchand)</option>
+          <option value="Natcash">📲 Natcash</option>
+          <option value="Virement Bancaire">🏦 Virement Bancaire (Sogebank, Unibank, BNC, Capital Bank)</option>
+          <option value="Carte Bancaire">💳 Carte de Crédit / Débit (Visa, Mastercard)</option>
+          <option value="Chèque d'Entreprise / Bon">🏢 Chèque d'Entreprise / Bon de commande (ONG & Entreprise)</option>
+          <option value="Espèces">💵 Espèces à l'agence LAPERLE TOUR HT</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label><b>Modalité de Paiement :</b></label>
+        <select name="modalitePaiement" style="font-size:13px">
+          <option value="Paiement Intégral (100%)">Paiement Intégral (100% — ${money(amount)})</option>
+          <option value="Acompte de 50%">Acompte de Réservation de 50% (${money(amount * 0.5)})</option>
+          <option value="Acompte de 30%">Acompte de Réservation de 30% (${money(amount * 0.3)})</option>
+          <option value="À terme (30 jours)">Paiement à terme (Entreprises et ONG sous contrat)</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label><b>Référence de Transaction / Reçu (Optionnel) :</b></label>
+        <input type="text" name="referencePaiement" placeholder="Ex: N° transaction MonCash, code virement bancaire...">
+      </div>
+
+      <div class="field">
+        <label><b>Instructions de Facturation / Société (Optionnel) :</b></label>
+        <textarea name="noteFacturation" rows="2" placeholder="Ex: Établir la facture au nom de l'entreprise XYZ, adresse ou NIF spécifique..."></textarea>
+      </div>
+
+      <div class="form-actions" style="margin-top:8px">
+        <button type="button" class="secondary" onclick="closeModal()">Annuler</button>
+        <button type="submit" class="primary" style="background:#15803d;border-color:#15803d;font-weight:700">
+          ✅ Confirmer mon acceptation & Demander la Facture
+        </button>
+      </div>
+    </form>
+  `;
+
+  document.getElementById("modalBackdrop").classList.add("open");
+}
+window.openRequestInvoiceFromQuoteModal = openRequestInvoiceFromQuoteModal;
+
+function openRequestInvoiceFromQuoteById(quoteId) {
+  const idx = list("proformas").findIndex(q => q.number === quoteId || q.id === quoteId);
+  if (idx !== -1) {
+    openRequestInvoiceFromQuoteModal(idx);
+  } else {
+    showToast("Devis proforma introuvable.", "error");
+  }
+}
+window.openRequestInvoiceFromQuoteById = openRequestInvoiceFromQuoteById;
+
+async function executeSubmitRequestInvoiceFromQuote(event, index) {
+  event.preventDefault();
+  const q = list("proformas")[index];
+  if (!q) return;
+
+  const form = event.target;
+  const moyenPaiement = form.moyenPaiement.value;
+  const modalitePaiement = form.modalitePaiement.value;
+  const referencePaiement = (form.referencePaiement.value || "").trim();
+  const noteFacturation = (form.noteFacturation.value || "").trim();
+  const pNum = q.number || q.id;
+
+  // 1. Mettre à jour l'objet proforma localement
+  q.demandeFacture = true;
+  q.dateDemandeFacture = new Date().toISOString();
+  q.moyenPaiement = moyenPaiement;
+  q.modalitePaiement = modalitePaiement;
+  q.referencePaiement = referencePaiement;
+  q.noteFacturation = noteFacturation;
+  q.status = "Acceptée (Attente Facture)";
+  save();
+  await saveDocumentToFirestore("proformas", q);
+
+  // 2. Mettre à jour la réservation liée si existante
+  if (q.reservationId) {
+    const res = (list("reservations") || []).find(r => r.id === q.reservationId || r.code === q.reservationId);
+    if (res) {
+      res.demandeFacture = true;
+      res.dateDemandeFacture = new Date().toISOString();
+      res.moyenPaiement = moyenPaiement;
+      save();
+      await saveDocumentToFirestore("reservations", res);
+    }
+  }
+
+  // 3. Notification prioritaire instantanée vers la Direction & Comptabilité (Staff)
+  const notifId = `NOTIF-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  const notifPayload = {
+    id: notifId,
+    title: `🔔 Devis ${pNum} validé par ${q.client || 'le client'} !`,
+    message: `${q.client || 'Le client'} a accepté le devis (${money(q.amount || 0)}) et demande la facture officielle.\nMoyen : ${moyenPaiement} (${modalitePaiement})${referencePaiement ? ' | Réf : ' + referencePaiement : ''}.`,
+    type: 'finance',
+    priority: 'high',
+    actionType: 'proforma_accepted',
+    docType: 'proforma',
+    proformaId: pNum,
+    reservationId: q.reservationId || '',
+    clientId: q.clientId || q.clientUid || currentUser?.uid || '',
+    targetRole: 'staff',
+    forRole: 'staff',
+    targetUid: 'staff',
+    isInternal: true,
+    broadcast: false,
+    read: false,
+    date: new Date().toISOString(),
+    senderUid: currentUser?.uid || '',
+    senderName: q.client || currentUserProfile?.nom || 'Client'
+  };
+
+  await createNotification(notifPayload, notifId);
+
+  // 4. Accusé de réception local dans la cloche du client
+  const clientNotif = {
+    id: `NOTIF-CLIENT-REQ-${Date.now()}`,
+    title: `✅ Demande de facture enregistrée`,
+    message: `Votre accord pour le devis ${pNum} avec règlement par ${moyenPaiement} a bien été transmis à la comptabilité LAPERLE. Votre facture officielle vous sera remise rapidement.`,
+    type: 'finance',
+    priority: 'normal',
+    targetUid: currentUser?.uid || q.clientId,
+    clientId: currentUser?.uid || q.clientId,
+    read: false,
+    proformaId: pNum,
+    date: new Date().toISOString(),
+    senderUid: 'staff',
+    senderName: 'Comptabilité LAPERLE'
+  };
+  if (!Array.isArray(state.notifications)) state.notifications = [];
+  state.notifications.unshift(clientNotif);
+  save();
+  updateNotificationBadge();
+
+  closeModal();
+  render();
+  showToast(`✅ Devis ${pNum} validé ! Demande de facture transmise à la comptabilité.`);
+}
+window.executeSubmitRequestInvoiceFromQuote = executeSubmitRequestInvoiceFromQuote;
+
+async function handleCreateInvoiceFromQuoteId(quoteId, notifId) {
+  const idx = list("proformas").findIndex(q => q.number === quoteId || q.id === quoteId);
+  if (idx === -1) {
+    showToast("Devis proforma introuvable.", "error");
+    return;
+  }
+  if (notifId) {
+    const notif = (state.notifications || []).find(n => n.id === notifId);
+    if (notif) {
+      notif.actionCompleted = true;
+      notif.read = true;
+      save();
+      markNotificationRead(notifId).catch(() => {});
+    }
+  }
+  await createInvoiceFromQuote(idx);
+}
+window.handleCreateInvoiceFromQuoteId = handleCreateInvoiceFromQuoteId;
 
 function printDocument(type, index) {
   const isQuote = type === "proforma" || type === "quote";
@@ -7840,6 +8110,23 @@ function printDocument(type, index) {
       <div class="form-actions">
         <button class="secondary" onclick="closeModal()">Fermer</button>
         <button class="primary" onclick="window.print()">🖨️ Imprimer / PDF</button>
+        ${isQuote ? (() => {
+          const roles = normalizeRoles(currentUserRoles);
+          const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
+          if (isStaff) {
+            return o.factureGenerated
+              ? `<button class="primary" style="background:#15803d;border-color:#15803d" onclick="closeModal();handleOpenDocumentFromAlert('facture', '${esc(o.factureGenerated)}')">🧾 Voir Facture (${esc(o.factureGenerated)})</button>`
+              : `<button class="primary" style="background:#ea580c;border-color:#ea580c;font-weight:700" onclick="closeModal();createInvoiceFromQuote(${index})">⚡ Émettre Facture ${o.demandeFacture ? '(' + esc(o.moyenPaiement || '') + ')' : ''}</button>`;
+          } else {
+            if (o.factureGenerated) {
+              return `<button class="primary" style="background:#15803d;border-color:#15803d;font-weight:700" onclick="closeModal();handleOpenDocumentFromAlert('facture', '${esc(o.factureGenerated)}')">🧾 Voir ma Facture Officielle</button>`;
+            } else if (o.demandeFacture) {
+              return `<span class="badge" style="background:#e0f2fe;color:#0369a1;padding:8px 14px;font-size:12px;font-weight:700">⏳ Facture demandée via ${esc(o.moyenPaiement || 'paiement')}</span>`;
+            } else {
+              return `<button class="primary" style="background:#16a34a;border-color:#16a34a;font-weight:700" onclick="closeModal();openRequestInvoiceFromQuoteModal(${index})">💳 Accepter le Devis & Demander la Facture</button>`;
+            }
+          }
+        })() : ""}
       </div>
     `;
     document.getElementById("modalBackdrop").classList.add("open");
