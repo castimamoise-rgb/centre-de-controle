@@ -1258,6 +1258,45 @@ button, input, select, textarea {
   color: #ffffff;
 }
 
+/* Recharts Bar Chart Controls & KPIs */
+.admin-chart-toggle-group {
+  display: inline-flex;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 20px;
+  padding: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  gap: 2px;
+}
+.admin-chart-toggle-btn {
+  padding: 5px 12px;
+  border-radius: 16px;
+  border: none;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  background: transparent;
+  color: #94a3b8;
+  transition: all 0.15s ease;
+}
+.admin-chart-toggle-btn:hover {
+  color: #ffffff;
+}
+.admin-chart-toggle-btn.active {
+  background: #2563eb;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.35);
+}
+.admin-chart-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
 /* Deux colonnes au milieu : Progression membres & Jauge flotte */
 .admin-subgrid-two {
   display: grid;
@@ -3758,4 +3797,53 @@ button[disabled] {
   vertical-align: middle;
   flex-shrink: 0;
 }
+
+/* ==========================================================================
+   6. RÈGLES D'IMPRESSION & EXPORT PDF OFFICIELLES
+   ========================================================================== */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+  html, body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    font-size: 11pt !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .sidebar, .header, .hero-stripe, #mainNav, .mobile-toggle, .admin-hero-banner, 
+  .admin-hero-actions, .admin-promo-grid, .form-actions, .close, .toast, 
+  .auth-page, .top-icons, .firebase-chip, #adminTabs {
+    display: none !important;
+  }
+  .main {
+    margin-left: 0 !important;
+    padding: 0 !important;
+  }
+  .modal-backdrop.open {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    display: block !important;
+  }
+  .modal {
+    max-height: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+  }
+  #financialReportPrintArea {
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+  }
+}
+
 

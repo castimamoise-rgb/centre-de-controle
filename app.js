@@ -3617,18 +3617,54 @@ function openReservationPageFromCalendar(resId) {
 }
 window.openReservationPageFromCalendar = openReservationPageFromCalendar;
 
+// Configuration & état pour le graphique en barres Recharts
+window.adminChartConfig = window.adminChartConfig || {
+  mode: 'grouped', // 'grouped' (barres côte à côte) ou 'stacked' (barres empilées)
+  period: 'year'   // 'year' (12 mois), '6months' (6 derniers mois), 'quarter' (trimestre actuel)
+};
+
+window.setAdminChartMode = function(mode) {
+  window.adminChartConfig.mode = mode;
+  const btnGrouped = document.getElementById("btnChartModeGrouped");
+  const btnStacked = document.getElementById("btnChartModeStacked");
+  if (btnGrouped && btnStacked) {
+    if (mode === 'grouped') {
+      btnGrouped.classList.add("active");
+      btnGrouped.style.background = "#2563eb";
+      btnGrouped.style.color = "#ffffff";
+      btnStacked.classList.remove("active");
+      btnStacked.style.background = "transparent";
+      btnStacked.style.color = "#94a3b8";
+    } else {
+      btnStacked.classList.add("active");
+      btnStacked.style.background = "#2563eb";
+      btnStacked.style.color = "#ffffff";
+      btnGrouped.classList.remove("active");
+      btnGrouped.style.background = "transparent";
+      btnGrouped.style.color = "#94a3b8";
+    }
+  }
+  renderAdminFinancialChart();
+};
+
+window.setAdminChartPeriod = function(period) {
+  window.adminChartConfig.period = period;
+  renderAdminFinancialChart();
+};
+
 function renderAdminFinancialChart() {
   const container = document.getElementById("adminFinancialRechartsContainer");
   if (!container) return;
 
   const currentYear = new Date().getFullYear();
+  const currentMonthIdx = new Date().getMonth();
   const monthsShort = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sept", "Oct", "Nov", "Déc"];
   const monthsFull = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
 
   const payments = (list("paiements") || []).filter(p => ["Reçu", "Validé", "Payé"].includes(p.status));
   const expenses = list("finances") || [];
 
-  const monthlyData = monthsShort.map((m, idx) => {
+  const allMonthlyData = monthsShort.map((m, idx) => {
     let rev = payments.filter(p => {
       if (!p.date) return false;
       const d = new Date(p.date);
@@ -3642,77 +3678,228 @@ function renderAdminFinancialChart() {
     }).reduce((s, x) => s + Number(x.amount || 0), 0);
 
     return {
+      monthIdx: idx,
       month: m,
-      fullMonth: monthsFull[idx],
+      fullMonth: monthsFull[idx] + " " + currentYear,
       revenus: rev,
       depenses: exp,
       benefice: rev - exp
     };
   });
 
-  // Si React et Recharts sont chargés dans la page
+  // Filtrage selon la période sélectionnée
+  const period = window.adminChartConfig?.period || 'year';
+  let chartData = allMonthlyData;
+  if (period === '6months') {
+    const startIdx = Math.max(0, currentMonthIdx - 5);
+    chartData = allMonthlyData.slice(startIdx, Math.min(12, startIdx + 6));
+  } else if (period === 'quarter') {
+    const quarterStart = Math.floor(currentMonthIdx / 3) * 3;
+    chartData = allMonthlyData.slice(quarterStart, quarterStart + 3);
+  }
+
+  // Vérification de la disponibilité de Recharts et React
   if (window.React && window.ReactDOM && window.Recharts) {
     try {
-      const { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, Legend, CartesianGrid } = window.Recharts;
+      const {
+        ResponsiveContainer,
+        BarChart,
+        Bar,
+        XAxis,
+        YAxis,
+        Tooltip,
+        Legend,
+        CartesianGrid,
+        ReferenceLine
+      } = window.Recharts;
       const e = window.React.createElement;
 
+      const isStacked = (window.adminChartConfig?.mode === 'stacked');
+
+      // Tooltip personnalisé et interactif pour le BarChart
       const CustomTooltip = ({ active, payload, label }) => {
         if (active && payload && payload.length) {
-          const revVal = payload.find(p => p.dataKey === "revenus")?.value || 0;
-          const expVal = payload.find(p => p.dataKey === "depenses")?.value || 0;
+          const revItem = payload.find(p => p.dataKey === "revenus");
+          const expItem = payload.find(p => p.dataKey === "depenses");
+          const revVal = revItem ? Number(revItem.value || 0) : 0;
+          const expVal = expItem ? Number(expItem.value || 0) : 0;
           const net = revVal - expVal;
+          const marginPct = revVal > 0 ? Math.round((net / revVal) * 100) : 0;
+          const itemData = payload[0]?.payload || {};
+          const fullLabel = itemData.fullMonth || label;
+
           return e("div", {
             style: {
-              background: "#081b38",
+              background: "#07162c",
               border: "1.5px solid #1e3a8a",
-              borderRadius: "10px",
-              padding: "12px 16px",
+              borderRadius: "12px",
+              padding: "14px 18px",
               color: "#fff",
-              boxShadow: "0 10px 25px rgba(0,0,0,0.5)",
+              boxShadow: "0 12px 30px rgba(0,0,0,0.65)",
               fontSize: "12px",
-              minWidth: "190px"
+              minWidth: "220px",
+              lineHeight: "1.5"
             }
           },
-            e("div", { style: { fontWeight: "800", color: "#fcd34d", marginBottom: "6px", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: "4px" } }, label),
-            e("div", { style: { color: "#34d399", display: "flex", justifyContent: "space-between", margin: "4px 0" } },
-              e("span", null, "● Revenus :"),
+            e("div", {
+              style: {
+                fontWeight: "800",
+                color: "#fcd34d",
+                fontSize: "13px",
+                marginBottom: "8px",
+                borderBottom: "1px solid rgba(255,255,255,0.12)",
+                paddingBottom: "6px",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center"
+              }
+            },
+              e("span", null, "📅 " + fullLabel),
+              e("span", {
+                style: {
+                  fontSize: "10px",
+                  padding: "2px 7px",
+                  borderRadius: "6px",
+                  background: net >= 0 ? "rgba(16,185,129,0.2)" : "rgba(244,63,94,0.2)",
+                  color: net >= 0 ? "#34d399" : "#fb7185",
+                  fontWeight: "700"
+                }
+              }, net >= 0 ? "Excédent" : "Déficit")
+            ),
+            e("div", { style: { color: "#34d399", display: "flex", justifyContent: "space-between", margin: "5px 0" } },
+              e("span", { style: { display: "flex", alignItems: "center", gap: "6px" } },
+                e("span", { style: { width: "10px", height: "10px", borderRadius: "3px", background: "#10b981", display: "inline-block" } }),
+                "Revenus encaissés :"
+              ),
               e("b", null, money(revVal))
             ),
-            e("div", { style: { color: "#f87171", display: "flex", justifyContent: "space-between", margin: "4px 0" } },
-              e("span", null, "● Dépenses :"),
+            e("div", { style: { color: "#f87171", display: "flex", justifyContent: "space-between", margin: "5px 0" } },
+              e("span", { style: { display: "flex", alignItems: "center", gap: "6px" } },
+                e("span", { style: { width: "10px", height: "10px", borderRadius: "3px", background: "#f43f5e", display: "inline-block" } }),
+                "Dépenses engagées :"
+              ),
               e("b", null, money(expVal))
             ),
-            e("div", { style: { color: net >= 0 ? "#38bdf8" : "#fbbf24", display: "flex", justifyContent: "space-between", marginTop: "6px", borderTop: "1px dashed rgba(255,255,255,0.15)", paddingTop: "4px" } },
-              e("span", null, "● Marge Nette :"),
-              e("b", null, money(net))
-            )
+            e("div", {
+              style: {
+                color: net >= 0 ? "#38bdf8" : "#fbbf24",
+                display: "flex",
+                justifyContent: "space-between",
+                marginTop: "8px",
+                borderTop: "1px dashed rgba(255,255,255,0.18)",
+                paddingTop: "6px",
+                fontWeight: "700"
+              }
+            },
+              e("span", null, "Résultat Net :"),
+              e("b", null, (net >= 0 ? "+" : "") + money(net))
+            ),
+            revVal > 0 ? e("div", {
+              style: {
+                fontSize: "11px",
+                color: "#94a3b8",
+                display: "flex",
+                justifyContent: "space-between",
+                marginTop: "4px"
+              }
+            },
+              e("span", null, "Taux de marge nette :"),
+              e("b", { style: { color: marginPct >= 0 ? "#a7f3d0" : "#fecdd3" } }, marginPct + "%")
+            ) : null
           );
         }
         return null;
       };
 
-      const chartElement = e(ResponsiveContainer, { width: "100%", height: 300 },
-        e(AreaChart, { data: monthlyData, margin: { top: 15, right: 15, left: 10, bottom: 5 } },
+      // Construction du composant Recharts BarChart
+      const chartElement = e(ResponsiveContainer, { width: "100%", height: 320 },
+        e(BarChart, {
+          data: chartData,
+          margin: { top: 20, right: 15, left: 10, bottom: 5 },
+          barGap: isStacked ? 0 : 6,
+          barCategoryGap: "24%"
+        },
           e("defs", null,
-            e("linearGradient", { id: "rechartsRevGrad", x1: "0", y1: "0", x2: "0", y2: "1" },
-              e("stop", { offset: "5%", stopColor: "#10b981", stopOpacity: 0.85 }),
-              e("stop", { offset: "95%", stopColor: "#10b981", stopOpacity: 0.05 })
+            e("linearGradient", { id: "rechartsBarRevGrad", x1: "0", y1: "0", x2: "0", y2: "1" },
+              e("stop", { offset: "0%", stopColor: "#34d399", stopOpacity: 1 }),
+              e("stop", { offset: "100%", stopColor: "#059669", stopOpacity: 0.95 })
             ),
-            e("linearGradient", { id: "rechartsExpGrad", x1: "0", y1: "0", x2: "0", y2: "1" },
-              e("stop", { offset: "5%", stopColor: "#f43f5e", stopOpacity: 0.85 }),
-              e("stop", { offset: "95%", stopColor: "#f43f5e", stopOpacity: 0.05 })
+            e("linearGradient", { id: "rechartsBarExpGrad", x1: "0", y1: "0", x2: "0", y2: "1" },
+              e("stop", { offset: "0%", stopColor: "#fb7185", stopOpacity: 1 }),
+              e("stop", { offset: "100%", stopColor: "#e11d48", stopOpacity: 0.95 })
             )
           ),
-          e(CartesianGrid, { strokeDasharray: "3 3", stroke: "rgba(255,255,255,0.07)" }),
-          e(XAxis, { dataKey: "month", stroke: "#94a3b8", fontSize: 12, tickLine: false }),
-          e(YAxis, { stroke: "#94a3b8", fontSize: 11, tickLine: false, tickFormatter: (v) => `${(v/1000).toFixed(0)}k` }),
-          e(Tooltip, { content: e(CustomTooltip) }),
-          e(Legend, { wrapperStyle: { paddingTop: "12px", fontSize: "12px", color: "#cbd5e1" } }),
-          e(Area, { type: "monotone", dataKey: "revenus", name: "Revenus encaissés (HTG)", stroke: "#10b981", strokeWidth: 3, fillOpacity: 1, fill: "url(#rechartsRevGrad)" }),
-          e(Area, { type: "monotone", dataKey: "depenses", name: "Dépenses engagées (HTG)", stroke: "#f43f5e", strokeWidth: 3, fillOpacity: 1, fill: "url(#rechartsExpGrad)" })
+          e(CartesianGrid, { strokeDasharray: "3 3", stroke: "rgba(255,255,255,0.07)", vertical: false }),
+          e(XAxis, {
+            dataKey: "month",
+            stroke: "#94a3b8",
+            fontSize: 12,
+            tickLine: false,
+            axisLine: { stroke: "rgba(255,255,255,0.15)" }
+          }),
+          e(YAxis, {
+            stroke: "#94a3b8",
+            fontSize: 11,
+            tickLine: false,
+            axisLine: { stroke: "rgba(255,255,255,0.15)" },
+            tickFormatter: (v) => {
+              if (Math.abs(v) >= 1000000) return (v / 1000000).toFixed(1) + "M";
+              if (Math.abs(v) >= 1000) return (v / 1000).toFixed(0) + "k";
+              return v;
+            }
+          }),
+          e(Tooltip, {
+            content: e(CustomTooltip),
+            cursor: { fill: "rgba(255,255,255,0.04)" }
+          }),
+          e(Legend, {
+            wrapperStyle: { paddingTop: "14px", fontSize: "12px", color: "#cbd5e1" },
+            formatter: (value) => e("span", { style: { color: "#e2e8f0", fontWeight: "600", marginLeft: "4px" } }, value)
+          }),
+          e(ReferenceLine, { y: 0, stroke: "rgba(255,255,255,0.25)" }),
+          isStacked
+            ? [
+                e(Bar, {
+                  key: "bar-rev",
+                  dataKey: "revenus",
+                  name: "Revenus encaissés (HTG)",
+                  fill: "url(#rechartsBarRevGrad)",
+                  stackId: "financialStack",
+                  radius: [0, 0, 0, 0],
+                  maxBarSize: 42
+                }),
+                e(Bar, {
+                  key: "bar-exp",
+                  dataKey: "depenses",
+                  name: "Dépenses engagées (HTG)",
+                  fill: "url(#rechartsBarExpGrad)",
+                  stackId: "financialStack",
+                  radius: [6, 6, 0, 0],
+                  maxBarSize: 42
+                })
+              ]
+            : [
+                e(Bar, {
+                  key: "bar-rev",
+                  dataKey: "revenus",
+                  name: "Revenus encaissés (HTG)",
+                  fill: "url(#rechartsBarRevGrad)",
+                  radius: [6, 6, 0, 0],
+                  maxBarSize: 34
+                }),
+                e(Bar, {
+                  key: "bar-exp",
+                  dataKey: "depenses",
+                  name: "Dépenses engagées (HTG)",
+                  fill: "url(#rechartsBarExpGrad)",
+                  radius: [6, 6, 0, 0],
+                  maxBarSize: 34
+                })
+              ]
         )
       );
 
+      // Montage propre dans le DOM avec React 18 ou fallback
       if (window.ReactDOM.createRoot) {
         if (!container._reactRoot) {
           container._reactRoot = window.ReactDOM.createRoot(container);
@@ -3723,11 +3910,11 @@ function renderAdminFinancialChart() {
       }
       return;
     } catch (err) {
-      console.warn("Erreur instanciation Recharts:", err);
+      console.warn("Erreur instanciation Recharts BarChart:", err);
     }
   }
 
-  // Fallback si chargement asynchrone
+  // Fallback si chargement asynchrone des bibliothèques Recharts / React
   setTimeout(() => {
     if (window.Recharts && window.React && window.ReactDOM && document.getElementById("adminFinancialRechartsContainer")) {
       renderAdminFinancialChart();
@@ -3735,6 +3922,538 @@ function renderAdminFinancialChart() {
   }, 250);
 }
 window.renderAdminFinancialChart = renderAdminFinancialChart;
+
+// =========================================================================
+// EXPORTATION DU GRAPHIQUE EN BARRES ET DES DONNÉES EN FICHIER PDF
+// =========================================================================
+async function exportAdminFinancialChartPDF() {
+  showToast("⏳ Préparation du rapport PDF en cours...");
+
+  const currentYear = new Date().getFullYear();
+  const currentMonthIdx = new Date().getMonth();
+  const monthsShort = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sept", "Oct", "Nov", "Déc"];
+  const monthsFull = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+
+  const payments = (list("paiements") || []).filter(p => ["Reçu", "Validé", "Payé"].includes(p.status));
+  const expenses = list("finances") || [];
+
+  const allMonthlyData = monthsShort.map((m, idx) => {
+    let rev = payments.filter(p => {
+      if (!p.date) return false;
+      const d = new Date(p.date);
+      return !isNaN(d.getTime()) && d.getMonth() === idx && d.getFullYear() === currentYear;
+    }).reduce((s, p) => s + Number(p.amount || 0), 0);
+
+    let exp = expenses.filter(x => {
+      if (!x.date) return false;
+      const d = new Date(x.date);
+      return !isNaN(d.getTime()) && d.getMonth() === idx && d.getFullYear() === currentYear;
+    }).reduce((s, x) => s + Number(x.amount || 0), 0);
+
+    const net = rev - exp;
+    const margin = rev > 0 ? Math.round((net / rev) * 100) : 0;
+
+    return {
+      monthIdx: idx,
+      month: m,
+      fullMonth: monthsFull[idx] + " " + currentYear,
+      revenus: rev,
+      depenses: exp,
+      benefice: net,
+      marginPct: margin,
+      status: net > 0 ? "Excédent" : (net < 0 ? "Déficit" : "Équilibré")
+    };
+  });
+
+  const period = window.adminChartConfig?.period || 'year';
+  let chartData = allMonthlyData;
+  let periodLabel = "Année complète (12 mois)";
+  if (period === '6months') {
+    const startIdx = Math.max(0, currentMonthIdx - 5);
+    chartData = allMonthlyData.slice(startIdx, Math.min(12, startIdx + 6));
+    periodLabel = "6 derniers mois";
+  } else if (period === 'quarter') {
+    const quarterStart = Math.floor(currentMonthIdx / 3) * 3;
+    chartData = allMonthlyData.slice(quarterStart, quarterStart + 3);
+    const qNum = Math.floor(currentMonthIdx / 3) + 1;
+    periodLabel = `Trimestre T${qNum} (${chartData[0].month} - ${chartData[chartData.length - 1].month})`;
+  }
+
+  const totalRev = chartData.reduce((s, x) => s + x.revenus, 0);
+  const totalExp = chartData.reduce((s, x) => s + x.depenses, 0);
+  const totalNet = totalRev - totalExp;
+  const overallMargin = totalRev > 0 ? Math.round((totalNet / totalRev) * 100) : 0;
+
+  const company = localStorage.getItem("LAPERLE_COMPANY") || "LAPERLE TOUR HT";
+  const phone = localStorage.getItem("LAPERLE_PHONE") || "+509 4440 8687";
+  const email = localStorage.getItem("LAPERLE_EMAIL") || "laperletourht@gmail.com";
+  const slogan = localStorage.getItem("LAPERLE_SLOGAN") || "Un coup d'œil sur Haïti";
+  const address = localStorage.getItem("LAPERLE_ADDRESS") || "Port-au-Prince, Haïti";
+  const adminName = currentUser?.displayName || currentUser?.email?.split('@')[0] || "Administrateur";
+  const exportDate = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+  // Capture de l'image haute définition du graphique Recharts
+  let chartImgData = null;
+  const container = document.getElementById("adminFinancialRechartsContainer");
+  if (container) {
+    if (window.html2canvas) {
+      try {
+        const canvas = await window.html2canvas(container, {
+          backgroundColor: '#081b38',
+          scale: 2,
+          logging: false,
+          useCORS: true
+        });
+        chartImgData = canvas.toDataURL('image/png');
+      } catch (e) {
+        console.warn("html2canvas capture error:", e);
+      }
+    }
+    if (!chartImgData) {
+      const svgEl = container.querySelector("svg");
+      if (svgEl) {
+        try {
+          chartImgData = await new Promise((resolve) => {
+            const svgXml = new XMLSerializer().serializeToString(svgEl);
+            const svgBlob = new Blob([svgXml], { type: "image/svg+xml;charset=utf-8" });
+            const url = URL.createObjectURL(svgBlob);
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement("canvas");
+              canvas.width = (svgEl.clientWidth || 800) * 2;
+              canvas.height = (svgEl.clientHeight || 320) * 2;
+              const ctx = canvas.getContext("2d");
+              ctx.fillStyle = "#081b38";
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              URL.revokeObjectURL(url);
+              resolve(canvas.toDataURL("image/png"));
+            };
+            img.onerror = () => {
+              URL.revokeObjectURL(url);
+              resolve(null);
+            };
+            img.src = url;
+          });
+        } catch (svgErr) {
+          console.warn("SVG serializer error:", svgErr);
+        }
+      }
+    }
+  }
+
+  // Génération et téléchargement direct du PDF via jsPDF si disponible
+  let pdfDownloaded = false;
+  if (window.jspdf && window.jspdf.jsPDF) {
+    try {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+      // Entête supérieur Navy (#082b70)
+      doc.setFillColor(8, 43, 112);
+      doc.rect(0, 0, 210, 28, 'F');
+
+      // Bande dorée décorative (#f7941d)
+      doc.setFillColor(247, 148, 29);
+      doc.rect(0, 28, 210, 2, 'F');
+
+      // Titres entête
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(15);
+      doc.text("LAPERLE TOUR HT", 14, 13);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(253, 211, 77); // #fcd34d
+      doc.text("« " + slogan + " » • Centre de Contrôle Opérationnel & Financier", 14, 19);
+      doc.setTextColor(203, 213, 225);
+      doc.text("Émis par : " + adminName + " • " + exportDate, 14, 24);
+
+      doc.setFontSize(8);
+      doc.setTextColor(255, 255, 255);
+      doc.text(phone, 196, 12, { align: 'right' });
+      doc.text(email, 196, 17, { align: 'right' });
+      doc.text(address, 196, 22, { align: 'right' });
+
+      // Titre principal du rapport
+      doc.setTextColor(9, 46, 112);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.text("RAPPORT FINANCIER : REVENUS VS DÉPENSES", 14, 38);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(100, 116, 139);
+      doc.text("Exercice : " + currentYear + "  •  Période : " + periodLabel + "  •  Devise : Gourdes haïtiennes (HTG)", 14, 43);
+
+      // Cartes de synthèse KPI
+      const cardWidth = 43;
+      const cardHeight = 16;
+      const cardY = 47;
+      const startX = 14;
+      const gap = 3;
+
+      // 1. Revenus
+      doc.setFillColor(240, 253, 244);
+      doc.setDrawColor(187, 247, 208);
+      doc.roundedRect(startX, cardY, cardWidth, cardHeight, 2, 2, 'FD');
+      doc.setFontSize(7);
+      doc.setTextColor(22, 101, 52);
+      doc.setFont('helvetica', 'bold');
+      doc.text("TOTAL REVENUS", startX + 3.5, cardY + 5);
+      doc.setFontSize(10.5);
+      doc.text(money(totalRev), startX + 3.5, cardY + 11.5);
+
+      // 2. Dépenses
+      const x2 = startX + cardWidth + gap;
+      doc.setFillColor(254, 242, 242);
+      doc.setDrawColor(254, 202, 202);
+      doc.roundedRect(x2, cardY, cardWidth, cardHeight, 2, 2, 'FD');
+      doc.setFontSize(7);
+      doc.setTextColor(153, 27, 27);
+      doc.text("TOTAL DÉPENSES", x2 + 3.5, cardY + 5);
+      doc.setFontSize(10.5);
+      doc.text(money(totalExp), x2 + 3.5, cardY + 11.5);
+
+      // 3. Résultat Net
+      const x3 = x2 + cardWidth + gap;
+      doc.setFillColor(239, 246, 255);
+      doc.setDrawColor(191, 219, 254);
+      doc.roundedRect(x3, cardY, cardWidth, cardHeight, 2, 2, 'FD');
+      doc.setFontSize(7);
+      doc.setTextColor(30, 64, 175);
+      doc.text("RÉSULTAT NET", x3 + 3.5, cardY + 5);
+      doc.setFontSize(10.5);
+      doc.setTextColor(totalNet >= 0 ? 30 : 180, totalNet >= 0 ? 64 : 20, totalNet >= 0 ? 175 : 20);
+      doc.text((totalNet >= 0 ? "+" : "") + money(totalNet), x3 + 3.5, cardY + 11.5);
+
+      // 4. Marge
+      const x4 = x3 + cardWidth + gap;
+      doc.setFillColor(255, 251, 235);
+      doc.setDrawColor(254, 240, 138);
+      doc.roundedRect(x4, cardY, cardWidth, cardHeight, 2, 2, 'FD');
+      doc.setFontSize(7);
+      doc.setTextColor(146, 64, 14);
+      doc.text("MARGE NETTE", x4 + 3.5, cardY + 5);
+      doc.setFontSize(10.5);
+      doc.text(overallMargin + "% (" + (totalNet >= 0 ? "Excédent" : "Déficit") + ")", x4 + 3.5, cardY + 11.5);
+
+      let currentY = 66;
+
+      // Insertion de l'image du graphique BarChart
+      if (chartImgData) {
+        doc.setFillColor(7, 22, 44);
+        doc.roundedRect(14, currentY, 182, 65, 2, 2, 'F');
+        doc.addImage(chartImgData, 'PNG', 14, currentY, 182, 65);
+        currentY += 69;
+      }
+
+      // Titre du tableau de données
+      doc.setTextColor(9, 46, 112);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10.5);
+      doc.text("Données Numériques du Graphique en Barres", 14, currentY);
+      currentY += 4.5;
+
+      // Entête de tableau
+      doc.setFillColor(8, 43, 112);
+      doc.rect(14, currentY, 182, 6.5, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(7.5);
+      doc.setFont('helvetica', 'bold');
+      doc.text("Mois", 18, currentY + 4.5);
+      doc.text("Revenus (HTG)", 65, currentY + 4.5, { align: 'right' });
+      doc.text("Dépenses (HTG)", 105, currentY + 4.5, { align: 'right' });
+      doc.text("Résultat Net (HTG)", 148, currentY + 4.5, { align: 'right' });
+      doc.text("Marge", 168, currentY + 4.5, { align: 'right' });
+      doc.text("Statut", 188, currentY + 4.5, { align: 'right' });
+      currentY += 6.5;
+
+      // Lignes de données
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      chartData.forEach((row, i) => {
+        const isEven = (i % 2 === 0);
+        doc.setFillColor(isEven ? 248 : 255, isEven ? 250 : 255, isEven ? 252 : 255);
+        doc.rect(14, currentY, 182, 5.5, 'F');
+        doc.setDrawColor(226, 232, 240);
+        doc.line(14, currentY + 5.5, 196, currentY + 5.5);
+
+        doc.setTextColor(15, 23, 42);
+        doc.text(row.fullMonth || row.month, 18, currentY + 3.8);
+
+        doc.setTextColor(16, 185, 129);
+        doc.text(money(row.revenus), 65, currentY + 3.8, { align: 'right' });
+
+        doc.setTextColor(244, 63, 94);
+        doc.text(money(row.depenses), 105, currentY + 3.8, { align: 'right' });
+
+        doc.setTextColor(row.benefice >= 0 ? 14 : 220, row.benefice >= 0 ? 116 : 38, row.benefice >= 0 ? 144 : 38);
+        doc.text((row.benefice >= 0 ? "+" : "") + money(row.benefice), 148, currentY + 3.8, { align: 'right' });
+
+        doc.setTextColor(71, 85, 105);
+        doc.text(row.marginPct + "%", 168, currentY + 3.8, { align: 'right' });
+
+        doc.setTextColor(row.benefice >= 0 ? 22 : 185, row.benefice >= 0 ? 101 : 28, row.benefice >= 0 ? 52 : 28);
+        doc.text(row.status, 188, currentY + 3.8, { align: 'right' });
+
+        currentY += 5.5;
+      });
+
+      // Ligne Total
+      doc.setFillColor(241, 245, 249);
+      doc.rect(14, currentY, 182, 6.5, 'F');
+      doc.setDrawColor(8, 43, 112);
+      doc.setLineWidth(0.3);
+      doc.line(14, currentY, 196, currentY);
+      doc.line(14, currentY + 6.5, 196, currentY + 6.5);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(8, 43, 112);
+      doc.text("TOTAL PÉRIODE", 18, currentY + 4.5);
+      doc.setTextColor(16, 185, 129);
+      doc.text(money(totalRev), 65, currentY + 4.5, { align: 'right' });
+      doc.setTextColor(244, 63, 94);
+      doc.text(money(totalExp), 105, currentY + 4.5, { align: 'right' });
+      doc.setTextColor(totalNet >= 0 ? 2 : 220, totalNet >= 0 ? 132 : 38, totalNet >= 0 ? 199 : 38);
+      doc.text((totalNet >= 0 ? "+" : "") + money(totalNet), 148, currentY + 4.5, { align: 'right' });
+      doc.setTextColor(8, 43, 112);
+      doc.text(overallMargin + "%", 168, currentY + 4.5, { align: 'right' });
+      doc.text(totalNet >= 0 ? "Excédent" : "Déficit", 188, currentY + 4.5, { align: 'right' });
+
+      // Pied de page
+      doc.setFillColor(248, 250, 252);
+      doc.rect(0, 283, 210, 14, 'F');
+      doc.setDrawColor(226, 232, 240);
+      doc.line(0, 283, 210, 283);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text("Centre de Contrôle LAPERLE TOUR HT • Transport & Tourisme en Haïti • Slogan : « " + slogan + " »", 105, 288, { align: 'center' });
+      doc.text("Document certifié conforme issu de la base de données opérationnelle • Page 1/1", 105, 292, { align: 'center' });
+
+      // Téléchargement du fichier PDF
+      doc.save(`Rapport-Financier-Laperle-${currentYear}-${period}.pdf`);
+      pdfDownloaded = true;
+      showToast("✅ Rapport financier PDF généré et téléchargé avec succès !");
+    } catch (err) {
+      console.warn("jsPDF export error:", err);
+    }
+  }
+
+  // Affichage du modal d'aperçu et d'impression
+  openFinancialReportPreviewModal({
+    currentYear,
+    periodLabel,
+    totalRev,
+    totalExp,
+    totalNet,
+    overallMargin,
+    chartData,
+    chartImgData,
+    adminName,
+    exportDate,
+    company,
+    phone,
+    email,
+    slogan,
+    address,
+    pdfDownloaded
+  });
+}
+window.exportAdminFinancialChartPDF = exportAdminFinancialChartPDF;
+
+function openFinancialReportPreviewModal(data) {
+  const modalEl = document.getElementById("modal");
+  const backdropEl = document.getElementById("modalBackdrop");
+  if (!modalEl || !backdropEl) return;
+
+  const {
+    currentYear,
+    periodLabel,
+    totalRev,
+    totalExp,
+    totalNet,
+    overallMargin,
+    chartData,
+    chartImgData,
+    adminName,
+    exportDate,
+    company,
+    phone,
+    email,
+    slogan,
+    address,
+    pdfDownloaded
+  } = data;
+
+  modalEl.innerHTML = `
+    <div class="modal-head">
+      <div>
+        <h2 style="color:#082b70;display:flex;align-items:center;gap:8px">
+          <span>📄</span> <span>Rapport Financier PDF • Revenus vs Dépenses</span>
+        </h2>
+        <small style="color:#64748b">Aperçu officiel pour la période : <b>${esc(periodLabel)}</b> (${currentYear})</small>
+      </div>
+      <button class="close" onclick="closeModal()" title="Fermer la fenêtre">×</button>
+    </div>
+
+    <!-- Zone imprimable & exportable -->
+    <div id="financialReportPrintArea" style="background:#ffffff;color:#0f172a;border:1px solid #dce4ee;border-radius:12px;padding:22px;margin-bottom:16px;box-shadow:0 4px 15px rgba(0,0,0,0.04)">
+      <!-- Entête Institutionnel -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #082b70;padding-bottom:14px;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+        <div>
+          <div style="font-size:22px;font-weight:900;color:#082b70;letter-spacing:-0.5px">
+            LAPERLE <span style="color:#f7941d">TOUR HT</span>
+          </div>
+          <div style="font-size:12px;color:#64748b;font-style:italic">« ${esc(slogan)} » • Centre de Contrôle Opérationnel & Financier</div>
+          <div style="font-size:11.5px;color:#475569;margin-top:4px">
+            Émis par : <b>${esc(adminName)}</b> • Date : <b>${esc(exportDate)}</b>
+          </div>
+        </div>
+        <div style="text-align:right;font-size:11.5px;color:#475569;line-height:1.4">
+          <div><b>Tél :</b> ${esc(phone)}</div>
+          <div><b>Email :</b> ${esc(email)}</div>
+          <div><b>Adresse :</b> ${esc(address)}</div>
+        </div>
+      </div>
+
+      <!-- Titre du rapport -->
+      <div style="text-align:center;margin-bottom:18px">
+        <h3 style="margin:0;font-size:17px;font-weight:800;color:#082b70;text-transform:uppercase;letter-spacing:0.5px">
+          Rapport Financier Comparatif • Revenus vs Dépenses
+        </h3>
+        <div style="font-size:12px;color:#64748b;margin-top:3px">
+          Exercice ${currentYear} • Période analysée : <b>${esc(periodLabel)}</b> • Devise : <b>HTG</b>
+        </div>
+      </div>
+
+      <!-- 4 Blocs KPI Synthétiques -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:10px;margin-bottom:18px">
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:10.5px;color:#166534;font-weight:700;text-transform:uppercase">Total Encaissé</div>
+          <div style="font-size:16px;font-weight:900;color:#15803d;margin-top:2px">${money(totalRev)}</div>
+        </div>
+        <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:10.5px;color:#991b1b;font-weight:700;text-transform:uppercase">Total Décaissé</div>
+          <div style="font-size:16px;font-weight:900;color:#dc2626;margin-top:2px">${money(totalExp)}</div>
+        </div>
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:10.5px;color:#1e40af;font-weight:700;text-transform:uppercase">Résultat Net</div>
+          <div style="font-size:16px;font-weight:900;color:${totalNet >= 0 ? '#1d4ed8' : '#dc2626'};margin-top:2px">${totalNet >= 0 ? '+' : ''}${money(totalNet)}</div>
+        </div>
+        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:10.5px;color:#92400e;font-weight:700;text-transform:uppercase">Marge Nette</div>
+          <div style="font-size:16px;font-weight:900;color:#b45309;margin-top:2px">${overallMargin}% (${totalNet >= 0 ? 'Excédent' : 'Déficit'})</div>
+        </div>
+      </div>
+
+      <!-- Graphique en barres Recharts capturé -->
+      ${chartImgData ? `
+        <div style="margin-bottom:18px;text-align:center;background:#081b38;border-radius:10px;padding:12px;box-shadow:inset 0 0 10px rgba(0,0,0,0.5)">
+          <div style="color:#94a3b8;font-size:11px;font-weight:700;text-transform:uppercase;margin-bottom:8px;letter-spacing:0.5px">
+            📊 Visualisation Graphique Recharts (Données Mensuelles)
+          </div>
+          <img src="${chartImgData}" style="max-width:100%;height:auto;border-radius:6px;display:block;margin:auto;" alt="Graphique Barres Revenus vs Dépenses" />
+        </div>
+      ` : ''}
+
+      <!-- Tableau détaillé des données -->
+      <div style="margin-bottom:16px;overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead>
+            <tr style="background:#082b70;color:#ffffff;text-align:left">
+              <th style="padding:9px 12px;border-top-left-radius:6px">Mois</th>
+              <th style="padding:9px 12px;text-align:right">Revenus (HTG)</th>
+              <th style="padding:9px 12px;text-align:right">Dépenses (HTG)</th>
+              <th style="padding:9px 12px;text-align:right">Résultat Net (HTG)</th>
+              <th style="padding:9px 12px;text-align:right">Marge</th>
+              <th style="padding:9px 12px;text-align:center;border-top-right-radius:6px">Statut</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${chartData.map((r, i) => `
+              <tr style="background:${i % 2 === 0 ? '#f8fafc' : '#ffffff'};border-bottom:1px solid #e2e8f0">
+                <td style="padding:8px 12px;font-weight:600;color:#0f172a">${esc(r.fullMonth || r.month)}</td>
+                <td style="padding:8px 12px;text-align:right;color:#10b981;font-weight:700">${money(r.revenus)}</td>
+                <td style="padding:8px 12px;text-align:right;color:#f43f5e;font-weight:700">${money(r.depenses)}</td>
+                <td style="padding:8px 12px;text-align:right;font-weight:800;color:${r.benefice >= 0 ? '#0284c7' : '#dc2626'}">${r.benefice >= 0 ? '+' : ''}${money(r.benefice)}</td>
+                <td style="padding:8px 12px;text-align:right;color:#64748b">${r.marginPct}%</td>
+                <td style="padding:8px 12px;text-align:center">
+                  <span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:10.5px;font-weight:700;background:${r.benefice >= 0 ? '#dcfce7;color:#15803d' : '#fee2e2;color:#b91c1c'}">
+                    ${esc(r.status)}
+                  </span>
+                </td>
+              </tr>
+            `).join("")}
+          </tbody>
+          <tfoot>
+            <tr style="background:#f1f5f9;font-weight:800;border-top:2px solid #082b70">
+              <td style="padding:10px 12px;color:#082b70">TOTAL PÉRIODE</td>
+              <td style="padding:10px 12px;text-align:right;color:#10b981">${money(totalRev)}</td>
+              <td style="padding:10px 12px;text-align:right;color:#f43f5e">${money(totalExp)}</td>
+              <td style="padding:10px 12px;text-align:right;color:${totalNet >= 0 ? '#0284c7' : '#dc2626'}">${totalNet >= 0 ? '+' : ''}${money(totalNet)}</td>
+              <td style="padding:10px 12px;text-align:right;color:#082b70">${overallMargin}%</td>
+              <td style="padding:10px 12px;text-align:center;color:${totalNet >= 0 ? '#15803d' : '#b91c1c'}">${totalNet >= 0 ? 'Excédent' : 'Déficit'}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- Pied de page officiel -->
+      <div style="border-top:1px solid #cbd5e1;padding-top:12px;display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#64748b;flex-wrap:wrap;gap:8px">
+        <div>Centre de Contrôle LAPERLE TOUR HT • Transport & Tourisme en Haïti</div>
+        <div>Document certifié conforme issu de la base de données opérationnelle</div>
+      </div>
+    </div>
+
+    <!-- Actions du modal -->
+    <div class="form-actions" style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+      <div style="font-size:12px;color:#64748b">
+        ${pdfDownloaded ? '✅ Le fichier PDF a été automatiquement généré et téléchargé dans vos téléchargements.' : '💡 Cliquez ci-dessous pour télécharger ou imprimer votre rapport.'}
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="secondary" onclick="closeModal()">Fermer</button>
+        <button class="primary" onclick="printFinancialReportSection()" style="background:#0284c7;border-color:#0284c7">🖨️ Imprimer / Enregistrer via Navigateur</button>
+        <button class="primary" onclick="exportAdminFinancialChartPDF()" style="background:#059669;border-color:#10b981">📥 Télécharger à nouveau le PDF</button>
+      </div>
+    </div>
+  `;
+
+  backdropEl.classList.add("open");
+}
+window.openFinancialReportPreviewModal = openFinancialReportPreviewModal;
+
+function printFinancialReportSection() {
+  const area = document.getElementById("financialReportPrintArea");
+  if (!area) {
+    window.print();
+    return;
+  }
+  let w = null;
+  try {
+    w = window.open("", "_blank", "width=900,height=1000");
+  } catch (e) {
+    w = null;
+  }
+  const content = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Rapport Financier Laperle Tour HT</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; color: #0f172a; background: #fff; }
+    @media print {
+      @page { size: A4; margin: 12mm; }
+      body { margin: 0; }
+    }
+  </style></head><body>${area.innerHTML}<script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script></body></html>`;
+  if (w) {
+    w.document.write(content);
+    w.document.close();
+  } else {
+    window.print();
+  }
+}
+window.printFinancialReportSection = printFinancialReportSection;
 
 function dashboard() {
   const roles = normalizeRoles(currentUserRoles);
@@ -4072,29 +4791,67 @@ function dashboard() {
               </div>
             </div>
 
-            <!-- Composant de Visualisation Financière Recharts (Évolution Mensuelle Revenus & Dépenses) -->
+            <!-- Composant de Visualisation Financière Recharts (Graphique en Barres Revenus vs Dépenses) -->
             <div class="admin-card-dark" style="margin-top:16px" id="adminFinancialChartCard">
-              <div class="admin-card-head" style="flex-wrap:wrap;gap:8px">
+              <div class="admin-card-head" style="flex-wrap:wrap;gap:10px">
                 <div>
-                  <h3 style="display:flex;align-items:center;gap:6px">
-                    <span>📈</span> <span>Évolution Mensuelle des Revenus & Dépenses</span>
+                  <h3 style="display:flex;align-items:center;gap:8px">
+                    <span style="font-size:20px">📊</span>
+                    <span>Revenus Mensuels vs Dépenses (Graphique en barres Recharts)</span>
                   </h3>
-                  <div style="color:#94a3b8;font-size:11px;margin-top:2px">
-                    Analyse financière visuelle Recharts • Encaissements vs Dépenses • Exercice ${new Date().getFullYear()}
+                  <div style="color:#94a3b8;font-size:11.5px;margin-top:3px">
+                    Visualisation analytique Recharts • Comparaison mensuelle des encaissements et décaissements • Exercice ${new Date().getFullYear()}
                   </div>
                 </div>
-                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                  <div style="font-size:11px;color:#cbd5e1;background:rgba(255,255,255,0.05);padding:5px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.1)">
-                    <span style="color:#10b981;font-weight:700">● Revenus : ${money(received)}</span> &nbsp;|&nbsp; 
-                    <span style="color:#f43f5e;font-weight:700">● Dépenses : ${money(spent)}</span> &nbsp;|&nbsp; 
-                    <span style="color:#38bdf8;font-weight:700">● Net : ${money(netProfit)}</span>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  <!-- Sélecteur de mode Barres Recharts -->
+                  <div class="admin-chart-toggle-group" style="display:inline-flex;background:rgba(255,255,255,0.06);border-radius:20px;padding:2px;border:1px solid rgba(255,255,255,0.1)">
+                    <button type="button" id="btnChartModeGrouped" onclick="window.setAdminChartMode('grouped')" class="admin-chart-toggle-btn active" style="padding:5px 12px;border-radius:16px;border:none;font-size:11px;font-weight:700;cursor:pointer;background:#2563eb;color:#ffffff;transition:all 0.15s ease">
+                      📊 Barres groupées
+                    </button>
+                    <button type="button" id="btnChartModeStacked" onclick="window.setAdminChartMode('stacked')" class="admin-chart-toggle-btn" style="padding:5px 12px;border-radius:16px;border:none;font-size:11px;font-weight:700;cursor:pointer;background:transparent;color:#94a3b8;transition:all 0.15s ease">
+                      📑 Barres empilées
+                    </button>
                   </div>
+
+                  <!-- Sélecteur de période -->
+                  <select id="adminChartPeriodSelect" onchange="window.setAdminChartPeriod(this.value)" style="background:#0f1f42;color:#e2e8f0;border:1px solid rgba(255,255,255,0.18);padding:6px 12px;border-radius:8px;font-size:11.5px;font-weight:600;outline:none;cursor:pointer">
+                    <option value="year" ${window.adminChartConfig?.period === 'year' ? 'selected' : ''}>Année complète (12 mois)</option>
+                    <option value="6months" ${window.adminChartConfig?.period === '6months' ? 'selected' : ''}>6 derniers mois</option>
+                    <option value="quarter" ${window.adminChartConfig?.period === 'quarter' ? 'selected' : ''}>Trimestre en cours</option>
+                  </select>
+
+                  <button type="button" onclick="exportAdminFinancialChartPDF()" class="admin-btn-pill" style="background:#059669;border-color:#10b981;color:#ffffff;display:inline-flex;align-items:center;gap:6px" title="Exporter les données du graphique vers un document PDF">
+                    <span>📄</span> <span>Exporter PDF</span>
+                  </button>
                   <button onclick="go('finances')" class="admin-btn-pill">Trésorerie ›</button>
                 </div>
               </div>
-              <div id="adminFinancialRechartsContainer" style="width:100%;height:320px;margin-top:12px;position:relative">
+
+              <!-- Ruban d'indicateurs financiers synthétiques au-dessus du graphique -->
+              <div class="admin-chart-kpi-grid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));gap:10px;margin-bottom:14px;background:rgba(255,255,255,0.02);padding:12px 16px;border-radius:12px;border:1px solid rgba(255,255,255,0.06)">
+                <div>
+                  <div style="font-size:10.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:700">Total Encaissé</div>
+                  <div style="font-size:16px;font-weight:800;color:#10b981;margin-top:3px">${money(received)}</div>
+                </div>
+                <div>
+                  <div style="font-size:10.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:700">Total Décaissé</div>
+                  <div style="font-size:16px;font-weight:800;color:#f43f5e;margin-top:3px">${money(spent)}</div>
+                </div>
+                <div>
+                  <div style="font-size:10.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:700">Résultat Net</div>
+                  <div style="font-size:16px;font-weight:800;color:${netProfit >= 0 ? '#38bdf8' : '#fbbf24'};margin-top:3px">${money(netProfit)}</div>
+                </div>
+                <div>
+                  <div style="font-size:10.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:700">Marge Réalisée</div>
+                  <div style="font-size:16px;font-weight:800;color:#fcd34d;margin-top:3px">${received > 0 ? Math.round((netProfit / received) * 100) + '%' : '0%'}</div>
+                </div>
+              </div>
+
+              <!-- Conteneur Recharts du Bar Chart -->
+              <div id="adminFinancialRechartsContainer" style="width:100%;height:330px;position:relative">
                 <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8;font-size:12px">
-                  Chargement de la visualisation Recharts...
+                  Chargement du graphique en barres Recharts...
                 </div>
               </div>
             </div>
