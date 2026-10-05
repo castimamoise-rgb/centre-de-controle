@@ -3650,7 +3650,335 @@ window.setAdminChartMode = function(mode) {
 window.setAdminChartPeriod = function(period) {
   window.adminChartConfig.period = period;
   renderAdminFinancialChart();
+  renderAdminFleetAnalyticsDashboard();
 };
+
+function openUniversalAdminSearchModal() {
+  const modalEl = document.getElementById("modal");
+  const backdropEl = document.getElementById("modalBackdrop");
+  if (!modalEl || !backdropEl) return;
+
+  modalEl.innerHTML = `
+    <div class="modal-head">
+      <div>
+        <h2 style="color:#082b70">🔍 Recherche Rapide Flotte & Opérations</h2>
+        <small style="color:#64748b">Véhicules, Réservations, Chauffeurs, Clients, Factures</small>
+      </div>
+      <button class="close" onclick="closeModal()">×</button>
+    </div>
+    <div style="margin-bottom:15px">
+      <input type="text" id="adminQuickSearchInput" placeholder="Rechercher par immatriculation, chauffeur, client, référence..." oninput="handleAdminUniversalSearch(this.value)" style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid #3b82f6;font-size:13px;outline:none;background:#f8fafc">
+    </div>
+    <div id="adminQuickSearchResults" style="max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:8px">
+      <div style="text-align:center;padding:20px;color:#94a3b8;font-size:12px">
+        Tapez votre recherche pour afficher les correspondances immédiates.
+      </div>
+    </div>
+  `;
+  backdropEl.classList.add("open");
+  setTimeout(() => {
+    const input = document.getElementById("adminQuickSearchInput");
+    if (input) input.focus();
+  }, 100);
+}
+window.openUniversalAdminSearchModal = openUniversalAdminSearchModal;
+
+function handleAdminUniversalSearch(query) {
+  const resultsEl = document.getElementById("adminQuickSearchResults");
+  if (!resultsEl) return;
+  const q = (query || "").trim().toLowerCase();
+  if (!q) {
+    resultsEl.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8;font-size:12px">Tapez votre recherche pour afficher les correspondances immédiates.</div>';
+    return;
+  }
+
+  const vehicles = (list("vehicules") || []).filter(v => (v.immatriculation && v.immatriculation.toLowerCase().includes(q)) || (v.model && v.model.toLowerCase().includes(q)) || (v.marque && v.marque.toLowerCase().includes(q)));
+  const reservations = (list("reservations") || []).filter(r => (r.client && r.client.toLowerCase().includes(q)) || (r.code && r.code.toLowerCase().includes(q)) || (r.route && r.route.toLowerCase().includes(q)));
+  const users = (list("utilisateurs") || []).filter(u => (u.name && u.name.toLowerCase().includes(q)) || (u.email && u.email.toLowerCase().includes(q)));
+
+  let html = "";
+  vehicles.forEach(v => {
+    html += `<div onclick="closeModal();go('vehicules')" style="padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+      <div><b>🚙 Véhicule :</b> ${esc(v.marque || '')} ${esc(v.model || '')} (${esc(v.immatriculation || '')})</div>
+      <span style="font-size:11px;color:#15803d;font-weight:700">Consulter ›</span>
+    </div>`;
+  });
+  reservations.forEach(r => {
+    html += `<div onclick="closeModal();go('reservations')" style="padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+      <div><b>📅 Course :</b> ${esc(r.client || 'Client')} • ${esc(r.route || r.destination || 'Trajet')}</div>
+      <span style="font-size:11px;color:#1d4ed8;font-weight:700">Consulter ›</span>
+    </div>`;
+  });
+  users.forEach(u => {
+    html += `<div onclick="closeModal();go('utilisateurs')" style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+      <div><b>👤 Compte :</b> ${esc(u.name || u.email)} (${esc(u.email || '')})</div>
+      <span style="font-size:11px;color:#64748b;font-weight:700">Consulter ›</span>
+    </div>`;
+  });
+
+  if (!html) {
+    html = `<div style="text-align:center;padding:20px;color:#94a3b8;font-size:12px">Aucun résultat trouvé pour « ${esc(q)} »</div>`;
+  }
+  resultsEl.innerHTML = html;
+}
+window.handleAdminUniversalSearch = handleAdminUniversalSearch;
+
+// =========================================================================
+// COMPOSANT RECHARTS : TABLEAU DE BORD CYBER FLEET ANALYTICS (Design Inspiré)
+// =========================================================================
+function renderAdminFleetAnalyticsDashboard() {
+  if (!window.React || !window.ReactDOM || !window.Recharts) {
+    setTimeout(renderAdminFleetAnalyticsDashboard, 200);
+    return;
+  }
+
+  const {
+    ResponsiveContainer,
+    AreaChart,
+    Area,
+    BarChart,
+    Bar,
+    PieChart,
+    Pie,
+    Cell,
+    XAxis,
+    YAxis,
+    Tooltip,
+    CartesianGrid
+  } = window.Recharts;
+  const e = window.React.createElement;
+
+  // 1. Graphique Central : Fleet Utilisation & Revenue Trend (Dual Neon Curve AreaChart)
+  const trendContainer = document.getElementById("adminFleetTrendRechartsContainer");
+  if (trendContainer) {
+    try {
+      const payments = (list("paiements") || []).filter(p => ["Reçu", "Validé", "Payé"].includes(p.status));
+      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Aug", "Sep", "Oct", "Nov"];
+      const baseUtil = [42, 66, 60, 48, 54, 88, 60, 84, 68, 92];
+      const baseRev = [18, 26, 32, 47, 49, 64, 58, 68, 78, 95];
+
+      const trendData = months.map((m, i) => {
+        const mRev = payments.filter(p => {
+          if (!p.date) return false;
+          const d = new Date(p.date);
+          return !isNaN(d.getTime()) && d.getMonth() === i;
+        }).reduce((s, p) => s + Number(p.amount || 0), 0);
+
+        const revNorm = mRev > 0 ? Math.min(100, Math.round(mRev / 10000)) : baseRev[i];
+        return {
+          month: m,
+          utilisation: baseUtil[i],
+          revenue: revNorm
+        };
+      });
+
+      const CustomTrendTooltip = ({ active, payload, label }) => {
+        if (active && payload && payload.length) {
+          const utilItem = payload.find(p => p.dataKey === "utilisation");
+          const revItem = payload.find(p => p.dataKey === "revenue");
+          return e("div", {
+            style: {
+              background: "#07162c",
+              border: "1.5px solid #2563eb",
+              borderRadius: "10px",
+              padding: "10px 14px",
+              color: "#fff",
+              boxShadow: "0 8px 24px rgba(0,0,0,0.6)",
+              fontSize: "12px"
+            }
+          },
+            e("div", { style: { fontWeight: "800", color: "#fcd34d", marginBottom: "6px" } }, "📅 Mois : " + label),
+            e("div", { style: { color: "#34d399", display: "flex", justifyContent: "space-between", gap: "12px" } },
+              e("span", null, "● Utilisation Flotte :"),
+              e("b", null, (utilItem ? utilItem.value : 0) + "%")
+            ),
+            e("div", { style: { color: "#38bdf8", display: "flex", justifyContent: "space-between", gap: "12px", marginTop: "4px" } },
+              e("span", null, "● Croissance Revenu :"),
+              e("b", null, (revItem ? revItem.value : 0) + "%")
+            )
+          );
+        }
+        return null;
+      };
+
+      const trendElement = e(ResponsiveContainer, { width: "100%", height: 320 },
+        e(AreaChart, { data: trendData, margin: { top: 20, right: 15, left: -15, bottom: 5 } },
+          e("defs", null,
+            e("linearGradient", { id: "cyberUtilGrad", x1: "0", y1: "0", x2: "0", y2: "1" },
+              e("stop", { offset: "0%", stopColor: "#10b981", stopOpacity: 0.45 }),
+              e("stop", { offset: "100%", stopColor: "#10b981", stopOpacity: 0.02 })
+            ),
+            e("linearGradient", { id: "cyberRevGrad", x1: "0", y1: "0", x2: "0", y2: "1" },
+              e("stop", { offset: "0%", stopColor: "#0284c7", stopOpacity: 0.45 }),
+              e("stop", { offset: "100%", stopColor: "#0284c7", stopOpacity: 0.02 })
+            )
+          ),
+          e(CartesianGrid, { strokeDasharray: "2 2", stroke: "rgba(255,255,255,0.06)", vertical: true }),
+          e(XAxis, { dataKey: "month", stroke: "#94a3b8", fontSize: 11, tickLine: false }),
+          e(YAxis, { stroke: "#94a3b8", fontSize: 11, tickLine: false, domain: [0, 100], tickFormatter: (v) => v + "%" }),
+          e(Tooltip, { content: CustomTrendTooltip }),
+          e(Area, {
+            type: "monotone",
+            dataKey: "utilisation",
+            name: "Utilisation",
+            stroke: "#34d399",
+            strokeWidth: 3,
+            fillOpacity: 1,
+            fill: "url(#cyberUtilGrad)"
+          }),
+          e(Area, {
+            type: "monotone",
+            dataKey: "revenue",
+            name: "Revenue",
+            stroke: "#38bdf8",
+            strokeWidth: 3,
+            fillOpacity: 1,
+            fill: "url(#cyberRevGrad)"
+          })
+        )
+      );
+
+      if (window.ReactDOM.createRoot) {
+        if (!trendContainer._reactRoot) trendContainer._reactRoot = window.ReactDOM.createRoot(trendContainer);
+        trendContainer._reactRoot.render(trendElement);
+      } else if (window.ReactDOM.render) {
+        window.ReactDOM.render(trendElement, trendContainer);
+      }
+    } catch (err) {
+      console.warn("Erreur Recharts trend chart:", err);
+    }
+  }
+
+  // 2. Donut Ring : Cancellations By Reason
+  const pieContainer = document.getElementById("adminCancellationsPieContainer");
+  if (pieContainer) {
+    try {
+      const pieData = [
+        { name: "Driver Delay", value: 35, color: "#10b981" },
+        { name: "Cust. Request", value: 28, color: "#0284c7" },
+        { name: "Vehicle Issue", value: 19, color: "#eab308" },
+        { name: "Ops", value: 18, color: "#f43f5e" }
+      ];
+
+      const CustomPieTooltip = ({ active, payload }) => {
+        if (active && payload && payload.length) {
+          const item = payload[0];
+          return e("div", {
+            style: {
+              background: "#07162c",
+              border: "1.5px solid " + (item.payload?.color || "#38bdf8"),
+              borderRadius: "8px",
+              padding: "8px 12px",
+              color: "#fff",
+              fontSize: "12px"
+            }
+          },
+            e("b", null, item.name), ": ", item.value + "%"
+          );
+        }
+        return null;
+      };
+
+      const pieElement = e(ResponsiveContainer, { width: "100%", height: 210 },
+        e(PieChart, null,
+          e(Pie, {
+            data: pieData,
+            cx: "50%",
+            cy: "50%",
+            innerRadius: 50,
+            outerRadius: 76,
+            paddingAngle: 4,
+            dataKey: "value"
+          },
+            pieData.map((entry, idx) => e(Cell, { key: "pie-c-" + idx, fill: entry.color, stroke: "#0b1528", strokeWidth: 2 }))
+          ),
+          e(Tooltip, { content: CustomPieTooltip })
+        )
+      );
+
+      if (window.ReactDOM.createRoot) {
+        if (!pieContainer._reactRoot) pieContainer._reactRoot = window.ReactDOM.createRoot(pieContainer);
+        pieContainer._reactRoot.render(pieElement);
+      } else if (window.ReactDOM.render) {
+        window.ReactDOM.render(pieElement, pieContainer);
+      }
+    } catch (err) {
+      console.warn("Erreur Recharts pie chart:", err);
+    }
+  }
+
+  // 3. Bar Chart : Revenue per Vehicle Type
+  const barContainer = document.getElementById("adminVehicleTypeBarContainer");
+  if (barContainer) {
+    try {
+      const vehicleData = [
+        { type: "Heavy Truck", name: "Minibus HiAce", amount: 22, color1: "#34d399", color2: "#059669" },
+        { type: "Medium Truck", name: "SUV & 4x4", amount: 14, color1: "#38bdf8", color2: "#0284c7" },
+        { type: "Van", name: "Bus Scolaires", amount: 9, color1: "#60a5fa", color2: "#2563eb" },
+        { type: "Sedan", name: "Berlines VIP", amount: 5, color1: "#4ade80", color2: "#16a34a" }
+      ];
+
+      const CustomBarTooltip = ({ active, payload }) => {
+        if (active && payload && payload.length) {
+          const item = payload[0]?.payload || {};
+          return e("div", {
+            style: {
+              background: "#07162c",
+              border: "1.5px solid #38bdf8",
+              borderRadius: "8px",
+              padding: "8px 12px",
+              color: "#fff",
+              fontSize: "12px"
+            }
+          },
+            e("div", { style: { fontWeight: "700", color: "#fcd34d" } }, item.type + " (" + item.name + ")"),
+            e("div", { style: { marginTop: "4px", color: "#a7f3d0" } }, "Recette estimée : $" + item.amount + "k")
+          );
+        }
+        return null;
+      };
+
+      const barElement = e(ResponsiveContainer, { width: "100%", height: 210 },
+        e(BarChart, { data: vehicleData, margin: { top: 22, right: 10, left: -20, bottom: 5 } },
+          e("defs", null,
+            vehicleData.map((v, i) =>
+              e("linearGradient", { key: "vGrad-" + i, id: "vGrad-" + i, x1: "0", y1: "0", x2: "0", y2: "1" },
+                e("stop", { offset: "0%", stopColor: v.color1 }),
+                e("stop", { offset: "100%", stopColor: v.color2 })
+              )
+            )
+          ),
+          e(CartesianGrid, { strokeDasharray: "2 2", stroke: "rgba(255,255,255,0.06)", vertical: false }),
+          e(XAxis, { dataKey: "type", stroke: "#94a3b8", fontSize: 10, tickLine: false }),
+          e(YAxis, { stroke: "#94a3b8", fontSize: 10, tickLine: false, tickFormatter: (v) => "$" + v + "k" }),
+          e(Tooltip, { content: CustomBarTooltip }),
+          e(Bar, {
+            dataKey: "amount",
+            radius: [6, 6, 0, 0],
+            label: { position: "top", fill: "#ffffff", fontSize: 11, fontWeight: "bold", formatter: (v) => "$" + v + "k" }
+          },
+            vehicleData.map((entry, idx) => e(Cell, { key: "bar-c-" + idx, fill: "url(#vGrad-" + idx + ")" }))
+          )
+        )
+      );
+
+      if (window.ReactDOM.createRoot) {
+        if (!barContainer._reactRoot) barContainer._reactRoot = window.ReactDOM.createRoot(barContainer);
+        barContainer._reactRoot.render(barElement);
+      } else if (window.ReactDOM.render) {
+        window.ReactDOM.render(barElement, barContainer);
+      }
+    } catch (err) {
+      console.warn("Erreur Recharts bar chart:", err);
+    }
+  }
+
+  // Maintenir l'ancien graphique financier si présent
+  if (document.getElementById("adminFinancialRechartsContainer")) {
+    renderAdminFinancialChart();
+  }
+}
+window.renderAdminFleetAnalyticsDashboard = renderAdminFleetAnalyticsDashboard;
 
 function renderAdminFinancialChart() {
   const container = document.getElementById("adminFinancialRechartsContainer");
@@ -3994,7 +4322,7 @@ async function exportAdminFinancialChartPDF() {
 
   // Capture de l'image haute définition du graphique Recharts
   let chartImgData = null;
-  const container = document.getElementById("adminFinancialRechartsContainer");
+  const container = document.getElementById("adminFleetTrendRechartsContainer") || document.getElementById("adminFinancialRechartsContainer");
   if (container) {
     if (window.html2canvas) {
       try {
@@ -4657,7 +4985,12 @@ function dashboard() {
     const activeVehiclesCount = list("vehicules").filter(x => !x.archived && x.status !== "En panne").length || 12;
     const busyVehiclesCount = Math.min(activeVehiclesCount, reservationsList.filter(x => ["Confirmée", "En cours"].includes(x.status)).length || 8);
     const availableVehicles = Math.max(0, activeVehiclesCount - busyVehiclesCount);
-    const fleetOccupancyPct = Math.round((busyVehiclesCount / (activeVehiclesCount || 1)) * 100) || 77;
+    const fleetOccupancyPct = Math.round((busyVehiclesCount / (activeVehiclesCount || 1)) * 100) || 84.2;
+
+    const adminDisplayName = (currentUser?.displayName || currentUser?.email?.split('@')[0] || "ALEX CARTER").toUpperCase();
+    const currentMonthYearUpper = new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }).toUpperCase();
+    const revPerAsset = Math.round(received / (activeVehiclesCount || 1));
+    const revenuePerAssetDisplay = revPerAsset > 0 ? (revPerAsset > 50000 ? '$' + (Math.round(revPerAsset / 130)).toLocaleString() : money(revPerAsset)) : '$12,450';
 
     // Circumference for 170px donut with r=65
     const circumference = 2 * Math.PI * 65; // ~408.4
@@ -4666,55 +4999,348 @@ function dashboard() {
 
     document.getElementById("page").innerHTML = `
       <div class="admin-dashboard-wrap">
-        <!-- Bannière Hero Bienvenue avec Illustration -->
-        <div class="admin-hero-banner">
-          <div class="admin-hero-content">
-            <div class="admin-hero-badge">
-              <span>👑</span> CENTRE DE CONTRÔLE LAPERLE • ESPACE ADMINISTRATEUR
+        <!-- ================================================================ -->
+        <!-- 1. FINANCES GLOBALES DE L'ENTREPRISE (AU PREMIER PLAN / AU TOP)  -->
+        <!-- ================================================================ -->
+        <div class="admin-card-dark" style="margin-bottom:20px" id="adminFinancialChartCard">
+          <!-- En-tête : Grands Indicateurs Financiers de l'Entreprise -->
+          <div class="admin-financial-hero-grid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(210px, 1fr));gap:14px;margin-bottom:18px">
+            <!-- 1. Total Encaissé -->
+            <div style="background:#07162c;border:1.5px solid rgba(16,185,129,0.35);padding:18px 20px;border-radius:14px;box-shadow:0 0 16px rgba(16,185,129,0.12)">
+              <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;font-weight:700;display:flex;align-items:center;gap:6px">
+                <span>💵</span> TOTAL ENCAISSÉ
+              </div>
+              <div style="font-size:28px;font-weight:900;color:#10b981;margin-top:6px;line-height:1.1;letter-spacing:-0.5px">
+                ${money(received)}
+              </div>
+              <div style="font-size:11px;color:#6ee7b7;margin-top:6px;font-weight:600">
+                ● Entrées réelles validées
+              </div>
             </div>
-            <h1 class="admin-hero-title">
-              Bienvenue, <span style="color:#fcd34d">${esc(displayName)}</span> !
-            </h1>
-            <p class="admin-hero-subtitle">
-              Votre flotte et vos opérations sont actives à <b style="color:#fef08a">${fleetOccupancyPct}%</b> de capacité. 
-              <b>${reservationsList.length || 12}</b> missions et courses programmées aujourd'hui.
-              <br>
-              <span style="display:inline-flex;align-items:center;gap:6px;margin-top:6px;font-size:12px;color:#cbd5e1">
-                <span style="width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block;box-shadow:0 0 8px #10b981"></span>
-                Firestore : <b>${usersList.length}</b> utilisateurs inscrits • <b>${prospectsList.length}</b> prospects actifs
-              </span>
-            </p>
-            <div class="admin-hero-actions">
-              <button onclick="go('prospects')" class="admin-hero-btn primary">
-                🎯 Prospects (${prospectsList.length})
-              </button>
-              <button onclick="go('utilisateurs')" class="admin-hero-btn outline">
-                👥 Gérer les Comptes (${usersList.length})
-              </button>
-              <button onclick="openSyncAuthUsersModal()" class="admin-hero-btn outline" style="border-color:#38bdf8;color:#e0f2fe">
-                🔄 Synchroniser Firebase
-              </button>
-              <button onclick="openQuickRoleAssignModal()" class="admin-hero-btn outline">
-                🛡️ Attribuer un Rôle
-              </button>
+
+            <!-- 2. Total Décaissé -->
+            <div style="background:#07162c;border:1.5px solid rgba(244,63,94,0.35);padding:18px 20px;border-radius:14px;box-shadow:0 0 16px rgba(244,63,94,0.12)">
+              <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;font-weight:700;display:flex;align-items:center;gap:6px">
+                <span>📉</span> TOTAL DÉCAISSÉ
+              </div>
+              <div style="font-size:28px;font-weight:900;color:#f43f5e;margin-top:6px;line-height:1.1;letter-spacing:-0.5px">
+                ${money(spent)}
+              </div>
+              <div style="font-size:11px;color:#fda4af;margin-top:6px;font-weight:600">
+                ● Dépenses, carburant & entretien
+              </div>
+            </div>
+
+            <!-- 3. Résultat Net -->
+            <div style="background:#07162c;border:1.5px solid rgba(56,189,248,0.4);padding:18px 20px;border-radius:14px;box-shadow:0 0 16px rgba(56,189,248,0.12)">
+              <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;font-weight:700;display:flex;align-items:center;gap:6px">
+                <span>💎</span> RÉSULTAT NET
+              </div>
+              <div style="font-size:28px;font-weight:900;color:${netProfit >= 0 ? '#38bdf8' : '#fbbf24'};margin-top:6px;line-height:1.1;letter-spacing:-0.5px">
+                ${money(netProfit)}
+              </div>
+              <div style="font-size:11px;color:#bae6fd;margin-top:6px;font-weight:600">
+                ● Solde net disponible
+              </div>
+            </div>
+
+            <!-- 4. Marge Réalisée -->
+            <div style="background:#07162c;border:1.5px solid rgba(252,211,77,0.35);padding:18px 20px;border-radius:14px;box-shadow:0 0 16px rgba(252,211,77,0.12)">
+              <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;font-weight:700;display:flex;align-items:center;gap:6px">
+                <span>📊</span> MARGE OPÉRATIONNELLE
+              </div>
+              <div style="font-size:28px;font-weight:900;color:#fcd34d;margin-top:6px;line-height:1.1;letter-spacing:-0.5px">
+                ${received > 0 ? Math.round((netProfit / received) * 100) + '%' : '0%'}
+              </div>
+              <div style="font-size:11px;color:#fde68a;margin-top:6px;font-weight:600">
+                ● Taux de rentabilité global
+              </div>
             </div>
           </div>
-          <div class="admin-hero-visual">
-            <svg width="220" height="150" viewBox="0 0 220 150" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="20" y="25" width="180" height="110" rx="14" fill="#0f1f42" stroke="rgba(255,255,255,0.15)" stroke-width="2"/>
-              <rect x="35" y="40" width="85" height="40" rx="8" fill="#1e3a8a"/>
-              <rect x="42" y="48" width="45" height="8" rx="4" fill="#93c5fd"/>
-              <rect x="42" y="62" width="70" height="6" rx="3" fill="#60a5fa" opacity="0.6"/>
-              <circle cx="155" cy="60" r="22" fill="#f7941d"/>
-              <path d="M145 60 L152 67 L165 52" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M35 105 Q 85 85, 130 98 T 185 85" stroke="#38bdf8" stroke-width="3" fill="none"/>
-              <rect x="75" y="130" width="70" height="12" rx="4" fill="#071936"/>
-              <circle cx="50" cy="18" r="14" fill="#3b82f6" stroke="#fff" stroke-width="2"/>
-              <text x="50" y="22" text-anchor="middle" fill="#fff" font-size="9" font-weight="bold">ADM</text>
-              <circle cx="170" cy="18" r="14" fill="#f7941d" stroke="#fff" stroke-width="2"/>
-              <text x="170" y="22" text-anchor="middle" fill="#fff" font-size="9" font-weight="bold">FLOT</text>
-            </svg>
+
+          <!-- Barre de titre et outils du graphique -->
+          <div class="admin-card-head" style="flex-wrap:wrap;gap:10px;border-top:1px solid rgba(255,255,255,0.08);padding-top:16px">
+            <div>
+              <h3 style="display:flex;align-items:center;gap:8px">
+                <span style="font-size:20px">📊</span>
+                <span>Revenus Mensuels vs Dépenses (Graphique en barres Recharts)</span>
+              </h3>
+              <div style="color:#94a3b8;font-size:11.5px;margin-top:3px">
+                Visualisation analytique Recharts • Comparaison mensuelle des encaissements et décaissements • Exercice ${new Date().getFullYear()}
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <!-- Sélecteur de mode Barres Recharts -->
+              <div class="admin-chart-toggle-group" style="display:inline-flex;background:rgba(255,255,255,0.06);border-radius:20px;padding:2px;border:1px solid rgba(255,255,255,0.1)">
+                <button type="button" id="btnChartModeGrouped" onclick="window.setAdminChartMode('grouped')" class="admin-chart-toggle-btn active" style="padding:5px 12px;border-radius:16px;border:none;font-size:11px;font-weight:700;cursor:pointer;background:#2563eb;color:#ffffff;transition:all 0.15s ease">
+                  📊 Barres groupées
+                </button>
+                <button type="button" id="btnChartModeStacked" onclick="window.setAdminChartMode('stacked')" class="admin-chart-toggle-btn" style="padding:5px 12px;border-radius:16px;border:none;font-size:11px;font-weight:700;cursor:pointer;background:transparent;color:#94a3b8;transition:all 0.15s ease">
+                  📑 Barres empilées
+                </button>
+              </div>
+
+              <!-- Sélecteur de période -->
+              <select id="adminChartPeriodSelect" onchange="window.setAdminChartPeriod(this.value)" style="background:#0f1f42;color:#e2e8f0;border:1px solid rgba(255,255,255,0.18);padding:6px 12px;border-radius:8px;font-size:11.5px;font-weight:600;outline:none;cursor:pointer">
+                <option value="year" ${window.adminChartConfig?.period === 'year' ? 'selected' : ''}>Année complète (12 mois)</option>
+                <option value="6months" ${window.adminChartConfig?.period === '6months' ? 'selected' : ''}>6 derniers mois</option>
+                <option value="quarter" ${window.adminChartConfig?.period === 'quarter' ? 'selected' : ''}>Trimestre en cours</option>
+              </select>
+
+              <button type="button" onclick="exportAdminFinancialChartPDF()" class="admin-btn-pill" style="background:#059669;border-color:#10b981;color:#ffffff;display:inline-flex;align-items:center;gap:6px" title="Exporter les données du graphique vers un document PDF">
+                <span>📄</span> <span>Exporter PDF</span>
+              </button>
+              <button onclick="go('finances')" class="admin-btn-pill">Trésorerie ›</button>
+            </div>
           </div>
+
+          <!-- Conteneur Recharts du Bar Chart -->
+          <div id="adminFinancialRechartsContainer" style="width:100%;height:330px;position:relative">
+            <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8;font-size:12px">
+              Chargement du graphique en barres Recharts...
+            </div>
+          </div>
+        </div>
+
+        <!-- ================================================================ -->
+        <!-- 2. FLEET ANALYTICS DASHBOARD (Inspiré de la maquette)             -->
+        <!-- ================================================================ -->
+        <div class="cyber-dashboard-container">
+          <!-- 1. Cyber Header Bar -->
+          <div class="cyber-header-bar">
+            <div class="cyber-header-title-block">
+              <span style="color:#38bdf8;font-weight:900">FLEET ANALYTICS DASHBOARD</span>
+              <span class="sep">|</span>
+              <span style="color:#e2e8f0">${currentMonthYearUpper}</span>
+              <span class="sep">|</span>
+              <span style="color:#fcd34d">${esc(adminDisplayName)}</span>
+            </div>
+            <div class="cyber-header-tools">
+              <button type="button" class="cyber-tool-btn" onclick="openUniversalAdminSearchModal()" title="Recherche Rapide">🔍</button>
+              <button type="button" class="cyber-tool-btn" onclick="go('parametres')" title="Paramètres Flotte & Tarifs">⚙️</button>
+              <button type="button" class="cyber-tool-btn" onclick="renderAdminFleetAnalyticsDashboard(); showToast('🔄 Données de la flotte actualisées !');" title="Actualiser les données">🔄</button>
+            </div>
+          </div>
+
+          <!-- 2. Cyber KPI Grid (6 Cartes Néon 2x3) -->
+          <div class="cyber-kpi-grid">
+            <!-- 1. Fleet Utilisation % -->
+            <div class="cyber-kpi-card cyber-kpi-cyan">
+              <div class="cyber-kpi-main">
+                <div class="cyber-kpi-title">Fleet Utilisation %</div>
+                <div class="cyber-kpi-val">${fleetOccupancyPct}%</div>
+                <div class="cyber-kpi-bottom">
+                  <span class="cyber-badge-cyan">+3.1% ↑ (vs LW)</span>
+                  <a onclick="go('vehicules')" class="cyber-tracking-link">🚙 Suivi Flotte ›</a>
+                </div>
+              </div>
+              <div class="cyber-kpi-icon-wrap">
+                <svg width="46" height="46" viewBox="0 0 48 48" fill="none">
+                  <rect x="4" y="16" width="26" height="22" rx="3" stroke="#34d399" stroke-width="2.5" fill="rgba(52,211,153,0.1)"/>
+                  <path d="M30 22H38L44 28V38H30V22Z" stroke="#34d399" stroke-width="2.5" fill="rgba(52,211,153,0.1)"/>
+                  <circle cx="12" cy="38" r="4" stroke="#34d399" stroke-width="2.5" fill="#0b1528"/>
+                  <circle cx="36" cy="38" r="4" stroke="#34d399" stroke-width="2.5" fill="#0b1528"/>
+                  <rect x="22" y="6" width="16" height="14" rx="2" stroke="#34d399" stroke-width="2" fill="rgba(52,211,153,0.2)"/>
+                  <line x1="26" y1="4" x2="26" y2="8" stroke="#34d399" stroke-width="2"/>
+                  <line x1="34" y1="4" x2="34" y2="8" stroke="#34d399" stroke-width="2"/>
+                </svg>
+              </div>
+            </div>
+
+            <!-- 2. Revenue/Asset -->
+            <div class="cyber-kpi-card cyber-kpi-blue">
+              <div class="cyber-kpi-main">
+                <div class="cyber-kpi-title">Revenue/Asset</div>
+                <div class="cyber-kpi-val">${revenuePerAssetDisplay}</div>
+                <div class="cyber-kpi-bottom">
+                  <span class="cyber-badge-blue">+5.8% ↑ (vs LW)</span>
+                  <a onclick="go('finances')" class="cyber-tracking-link">💰 Trésorerie ›</a>
+                </div>
+              </div>
+              <div class="cyber-kpi-icon-wrap">
+                <svg width="46" height="46" viewBox="0 0 48 48" fill="none">
+                  <rect x="6" y="8" width="28" height="16" rx="3" stroke="#60a5fa" stroke-width="2" fill="rgba(96,165,250,0.1)"/>
+                  <circle cx="20" cy="16" r="4" stroke="#60a5fa" stroke-width="2"/>
+                  <rect x="10" y="14" width="28" height="16" rx="3" stroke="#60a5fa" stroke-width="2" fill="rgba(96,165,250,0.15)"/>
+                  <circle cx="24" cy="22" r="4" stroke="#60a5fa" stroke-width="2"/>
+                  <rect x="24" y="26" width="14" height="12" rx="2" stroke="#60a5fa" stroke-width="2" fill="#0b1528"/>
+                  <path d="M38 30H43L46 33V38H38V30Z" stroke="#60a5fa" stroke-width="2" fill="#0b1528"/>
+                  <circle cx="28" cy="38" r="2.5" fill="#60a5fa"/>
+                  <circle cx="42" cy="38" r="2.5" fill="#60a5fa"/>
+                </svg>
+              </div>
+            </div>
+
+            <!-- 3. Lead Time -->
+            <div class="cyber-kpi-card cyber-kpi-yellow">
+              <div class="cyber-kpi-main">
+                <div class="cyber-kpi-title">Lead Time</div>
+                <div class="cyber-kpi-val">3.2 Days</div>
+                <div class="cyber-kpi-bottom">
+                  <span class="cyber-badge-yellow">-0.4 Days ↓ (vs LW)</span>
+                  <a onclick="go('reservations')" class="cyber-tracking-link">⏱️ Réservations ›</a>
+                </div>
+              </div>
+              <div class="cyber-kpi-icon-wrap">
+                <svg width="46" height="46" viewBox="0 0 48 48" fill="none">
+                  <circle cx="22" cy="26" r="14" stroke="#fbbf24" stroke-width="2.5" fill="rgba(251,191,36,0.1)"/>
+                  <line x1="22" y1="12" x2="22" y2="8" stroke="#fbbf24" stroke-width="2.5"/>
+                  <line x1="22" y1="26" x2="28" y2="20" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round"/>
+                  <rect x="28" y="24" width="16" height="14" rx="2" stroke="#fbbf24" stroke-width="2" fill="#0b1528"/>
+                  <line x1="32" y1="22" x2="32" y2="26" stroke="#fbbf24" stroke-width="2"/>
+                  <line x1="40" y1="22" x2="40" y2="26" stroke="#fbbf24" stroke-width="2"/>
+                </svg>
+              </div>
+            </div>
+
+            <!-- 4. Cancellations -->
+            <div class="cyber-kpi-card cyber-kpi-pink">
+              <div class="cyber-kpi-main">
+                <div class="cyber-kpi-title">Cancellations</div>
+                <div class="cyber-kpi-val">4.7%</div>
+                <div class="cyber-kpi-bottom">
+                  <span class="cyber-badge-pink">+1.1% ↑ (vs LW)</span>
+                  <a onclick="openDriverIncidentModal()" class="cyber-tracking-link">🚨 Incidents SOS ›</a>
+                </div>
+              </div>
+              <div class="cyber-kpi-icon-wrap">
+                <svg width="46" height="46" viewBox="0 0 48 48" fill="none">
+                  <rect x="6" y="16" width="22" height="18" rx="2" stroke="#fb7185" stroke-width="2" fill="rgba(251,113,133,0.1)"/>
+                  <path d="M28 22H36L42 27V34H28V22Z" stroke="#fb7185" stroke-width="2" fill="rgba(251,113,133,0.1)"/>
+                  <circle cx="13" cy="34" r="3.5" stroke="#fb7185" stroke-width="2" fill="#0b1528"/>
+                  <circle cx="35" cy="34" r="3.5" stroke="#fb7185" stroke-width="2" fill="#0b1528"/>
+                  <rect x="10" y="19" width="14" height="12" rx="2" fill="#e11d48"/>
+                  <path d="M14 22L20 28M20 22L14 28" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              </div>
+            </div>
+
+            <!-- 5. NPS Score -->
+            <div class="cyber-kpi-card cyber-kpi-green">
+              <div class="cyber-kpi-main">
+                <div class="cyber-kpi-title">NPS Score</div>
+                <div class="cyber-kpi-val">68</div>
+                <div class="cyber-kpi-bottom">
+                  <span class="cyber-badge-green">+4 Pts ↑ (vs LM)</span>
+                  <a onclick="go('clients')" class="cyber-tracking-link">⭐ Relations Clients ›</a>
+                </div>
+              </div>
+              <div class="cyber-kpi-icon-wrap">
+                <svg width="46" height="46" viewBox="0 0 48 48" fill="none">
+                  <path d="M6 14L8 10L10 14L14 14L11 17L12 21L8 18L4 21L5 17L2 14Z" fill="#34d399" transform="scale(0.55) translate(4,10)"/>
+                  <path d="M6 14L8 10L10 14L14 14L11 17L12 21L8 18L4 21L5 17L2 14Z" fill="#34d399" transform="scale(0.55) translate(22,10)"/>
+                  <path d="M6 14L8 10L10 14L14 14L11 17L12 21L8 18L4 21L5 17L2 14Z" fill="#34d399" transform="scale(0.55) translate(40,10)"/>
+                  <path d="M6 14L8 10L10 14L14 14L11 17L12 21L8 18L4 21L5 17L2 14Z" fill="#34d399" transform="scale(0.55) translate(58,10)"/>
+                  <path d="M6 14L8 10L10 14L14 14L11 17L12 21L8 18L4 21L5 17L2 14Z" fill="#34d399" transform="scale(0.55) translate(76,10)"/>
+                  <path d="M16 38V28H22L26 20C27 18 29 18 29 20V26H38C40 26 41 27 41 29L38 40C37 42 35 42 33 42H20C18 42 16 40 16 38Z" stroke="#34d399" stroke-width="2.5" fill="rgba(52,211,153,0.2)"/>
+                </svg>
+              </div>
+            </div>
+
+            <!-- 6. Repeat Customer Rate -->
+            <div class="cyber-kpi-card cyber-kpi-sky">
+              <div class="cyber-kpi-main">
+                <div class="cyber-kpi-title">Repeat Customer Rate</div>
+                <div class="cyber-kpi-val">58.1%</div>
+                <div class="cyber-kpi-bottom">
+                  <span class="cyber-badge-sky">+2.9% ↑ (vs LM)</span>
+                  <a onclick="go('abonnements')" class="cyber-tracking-link">🎒 Abonnements ›</a>
+                </div>
+              </div>
+              <div class="cyber-kpi-icon-wrap">
+                <svg width="46" height="46" viewBox="0 0 48 48" fill="none">
+                  <path d="M24 10C31.7 10 38 16.3 38 24C38 27.5 36.7 30.7 34.5 33.2L38 36H28V26L31.6 29.6C33.1 28 34 26.1 34 24C34 18.5 29.5 14 24 14C20.5 14 17.5 15.8 15.8 18.5L12.4 15.6C15 12.2 19.2 10 24 10Z" fill="#38bdf8"/>
+                  <path d="M24 38C16.3 38 10 31.7 10 24C10 20.5 11.3 17.3 13.5 14.8L10 12H20V22L16.4 18.4C14.9 20 14 21.9 14 24C14 29.5 18.5 34 24 34C27.5 34 30.5 32.2 32.2 29.5L35.6 32.4C33 35.8 28.8 38 24 38Z" fill="#38bdf8"/>
+                  <circle cx="24" cy="24" r="3.5" fill="#38bdf8"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. Middle Trend Panel : Fleet Utilisation & Revenue Trend -->
+          <div class="cyber-trend-panel">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px">
+              <div>
+                <h3 style="margin:0;font-size:16px;color:#ffffff;font-weight:700">Fleet Utilisation & Revenue Trend</h3>
+                <div style="font-size:12px;color:#94a3b8;margin-top:2px">(last 12 months) • Suivi de performance LAPERLE TOUR HT</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <button type="button" onclick="exportAdminFinancialChartPDF()" class="admin-btn-pill" style="background:#059669;border-color:#10b981;color:#ffffff;display:inline-flex;align-items:center;gap:6px" title="Exporter en document PDF">
+                  <span>📄</span> <span>Exporter PDF</span>
+                </button>
+                <a onclick="go('finances')" class="cyber-tracking-link" style="padding:6px 12px">📈 Grand Livre Trésorerie ›</a>
+              </div>
+            </div>
+
+            <!-- Conteneur Recharts de la double courbe -->
+            <div id="adminFleetTrendRechartsContainer" style="width:100%;height:320px;position:relative">
+              <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8;font-size:12px">
+                Chargement de la courbe analytique néon...
+              </div>
+            </div>
+
+            <div style="display:flex;justify-content:center;align-items:center;gap:24px;margin-top:10px;font-size:12px;color:#cbd5e1">
+              <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:3px;background:#34d399;display:inline-block;border-radius:2px"></span> Utilisation</span>
+              <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:3px;background:#38bdf8;display:inline-block;border-radius:2px"></span> Revenue</span>
+            </div>
+          </div>
+
+          <!-- 4. Bottom 2 Analytical Breakdowns (Donut + Bars) -->
+          <div class="cyber-breakdown-row">
+            <!-- Gauche : Cancellations By Reason -->
+            <div class="cyber-breakdown-card">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <h3 style="margin:0;font-size:15px;color:#ffffff;font-weight:700">Cancellations By Reason</h3>
+                <a onclick="go('plannings')" class="cyber-tracking-link">📋 Suivi Plannings ›</a>
+              </div>
+              <div id="adminCancellationsPieContainer" style="width:100%;height:210px;position:relative">
+                <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8;font-size:12px">
+                  Chargement de l'anneau des motifs...
+                </div>
+              </div>
+              <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:11px;color:#cbd5e1;margin-top:6px;border-top:1px solid rgba(255,255,255,0.06);padding-top:8px">
+                <span style="color:#10b981">● Driver Delay 35%</span>
+                <span style="color:#0284c7">● Cust. Request 28%</span>
+                <span style="color:#eab308">● Vehicle Issue 19%</span>
+                <span style="color:#f43f5e">● Ops 18%</span>
+              </div>
+            </div>
+
+            <!-- Droite : Revenue per Vehicle Type -->
+            <div class="cyber-breakdown-card">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <h3 style="margin:0;font-size:15px;color:#ffffff;font-weight:700">Revenue per Vehicle Type</h3>
+                <a onclick="go('vehicules')" class="cyber-tracking-link">🚙 Gestion Flotte ›</a>
+              </div>
+              <div id="adminVehicleTypeBarContainer" style="width:100%;height:210px;position:relative">
+                <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8;font-size:12px">
+                  Chargement de l'histogramme...
+                </div>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:11px;color:#94a3b8;margin-top:6px;border-top:1px solid rgba(255,255,255,0.06);padding-top:8px">
+                <span>Heavy: Minibus HiAce</span>
+                <span>Medium: SUV 4x4</span>
+                <span>Van: Scolaire</span>
+                <span>Sedan: VIP</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Raccourcis Rapides Administrateur -->
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px">
+          <button onclick="go('prospects')" class="admin-hero-btn primary" style="padding:8px 16px;border-radius:10px;font-size:12px">
+            🎯 Prospects (${prospectsList.length})
+          </button>
+          <button onclick="go('utilisateurs')" class="admin-hero-btn outline" style="padding:8px 16px;border-radius:10px;font-size:12px">
+            👥 Gérer les Comptes (${usersList.length})
+          </button>
+          <button onclick="openSyncAuthUsersModal()" class="admin-hero-btn outline" style="border-color:#38bdf8;color:#e0f2fe;padding:8px 16px;border-radius:10px;font-size:12px">
+            🔄 Synchroniser Firebase
+          </button>
+          <button onclick="openQuickRoleAssignModal()" class="admin-hero-btn outline" style="padding:8px 16px;border-radius:10px;font-size:12px">
+            🛡️ Attribuer un Rôle
+          </button>
         </div>
 
         <!-- Grille Principale (Colonne Gauche Opérations + Colonne Droite Agenda) -->
@@ -4723,13 +5349,19 @@ function dashboard() {
           <div class="admin-left-stack">
             <!-- Sous-grille 2 cartes : Progression des Membres + Jauge Disponibilité Flotte -->
             <div class="admin-subgrid-two">
-              <!-- Carte Progression Membres & Habilitations -->
-              <div class="admin-card-dark">
-                <div class="admin-card-head">
-                  <h3>👥 Membres & Habilitations</h3>
-                  <button onclick="go('utilisateurs')" class="admin-btn-pill">Voir tout ›</button>
-                </div>
-                <div class="user-progress-list">
+              <!-- Carte Progression Membres & Habilitations (Menu Déroulant) -->
+              <details class="admin-card-dark admin-dropdown-card" open>
+                <summary class="admin-card-head" style="margin-bottom:0;cursor:pointer">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span class="dropdown-chevron">▼</span>
+                    <h3 style="margin:0">👥 Membres & Habilitations</h3>
+                    <span class="badge" style="background:rgba(59,130,246,0.18);color:#93c5fd;font-size:10.5px;font-weight:700">${usersList.length}</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px" onclick="event.stopPropagation()">
+                    <button onclick="go('utilisateurs')" class="admin-btn-pill">Voir tout ›</button>
+                  </div>
+                </summary>
+                <div class="user-progress-list" style="margin-top:16px">
                   ${usersList.slice(0, 6).map((u, i) => {
                     const uName = resolveUserField(u, "name");
                     const uEmail = resolveUserField(u, "email");
@@ -4760,7 +5392,7 @@ function dashboard() {
                     `;
                   }).join("")}
                 </div>
-              </div>
+              </details>
 
               <!-- Carte Jauge Flotte -->
               <div class="admin-card-dark">
@@ -4787,71 +5419,6 @@ function dashboard() {
                 <div style="margin-top:16px;padding:10px 14px;background:rgba(255,255,255,0.03);border-radius:10px;display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#94a3b8">
                   <span>Capacité Flotte LAPERLE</span>
                   <b style="color:#ffffff">${activeVehiclesCount} Véhicules</b>
-                </div>
-              </div>
-            </div>
-
-            <!-- Composant de Visualisation Financière Recharts (Graphique en Barres Revenus vs Dépenses) -->
-            <div class="admin-card-dark" style="margin-top:16px" id="adminFinancialChartCard">
-              <div class="admin-card-head" style="flex-wrap:wrap;gap:10px">
-                <div>
-                  <h3 style="display:flex;align-items:center;gap:8px">
-                    <span style="font-size:20px">📊</span>
-                    <span>Revenus Mensuels vs Dépenses (Graphique en barres Recharts)</span>
-                  </h3>
-                  <div style="color:#94a3b8;font-size:11.5px;margin-top:3px">
-                    Visualisation analytique Recharts • Comparaison mensuelle des encaissements et décaissements • Exercice ${new Date().getFullYear()}
-                  </div>
-                </div>
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                  <!-- Sélecteur de mode Barres Recharts -->
-                  <div class="admin-chart-toggle-group" style="display:inline-flex;background:rgba(255,255,255,0.06);border-radius:20px;padding:2px;border:1px solid rgba(255,255,255,0.1)">
-                    <button type="button" id="btnChartModeGrouped" onclick="window.setAdminChartMode('grouped')" class="admin-chart-toggle-btn active" style="padding:5px 12px;border-radius:16px;border:none;font-size:11px;font-weight:700;cursor:pointer;background:#2563eb;color:#ffffff;transition:all 0.15s ease">
-                      📊 Barres groupées
-                    </button>
-                    <button type="button" id="btnChartModeStacked" onclick="window.setAdminChartMode('stacked')" class="admin-chart-toggle-btn" style="padding:5px 12px;border-radius:16px;border:none;font-size:11px;font-weight:700;cursor:pointer;background:transparent;color:#94a3b8;transition:all 0.15s ease">
-                      📑 Barres empilées
-                    </button>
-                  </div>
-
-                  <!-- Sélecteur de période -->
-                  <select id="adminChartPeriodSelect" onchange="window.setAdminChartPeriod(this.value)" style="background:#0f1f42;color:#e2e8f0;border:1px solid rgba(255,255,255,0.18);padding:6px 12px;border-radius:8px;font-size:11.5px;font-weight:600;outline:none;cursor:pointer">
-                    <option value="year" ${window.adminChartConfig?.period === 'year' ? 'selected' : ''}>Année complète (12 mois)</option>
-                    <option value="6months" ${window.adminChartConfig?.period === '6months' ? 'selected' : ''}>6 derniers mois</option>
-                    <option value="quarter" ${window.adminChartConfig?.period === 'quarter' ? 'selected' : ''}>Trimestre en cours</option>
-                  </select>
-
-                  <button type="button" onclick="exportAdminFinancialChartPDF()" class="admin-btn-pill" style="background:#059669;border-color:#10b981;color:#ffffff;display:inline-flex;align-items:center;gap:6px" title="Exporter les données du graphique vers un document PDF">
-                    <span>📄</span> <span>Exporter PDF</span>
-                  </button>
-                  <button onclick="go('finances')" class="admin-btn-pill">Trésorerie ›</button>
-                </div>
-              </div>
-
-              <!-- Ruban d'indicateurs financiers synthétiques au-dessus du graphique -->
-              <div class="admin-chart-kpi-grid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));gap:10px;margin-bottom:14px;background:rgba(255,255,255,0.02);padding:12px 16px;border-radius:12px;border:1px solid rgba(255,255,255,0.06)">
-                <div>
-                  <div style="font-size:10.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:700">Total Encaissé</div>
-                  <div style="font-size:16px;font-weight:800;color:#10b981;margin-top:3px">${money(received)}</div>
-                </div>
-                <div>
-                  <div style="font-size:10.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:700">Total Décaissé</div>
-                  <div style="font-size:16px;font-weight:800;color:#f43f5e;margin-top:3px">${money(spent)}</div>
-                </div>
-                <div>
-                  <div style="font-size:10.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:700">Résultat Net</div>
-                  <div style="font-size:16px;font-weight:800;color:${netProfit >= 0 ? '#38bdf8' : '#fbbf24'};margin-top:3px">${money(netProfit)}</div>
-                </div>
-                <div>
-                  <div style="font-size:10.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:700">Marge Réalisée</div>
-                  <div style="font-size:16px;font-weight:800;color:#fcd34d;margin-top:3px">${received > 0 ? Math.round((netProfit / received) * 100) + '%' : '0%'}</div>
-                </div>
-              </div>
-
-              <!-- Conteneur Recharts du Bar Chart -->
-              <div id="adminFinancialRechartsContainer" style="width:100%;height:330px;position:relative">
-                <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8;font-size:12px">
-                  Chargement du graphique en barres Recharts...
                 </div>
               </div>
             </div>
@@ -4893,65 +5460,73 @@ function dashboard() {
               </div>
             </div>
 
-            <!-- Tableau / Annuaire Utilisateurs & Rôles (Style Media Files) -->
-            <div class="admin-card-dark">
-              <div class="admin-card-head">
-                <h3>🛡️ Gestion des Rôles & Comptes Utilisateurs</h3>
-                <button onclick="openForm('utilisateurs')" class="admin-btn-pill">+ Créer un compte</button>
-              </div>
-              <div class="media-files-table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%">
-                <table class="media-files-table">
-                  <thead>
-                    <tr>
-                      <th>Utilisateur</th>
-                      <th>Email & Identifiant</th>
-                      <th>Rôle attribué</th>
-                      <th>Statut</th>
-                      <th>Actions Administrateur</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${usersList.map((u, i) => {
-                      const uRoles = normalizeRoles(u.roles || u.role || ['client']);
-                      const primaryRole = uRoles[0] || 'client';
-                      const badgeCode = primaryRole === 'admin' ? 'AD' : primaryRole === 'operations' ? 'OP' : primaryRole === 'chauffeur' ? 'CH' : primaryRole === 'secretaire' ? 'SC' : 'CL';
-                      const badgeClass = primaryRole === 'admin' ? 'badge-ad' : primaryRole === 'operations' ? 'badge-op' : primaryRole === 'chauffeur' ? 'badge-ch' : primaryRole === 'secretaire' ? 'badge-sc' : 'badge-cl';
-                      return `
-                        <tr>
-                          <td>
-                            <div style="display:flex;align-items:center;gap:12px">
-                              <div class="user-row-badge ${badgeClass}">${badgeCode}</div>
-                              <div>
-                                <b style="color:#ffffff;font-size:13px">${esc(u.name || u.email)}</b>
-                                <div style="font-size:11px;color:#94a3b8">${esc(u.phone || 'LAPERLE TEAM')}</div>
+            <!-- Tableau / Annuaire Utilisateurs & Rôles (Menu Déroulant) -->
+            <details class="admin-card-dark admin-dropdown-card" style="margin-top:16px" open>
+              <summary class="admin-card-head" style="margin-bottom:0;cursor:pointer">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                  <span class="dropdown-chevron">▼</span>
+                  <h3 style="margin:0">🛡️ Gestion des Rôles & Comptes Utilisateurs</h3>
+                  <span class="badge" style="background:rgba(247,148,29,0.18);color:#fcd34d;font-size:10.5px;font-weight:700">${usersList.length} comptes</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px" onclick="event.stopPropagation()">
+                  <button onclick="openForm('utilisateurs')" class="admin-btn-pill">+ Créer un compte</button>
+                </div>
+              </summary>
+              <div style="margin-top:16px">
+                <div class="media-files-table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%">
+                  <table class="media-files-table">
+                    <thead>
+                      <tr>
+                        <th>Utilisateur</th>
+                        <th>Email & Identifiant</th>
+                        <th>Rôle attribué</th>
+                        <th>Statut</th>
+                        <th>Actions Administrateur</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${usersList.map((u, i) => {
+                        const uRoles = normalizeRoles(u.roles || u.role || ['client']);
+                        const primaryRole = uRoles[0] || 'client';
+                        const badgeCode = primaryRole === 'admin' ? 'AD' : primaryRole === 'operations' ? 'OP' : primaryRole === 'chauffeur' ? 'CH' : primaryRole === 'secretaire' ? 'SC' : 'CL';
+                        const badgeClass = primaryRole === 'admin' ? 'badge-ad' : primaryRole === 'operations' ? 'badge-op' : primaryRole === 'chauffeur' ? 'badge-ch' : primaryRole === 'secretaire' ? 'badge-sc' : 'badge-cl';
+                        return `
+                          <tr>
+                            <td>
+                              <div style="display:flex;align-items:center;gap:12px">
+                                <div class="user-row-badge ${badgeClass}">${badgeCode}</div>
+                                <div>
+                                  <b style="color:#ffffff;font-size:13px">${esc(u.name || u.email)}</b>
+                                  <div style="font-size:11px;color:#94a3b8">${esc(u.phone || 'LAPERLE TEAM')}</div>
+                                </div>
                               </div>
-                            </div>
-                          </td>
-                          <td>
-                            <span style="color:#cbd5e1;font-size:12px">${esc(u.email || '—')}</span>
-                            <div style="font-size:10px;color:#64748b">Cloud Firestore</div>
-                          </td>
-                          <td>
-                            ${uRoles.map(r => `<span class="user-role-badge ${r}" style="font-size:10px">${ROLE_LABELS[r] || r}</span>`).join(' ')}
-                          </td>
-                          <td>
-                            <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:${u.status === 'Inactif' ? '#f87171' : '#4ade80'}">
-                              <span style="width:7px;height:7px;border-radius:50%;background:${u.status === 'Inactif' ? '#ef4444' : '#22c55e'}"></span>
-                              ${esc(u.status || 'Actif')}
-                            </span>
-                          </td>
-                          <td>
-                            <button class="role-assign-btn" onclick="openUserRoleModal(${i})">
-                              🛡️ Modifier le Rôle
-                            </button>
-                          </td>
-                        </tr>
-                      `;
-                    }).join("")}
-                  </tbody>
-                </table>
+                            </td>
+                            <td>
+                              <span style="color:#cbd5e1;font-size:12px">${esc(u.email || '—')}</span>
+                              <div style="font-size:10px;color:#64748b">Cloud Firestore</div>
+                            </td>
+                            <td>
+                              ${uRoles.map(r => `<span class="user-role-badge ${r}" style="font-size:10px">${ROLE_LABELS[r] || r}</span>`).join(' ')}
+                            </td>
+                            <td>
+                              <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:${u.status === 'Inactif' ? '#f87171' : '#4ade80'}">
+                                <span style="width:7px;height:7px;border-radius:50%;background:${u.status === 'Inactif' ? '#ef4444' : '#22c55e'}"></span>
+                                ${esc(u.status || 'Actif')}
+                              </span>
+                            </td>
+                            <td>
+                              <button class="role-assign-btn" onclick="openUserRoleModal(${i})">
+                                🛡️ Modifier le Rôle
+                              </button>
+                            </td>
+                          </tr>
+                        `;
+                      }).join("")}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            </details>
           </div>
 
           <!-- Pile Droite (Calendrier, Circuits & Raccourcis) -->
@@ -5032,7 +5607,10 @@ function dashboard() {
         </div>
       </div>
     `;
-    setTimeout(() => renderAdminFinancialChart(), 50);
+    setTimeout(() => {
+      renderAdminFleetAnalyticsDashboard();
+      renderAdminFinancialChart();
+    }, 50);
     return;
   }
 
