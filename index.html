@@ -308,6 +308,41 @@
           </div>
         </div>
 
+        <!-- VUE : VÉRIFICATION D'E-MAIL (Code à 6 chiffres) -->
+        <div id="authViewVerifyEmail" style="display:none;">
+          <div class="auth-form-top">
+            <div class="auth-login-kicker">SÉCURITÉ DU COMPTE</div>
+            <h2 class="auth-login-heading">Vérifier votre e-mail</h2>
+            <p class="auth-login-sub">Un code de vérification à 6 chiffres a été envoyé pour certifier votre adresse e-mail.</p>
+          </div>
+
+          <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:12.5px;color:#1e3a8a;">
+            <div style="display:flex;align-items:center;gap:6px;font-weight:700;">
+              <span>✉️</span> <span id="authVerifyEmailTarget">votre-email@exemple.com</span>
+            </div>
+            <div style="font-size:11.5px;color:#475569;margin-top:4px;">
+              Veuillez saisir le code reçu dans votre boîte de réception ou vos courriers indésirables (valable 10 minutes).
+            </div>
+          </div>
+
+          <div class="auth-field">
+            <label for="authEmailVerifyCode">Code de vérification (6 chiffres) :</label>
+            <div class="auth-input-icon-wrap">
+              <span class="auth-icon-prefix">🔢</span>
+              <input type="text" id="authEmailVerifyCode" maxlength="6" placeholder="Ex: 839214" autocomplete="one-time-code" style="letter-spacing:4px;font-size:18px;font-weight:800;text-align:center;" />
+            </div>
+          </div>
+
+          <button class="auth-btn-primary" id="authBtnSubmitVerifyCode" type="button">
+            <span class="btn-text">Valider & Créer mon compte</span>
+          </button>
+
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;font-size:12px;">
+            <button type="button" class="auth-switch-btn" id="authBtnResendVerifyCode" style="color:#082b70;font-weight:700;">🔄 Renvoyer un nouveau code</button>
+            <button type="button" class="auth-switch-btn" id="authBtnCancelVerifyCode" style="color:#64748b;">Modifier mes informations</button>
+          </div>
+        </div>
+
         <!-- VUE 3 : MOT DE PASSE OUBLIÉ -->
         <div id="authViewForgotPassword" style="display:none;">
           <div class="auth-form-top">

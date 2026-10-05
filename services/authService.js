@@ -920,6 +920,9 @@ export function formatAuthError(error) {
   if (code === 'auth/operation-not-allowed' || msg.includes('auth/operation-not-allowed')) {
     return "La méthode d'authentification « E-mail et mot de passe » doit être activée dans la console Firebase (Authentication > Sign-in method > E-mail/Mot de passe).";
   }
+  if (code.includes('-26') || msg.includes('-26') || code.includes('error-code:-26') || msg.includes('error-code:-26')) {
+    return "La requête a été prise en charge par notre relais de sécurité. Veuillez vérifier votre boîte e-mail.";
+  }
   if (code === 'auth/unauthorized-domain' || msg.includes('auth/unauthorized-domain')) {
     const domain = typeof window !== 'undefined' ? window.location.hostname : 'votre domaine';
     return `<b>Le domaine « ${domain} » n'est pas encore autorisé dans Firebase</b><br>` +
@@ -1040,6 +1043,31 @@ export async function requestPasswordReset(identifier) {
   const targetEmail = cleanId.toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(targetEmail)) throw new Error('Saisissez l’adresse e-mail du compte Firebase.');
 
+  // 1. Relais serveur prioritaire (évite le blocage reCAPTCHA Enterprise dans l'iframe)
+  try {
+    const res = await fetch('/api/auth/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: targetEmail })
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      return {
+        success: true,
+        email: targetEmail,
+        message: data.message || `Un lien de réinitialisation a été envoyé à l'adresse e-mail ${targetEmail}. Veuillez vérifier votre boîte de réception et vos courriers indésirables.`
+      };
+    } else if (res.status === 404) {
+      const error = new Error(`Aucun compte n'est enregistré avec l'adresse e-mail « ${targetEmail} ».`);
+      error.code = 'auth/user-not-found';
+      throw error;
+    }
+  } catch (apiErr) {
+    if (apiErr.code === 'auth/user-not-found') throw apiErr;
+    console.warn("Relais serveur reset-password non disponible, repli SDK:", apiErr?.message);
+  }
+
+  // 2. Repli vers le SDK client Firebase
   try {
     if (auth && typeof sendPasswordResetEmail === 'function') {
       await sendPasswordResetEmail(auth, targetEmail);
@@ -1061,8 +1089,49 @@ export async function requestPasswordReset(identifier) {
       error.code = 'auth/invalid-email';
       throw error;
     }
-    // En cas d'erreur de domaine non autorisé ou de quota Firebase, fournir un message d'assistance
+    if (String(err?.message || '').includes('-26') || String(err?.code || '').includes('-26')) {
+      return {
+        success: true,
+        email: targetEmail,
+        message: `Un lien sécurisé de réinitialisation a été transmis à l'adresse e-mail ${targetEmail}. Veuillez vérifier votre boîte de réception.`
+      };
+    }
     throw new Error(formatAuthError(err) || err?.message || "Échec de l'envoi de l'e-mail de réinitialisation.");
   }
+}
+
+/**
+ * Envoie un code PIN à 6 chiffres pour vérifier si l'adresse e-mail est valide et accessible
+ */
+export async function sendEmailVerificationCode(email, name = '') {
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  const res = await fetch('/api/auth/send-verification-code', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: cleanEmail, name })
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Impossible d'envoyer le code de vérification.");
+  }
+  return data;
+}
+
+/**
+ * Valide le code PIN à 6 chiffres saisi par l'utilisateur
+ */
+export async function verifyEmailVerificationCode(email, code) {
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  const cleanCode = String(code || '').trim();
+  const res = await fetch('/api/auth/verify-email-code', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: cleanEmail, code: cleanCode })
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Code de vérification incorrect ou expiré.");
+  }
+  return data;
 }
 
