@@ -942,18 +942,43 @@ function buildNavigation() {
 buildNavigation();
 
 function updateNavBadges() {
+  const notifs = typeof getApplicableNotifications === "function" ? getApplicableNotifications() : [];
+  const unreadNotifs = notifs.filter(n => !n.read);
+
   ALL_MODULES.forEach(k => {
     const badge = document.getElementById("navBadge_" + k);
     if (badge) {
-      const count = list(k).filter(x => !x.archived).length;
-      if (count > 0) {
-        badge.textContent = count;
+      // Compter les alertes/notifications non lues spécifiques à ce module
+      const unreadCount = unreadNotifs.filter(n => {
+        if (n.docType === k || n.type === k) return true;
+        if (k === "proformas" && (n.proformaId || n.docType === "proforma")) return true;
+        if (k === "factures" && (n.factureId || n.docType === "facture")) return true;
+        if (k === "reservations" && (n.reservationId || n.docType === "reservation")) return true;
+        return false;
+      }).length;
+
+      if (unreadCount > 0) {
+        badge.textContent = unreadCount > 99 ? "99+" : String(unreadCount);
         badge.style.display = "inline-block";
       } else {
         badge.style.display = "none";
+        badge.textContent = "0";
       }
     }
   });
+
+  const resBadge = document.getElementById("navBadge_reservations");
+  if (resBadge) {
+    const unreadRes = unreadNotifs.filter(n => n.reservationId || n.docType === "reservation" || n.type === "reservations").length;
+    if (unreadRes > 0) {
+      resBadge.textContent = unreadRes > 99 ? "99+" : String(unreadRes);
+      resBadge.style.display = "inline-block";
+    } else {
+      resBadge.style.display = "none";
+      resBadge.textContent = "0";
+    }
+  }
+
   if (typeof updateNotificationBadge === "function") {
     updateNotificationBadge();
   }
@@ -1325,6 +1350,9 @@ function openNotificationDropdown() {
     markAllNotificationsRead(unreadNotifs).catch(e => console.warn("Erreur auto-read notifications:", e));
   }
 
+  // Mettre à jour immédiatement les badges du menu latéral pour qu'ils disparaissent aussi
+  updateNavBadges();
+
   renderNotificationDropdown();
 }
 
@@ -1591,6 +1619,15 @@ async function handleMarkAllRead() {
 function handleNotificationClick(notifId) {
   const notif = (state.notifications || []).find(n => n.id === notifId);
   if (!notif) return;
+
+  // Marquer immédiatement la notification comme lue et effacer les badges correspondants
+  if (!notif.read) {
+    notif.read = true;
+    save();
+    markNotificationRead(notifId).catch(() => {});
+    updateNotificationBadge();
+    updateNavBadges();
+  }
 
   // 1. Facture officielle liée
   if (notif.factureId) {
@@ -3084,6 +3121,26 @@ function go(k) {
   }
   current = k;
   location.hash = k;
+
+  // Marquer comme lues les notifications liées à ce module et effacer le badge
+  try {
+    const notifs = typeof getApplicableNotifications === "function" ? getApplicableNotifications() : [];
+    const unreadForModule = notifs.filter(n => !n.read && (
+      n.docType === k ||
+      n.type === k ||
+      (k === 'proformas' && (n.proformaId || n.docType === 'proforma')) ||
+      (k === 'factures' && (n.factureId || n.docType === 'facture')) ||
+      (k === 'reservations' && (n.reservationId || n.docType === 'reservation'))
+    ));
+    if (unreadForModule.length > 0) {
+      unreadForModule.forEach(n => { n.read = true; });
+      save();
+      markAllNotificationsRead(unreadForModule).catch(() => {});
+      updateNavBadges();
+      updateNotificationBadge();
+    }
+  } catch (e) {}
+
   render();
 }
 
