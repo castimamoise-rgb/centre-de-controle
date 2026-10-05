@@ -571,7 +571,10 @@ const SCHEMAS = {
     ["method", "Mode de règlement", "select:MonCash|Cash|Virement|Chèque|Autre"],
     ["status", "Statut", "select:Reçu|En attente|Validé|Remboursé|Archivé"],
     ["reference", "N° Reçu / Référence", "text"],
-    ["facture", "Facture liée (optionnel)", "text"],
+    ["ID_Facture", "N° Facture liée (ID_Facture)", "text"],
+    ["ID_Proforma", "N° Proforma liée (ID_Proforma)", "text"],
+    ["ID_Reservation", "N° Réservation liée (ID_Reservation)", "text"],
+    ["ID_Paiement", "N° Paiement (ID_Paiement)", "text"],
     ["abonnement", "Abonnement lié (optionnel)", "text"],
     ["notes", "Notes", "textarea"]
   ],
@@ -585,6 +588,10 @@ const SCHEMAS = {
     ["method", "Mode", "select:MonCash|Cash|Virement|Autre"],
     ["status", "Statut", "select:Reçu|À recevoir|Remboursé"],
     ["reference", "Référence", "text"],
+    ["ID_Facture", "N° Facture liée (ID_Facture)", "text"],
+    ["ID_Proforma", "N° Proforma liée (ID_Proforma)", "text"],
+    ["ID_Reservation", "N° Réservation liée (ID_Reservation)", "text"],
+    ["ID_Paiement", "N° Paiement (ID_Paiement)", "text"],
     ["notes", "Notes", "textarea"]
   ],
   reservations: [
@@ -602,6 +609,10 @@ const SCHEMAS = {
     ["vehicle", "Véhicule", "text"],
     ["demandeProforma", "Demander un devis Proforma", "select:Oui|Non"],
     ["status", "Statut", "select:À confirmer|Confirmée|En cours|Effectuée|Annulée|Archivée"],
+    ["ID_Reservation", "N° Réservation (ID_Reservation)", "text"],
+    ["ID_Proforma", "N° Proforma liée (ID_Proforma)", "text"],
+    ["ID_Facture", "N° Facture liée (ID_Facture)", "text"],
+    ["ID_Paiement", "N° Paiement lié (ID_Paiement)", "text"],
     ["notes", "Notes", "textarea"]
   ],
   bookings: [
@@ -616,6 +627,10 @@ const SCHEMAS = {
     ["price", "Prix HTG", "number"],
     ["payment", "Paiement", "select:En attente|Partiel|Payé"],
     ["status", "Statut", "select:À confirmer|Confirmée|Effectuée|Annulée"],
+    ["ID_Reservation", "N° Réservation (ID_Reservation)", "text"],
+    ["ID_Proforma", "N° Proforma liée (ID_Proforma)", "text"],
+    ["ID_Facture", "N° Facture liée (ID_Facture)", "text"],
+    ["ID_Paiement", "N° Paiement lié (ID_Paiement)", "text"],
     ["notes", "Notes", "textarea"]
   ],
   finances: [
@@ -644,6 +659,10 @@ const SCHEMAS = {
     ["amount", "Montant HTG", "number"],
     ["validity", "Validité", "text"],
     ["status", "Statut", "select:Brouillon|Envoyée|Acceptée|Refusée|Archivée"],
+    ["ID_Reservation", "N° Réservation liée (ID_Reservation)", "text"],
+    ["ID_Proforma", "N° Proforma (ID_Proforma)", "text"],
+    ["ID_Facture", "N° Facture liée (ID_Facture)", "text"],
+    ["ID_Paiement", "N° Paiement lié (ID_Paiement)", "text"],
     ["notes", "Notes", "textarea"]
   ],
   quotes: [
@@ -657,6 +676,10 @@ const SCHEMAS = {
     ["amount", "Montant HTG", "number"],
     ["validity", "Validité", "text"],
     ["status", "Statut", "select:Brouillon|Envoyée|Acceptée|Refusée"],
+    ["ID_Reservation", "N° Réservation liée (ID_Reservation)", "text"],
+    ["ID_Proforma", "N° Proforma (ID_Proforma)", "text"],
+    ["ID_Facture", "N° Facture liée (ID_Facture)", "text"],
+    ["ID_Paiement", "N° Paiement lié (ID_Paiement)", "text"],
     ["notes", "Notes", "textarea"]
   ],
   factures: [
@@ -665,10 +688,13 @@ const SCHEMAS = {
     ["email", "Email du Client *", "email"],
     ["address", "Adresse complète du Client *", "text"],
     ["date", "Date", "date"],
-    ["proforma", "N° Proforma lié", "text"],
     ["amount", "Montant HTG", "number"],
     ["status", "Statut", "select:Brouillon|Envoyée|Payée|Partielle|Annulée|Archivée"],
     ["due", "Échéance", "date"],
+    ["ID_Reservation", "N° Réservation liée (ID_Reservation)", "text"],
+    ["ID_Proforma", "N° Proforma liée (ID_Proforma)", "text"],
+    ["ID_Facture", "N° Facture (ID_Facture)", "text"],
+    ["ID_Paiement", "N° Paiement / Reçu lié (ID_Paiement)", "text"],
     ["notes", "Notes", "textarea"]
   ],
   invoices: [
@@ -677,10 +703,13 @@ const SCHEMAS = {
     ["email", "Email du Client *", "email"],
     ["address", "Adresse complète du Client *", "text"],
     ["date", "Date", "date"],
-    ["proforma", "N° Proforma lié", "text"],
     ["amount", "Montant HTG", "number"],
     ["status", "Statut", "select:Brouillon|Envoyée|Payée|Partielle|Annulée"],
     ["due", "Échéance", "date"],
+    ["ID_Reservation", "N° Réservation liée (ID_Reservation)", "text"],
+    ["ID_Proforma", "N° Proforma liée (ID_Proforma)", "text"],
+    ["ID_Facture", "N° Facture (ID_Facture)", "text"],
+    ["ID_Paiement", "N° Paiement / Reçu lié (ID_Paiement)", "text"],
     ["notes", "Notes", "textarea"]
   ],
   prospects: [
@@ -5248,7 +5277,18 @@ function openForm(key, index = -1) {
       <button class="close" onclick="closeModal()">×</button>
     </div>
     <form id="dataForm" class="form-grid">
-      ${fullSchema.map(([id, label, type]) => fieldHTMLLinked(id, label, type, existing[id] || "", canon)).join("")}
+      ${fullSchema.map(([id, label, type]) => {
+        let defaultVal = existing[id] || "";
+        if (!defaultVal) {
+          if (id === "ID_Reservation") defaultVal = existing.ID_Reservation || existing.reservationId || existing.code || (canon === "reservations" ? (existing.id || "") : "");
+          else if (id === "ID_Proforma") defaultVal = existing.ID_Proforma || existing.proforma || existing.proformaId || existing.proformaGenerated || (canon === "proformas" ? (existing.number || existing.id || "") : "");
+          else if (id === "ID_Facture") defaultVal = existing.ID_Facture || existing.facture || existing.factureId || existing.factureGenerated || (canon === "factures" ? (existing.number || existing.id || "") : "");
+          else if (id === "ID_Paiement") defaultVal = existing.ID_Paiement || existing.paiementId || existing.payId || existing.paymentId || (canon === "paiements" ? (existing.id || existing.number || "") : "");
+          else if (id === "phone") defaultVal = existing.phone || existing.telephone || "";
+          else if (id === "address") defaultVal = existing.address || existing.adresse || "";
+        }
+        return fieldHTMLLinked(id, label, type, defaultVal, canon);
+      }).join("")}
       <div class="full form-actions">
         <button type="button" class="secondary" onclick="closeModal()">Annuler</button>
         <button class="primary" id="dataFormSubmitBtn" type="submit">💾 Enregistrer dans le Cloud</button>
@@ -5300,6 +5340,34 @@ function openForm(key, index = -1) {
       // Synchroniser les alias de champs pour compatibilité universelle
       obj.telephone = obj.phone;
       obj.adresse = obj.address;
+
+      // Synchroniser les identifiants croisés universels
+      if (obj.ID_Reservation) {
+        obj.reservationId = obj.reservationId || obj.ID_Reservation;
+      } else if (obj.reservationId) {
+        obj.ID_Reservation = obj.reservationId;
+      }
+
+      if (obj.ID_Proforma) {
+        obj.proforma = obj.proforma || obj.ID_Proforma;
+        obj.proformaId = obj.proformaId || obj.ID_Proforma;
+      } else if (obj.proforma || obj.proformaId) {
+        obj.ID_Proforma = obj.proforma || obj.proformaId;
+      }
+
+      if (obj.ID_Facture) {
+        obj.facture = obj.facture || obj.ID_Facture;
+        obj.factureId = obj.factureId || obj.ID_Facture;
+      } else if (obj.facture || obj.factureId) {
+        obj.ID_Facture = obj.facture || obj.factureId;
+      }
+
+      if (obj.ID_Paiement) {
+        obj.paiementId = obj.paiementId || obj.ID_Paiement;
+        obj.payId = obj.payId || obj.ID_Paiement;
+      } else if (obj.paiementId || obj.payId) {
+        obj.ID_Paiement = obj.paiementId || obj.payId;
+      }
     }
 
     const previousItem = index >= 0 ? { ...list(canon)[index] } : null;
@@ -5310,6 +5378,14 @@ function openForm(key, index = -1) {
       if (old.createdAt) obj.createdAt = old.createdAt;
       if (old.clientId) obj.clientId = old.clientId;
       if (old.chauffeurId) obj.chauffeurId = old.chauffeurId;
+      if (canon === "reservations") obj.ID_Reservation = obj.ID_Reservation || old.ID_Reservation || old.id || old.code;
+      if (canon === "proformas") obj.ID_Proforma = obj.ID_Proforma || old.ID_Proforma || old.number || old.id;
+      if (canon === "factures") obj.ID_Facture = obj.ID_Facture || old.ID_Facture || old.number || old.id;
+      if (canon === "paiements") {
+        obj.ID_Paiement = obj.ID_Paiement || old.ID_Paiement || old.id || old.number;
+        obj.facture = obj.facture || obj.ID_Facture || old.facture || old.factureId;
+        obj.factureId = obj.factureId || obj.facture || old.factureId;
+      }
       const rawIdx = rawList(canon).findIndex(x => (old.id && x.id === old.id) || (old.number && x.number === old.number));
       if (rawIdx >= 0) {
         rawList(canon)[rawIdx] = obj;
@@ -5322,17 +5398,27 @@ function openForm(key, index = -1) {
       else if (canon === "abonnements") obj.id = nextNumber("AB", "abonnements");
       else if (canon === "chauffeurs") obj.id = nextNumber("CH", "chauffeurs");
       else if (canon === "vehicules") obj.id = nextNumber("VH", "vehicules");
-      else if (canon === "reservations") obj.id = nextNumber("RES", "reservations");
+      else if (canon === "reservations") {
+        obj.id = nextNumber("RES", "reservations");
+        obj.ID_Reservation = obj.ID_Reservation || obj.id;
+      }
       else if (canon === "plannings") obj.id = nextNumber("SRV", "plannings");
-      else if (canon === "paiements") obj.id = nextNumber("PAY", "paiements");
+      else if (canon === "paiements") {
+        obj.id = nextNumber("PAY", "paiements");
+        obj.ID_Paiement = obj.ID_Paiement || obj.id;
+        obj.facture = obj.facture || obj.ID_Facture || obj.factureId || "";
+        obj.factureId = obj.factureId || obj.facture || obj.ID_Facture || "";
+      }
       else if (canon === "finances") obj.id = nextNumber("DEP", "finances");
       else if (canon === "proformas") {
         obj.number = obj.number || nextProformaNumber();
         obj.id = obj.number;
+        obj.ID_Proforma = obj.ID_Proforma || obj.number;
       }
       else if (canon === "factures") {
         obj.number = obj.number || nextFactureNumber();
         obj.id = obj.number;
+        obj.ID_Facture = obj.ID_Facture || obj.number;
       }
       else if (canon === "prospects") obj.id = nextNumber("PR", "prospects");
       else if (canon === "utilisateurs") {
@@ -5942,11 +6028,127 @@ function viewRow(key, index) {
   if (!o) return;
 
   const schema = SCHEMAS[canon] || [];
-  const fields = schema.map(x => `
-    <div class="info">
-      <b>${x[1]}</b><br>${esc(o[x[0]] || "—")}
-    </div>
-  `).join("");
+  const fields = schema.map(x => {
+    const k = x[0];
+    let val = o[k];
+    if (val === undefined || val === null || val === "") {
+      if (k === "facture" || k === "ID_Facture") val = o.facture || o.factureId || o.ID_Facture || o.factureGenerated;
+      else if (k === "proforma" || k === "ID_Proforma") val = o.proforma || o.proformaId || o.ID_Proforma || o.proformaGenerated;
+      else if (k === "reservation" || k === "ID_Reservation") val = o.reservationId || o.ID_Reservation || o.code;
+      else if (k === "ID_Paiement") val = o.paiementId || o.payId || o.ID_Paiement;
+      else if (k === "phone") val = o.telephone || o.phone;
+      else if (k === "address") val = o.adresse || o.address;
+    }
+    return `
+      <div class="info">
+        <b>${x[1]}</b><br>${esc(val || "—")}
+      </div>
+    `;
+  }).join("");
+
+  // Section Documents Associés & Traçabilité croisée
+  let linkedSectionHTML = "";
+  if (["reservations", "bookings", "proformas", "quotes", "factures", "invoices", "paiements", "payments"].includes(canon)) {
+    let resId = o.ID_Reservation || o.reservationId || (["reservations", "bookings"].includes(canon) ? (o.code || o.id) : null);
+    let proId = o.ID_Proforma || o.proforma || o.proformaId || o.proformaGenerated || (["proformas", "quotes"].includes(canon) ? (o.number || o.id) : null);
+    let facId = o.ID_Facture || o.facture || o.factureId || o.factureGenerated || (["factures", "invoices"].includes(canon) ? (o.number || o.id) : null);
+    let payId = o.ID_Paiement || o.paiementId || o.payId || o.paymentId || (["paiements", "payments"].includes(canon) ? (o.number || o.id) : null);
+
+    // Résolution croisée intelligente si l'un des maillons manque
+    if (!facId && canon === "paiements" && (o.facture || o.factureId)) {
+      facId = o.facture || o.factureId;
+    }
+    if (facId) {
+      const lf = (list("factures") || []).find(f => f.id === facId || f.number === facId);
+      if (lf) {
+        if (!resId) resId = lf.ID_Reservation || lf.reservationId;
+        if (!proId) proId = lf.ID_Proforma || lf.proforma || lf.proformaId;
+        if (!payId) payId = lf.ID_Paiement || lf.paiementId || lf.payId;
+      }
+    }
+    if (!payId && facId) {
+      const lp = (list("paiements") || []).find(p => p.factureId === facId || p.facture === facId || p.ID_Facture === facId);
+      if (lp) payId = lp.id || lp.number || lp.ID_Paiement;
+    }
+    if (proId) {
+      const lq = (list("proformas") || []).find(p => p.id === proId || p.number === proId);
+      if (lq) {
+        if (!resId) resId = lq.ID_Reservation || lq.reservationId;
+        if (!facId) facId = lq.ID_Facture || lq.factureGenerated;
+      }
+    }
+    if (resId) {
+      const lr = (list("reservations") || []).find(r => r.id === resId || r.code === resId);
+      if (lr) {
+        if (!proId) proId = lr.ID_Proforma || lr.proformaGenerated;
+        if (!facId) facId = lr.ID_Facture || lr.factureGenerated;
+        if (!payId) payId = lr.ID_Paiement || lr.paiementId;
+      }
+    }
+
+    const docCards = [
+      { col: "reservations", id: resId, label: "Réservation", icon: "🎫" },
+      { col: "proformas", id: proId, label: "Devis Proforma", icon: "📄" },
+      { col: "factures", id: facId, label: "Facture", icon: "🧾" },
+      { col: "paiements", id: payId, label: "Reçu de Paiement", icon: "💰" }
+    ];
+
+    const cardsHTML = docCards.map(d => {
+      const isCur = canonicalCol(d.col) === canon;
+      if (isCur) {
+        return `
+          <div style="background:#eff6ff;border:1.5px solid #3b82f6;border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:3px">
+            <div style="font-size:11px;font-weight:700;color:#1d4ed8;display:flex;align-items:center;gap:4px">
+              <span>${d.icon}</span> <span>${d.label} (Fiche actuelle)</span>
+            </div>
+            <div style="font-size:14px;font-weight:800;color:#092e70">${esc(d.id || o.number || o.id || '—')}</div>
+            <small style="font-size:11px;color:#2563eb">Document ouvert actuellement</small>
+          </div>
+        `;
+      }
+
+      if (d.id) {
+        const found = (list(d.col) || []).find(item => 
+          String(item.id || '').trim().toLowerCase() === String(d.id).trim().toLowerCase() ||
+          String(item.number || '').trim().toLowerCase() === String(d.id).trim().toLowerCase() ||
+          String(item.code || '').trim().toLowerCase() === String(d.id).trim().toLowerCase()
+        );
+        const st = found ? (found.status || found.statut || (found.amount ? money(found.amount) : "Disponible")) : "Disponible";
+        return `
+          <button type="button" onclick="openLinkedDocument('${d.col}', '${esc(d.id)}')" style="background:#ffffff;border:1.5px solid #cbd5e1;border-radius:10px;padding:12px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:all 0.15s;box-shadow:0 1px 3px rgba(0,0,0,0.04)" onmouseover="this.style.borderColor='#082b70';this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='#cbd5e1';this.style.transform='none'" title="Ouvrir ${d.id}">
+            <div style="font-size:11px;font-weight:700;color:#475569;display:flex;align-items:center;justify-content:space-between">
+              <span>${d.icon} ${d.label}</span>
+              <span style="font-size:11px;color:#0284c7;font-weight:700">Ouvrir ›</span>
+            </div>
+            <div style="font-size:14px;font-weight:800;color:#082b70">${esc(d.id)}</div>
+            <small style="font-size:11px;color:#16a34a;font-weight:600">${esc(st)}</small>
+          </button>
+        `;
+      }
+
+      return `
+        <div style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:3px;color:#94a3b8">
+          <div style="font-size:11px;font-weight:600;color:#64748b;display:flex;align-items:center;gap:4px">
+            <span>${d.icon}</span> <span>${d.label}</span>
+          </div>
+          <div style="font-size:13px;font-weight:700;color:#94a3b8">—</div>
+          <small style="font-size:11px;font-style:italic">Non rattaché pour l'instant</small>
+        </div>
+      `;
+    }).join("");
+
+    linkedSectionHTML = `
+      <div style="margin-top:16px;padding:16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px">
+        <div style="font-weight:700;font-size:13px;color:#0f172a;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
+          <span style="display:inline-flex;align-items:center;gap:6px">🔗 <b>Documents associés & Chaîne de Traçabilité</b></span>
+          <small style="color:#64748b;font-weight:500">Cliquez sur un document pour naviguer directement</small>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:10px">
+          ${cardsHTML}
+        </div>
+      </div>
+    `;
+  }
 
   const roles = normalizeRoles(currentUserRoles);
   const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
@@ -6026,6 +6228,7 @@ function viewRow(key, index) {
       <button class="close" onclick="closeModal()">×</button>
     </div>
     <div class="form-grid">${fields}</div>
+    ${linkedSectionHTML}
     <div class="form-actions" style="flex-wrap:wrap">
       ${extraButtons}
       ${canEdit ? `<button class="secondary" onclick="openForm('${canon}',${index})">Modifier</button>` : ""}
@@ -6035,6 +6238,23 @@ function viewRow(key, index) {
   `;
   document.getElementById("modalBackdrop").classList.add("open");
 }
+
+function openLinkedDocument(col, docId) {
+  if (!col || !docId) return;
+  const canon = canonicalCol(col);
+  const items = list(canon);
+  const idx = items.findIndex(x => 
+    String(x.id || '').trim().toLowerCase() === String(docId).trim().toLowerCase() ||
+    String(x.number || '').trim().toLowerCase() === String(docId).trim().toLowerCase() ||
+    String(x.code || '').trim().toLowerCase() === String(docId).trim().toLowerCase()
+  );
+  if (idx >= 0) {
+    viewRow(canon, idx);
+  } else {
+    showToast(`Document ${docId} introuvable dans ${MODULES[canon]?.label || canon}.`, "info");
+  }
+}
+window.openLinkedDocument = openLinkedDocument;
 
 function closeModal() {
   document.getElementById("modalBackdrop").classList.remove("open");
@@ -8043,6 +8263,8 @@ async function createProformaFromReservation(index) {
     r.price = proformaAmount;
   }
 
+  const resId = r.id || r.code || "";
+  const address = r.address || r.adresse || "";
   const newQuote = {
     id: quoteNumber,
     number: quoteNumber,
@@ -8050,13 +8272,20 @@ async function createProformaFromReservation(index) {
     clientId: targetUid,
     clientUid: targetUid,
     email: clientEmail,
+    phone: phone,
     telephone: phone,
+    address: address,
+    adresse: address,
     date: today(),
     amount: proformaAmount,
     status: "Envoyée",
     validUntil: today(),
     archived: false,
-    reservationId: r.id || r.code || "",
+    reservationId: resId,
+    ID_Reservation: resId,
+    ID_Proforma: quoteNumber,
+    ID_Facture: r.ID_Facture || r.factureGenerated || "",
+    ID_Paiement: r.ID_Paiement || "",
     notes: `Proforma générée automatiquement depuis la réservation #${r.code || r.id || ''}${routeDesc ? ` (${routeDesc})` : ''}`
   };
 
@@ -8064,6 +8293,7 @@ async function createProformaFromReservation(index) {
     list("proformas").push(newQuote);
     r.demandeProforma = false;
     r.proformaGenerated = quoteNumber;
+    r.ID_Proforma = quoteNumber;
     save();
     await saveDocumentToFirestore("proformas", newQuote);
     await saveDocumentToFirestore("reservations", r);
@@ -8119,7 +8349,7 @@ async function createInvoiceFromQuote(index) {
   const q = list("proformas")[index];
   if (!q) return;
 
-  const existing = list("factures").find(x => x.proforma === q.number || x.proforma === q.id);
+  const existing = list("factures").find(x => x.proforma === q.number || x.proforma === q.id || x.ID_Proforma === (q.number || q.id));
   if (existing) {
     go("factures");
     showToast("Une facture existe déjà pour cette proforma.");
@@ -8128,19 +8358,30 @@ async function createInvoiceFromQuote(index) {
 
   const invoiceNumber = nextFactureNumber();
   const paymentMethodLabel = q.moyenPaiement || "Non spécifié";
+  const linkedResId = q.ID_Reservation || q.reservationId || "";
+  const linkedProId = q.number || q.id || q.ID_Proforma || "";
   const newInvoice = {
     id: invoiceNumber,
     number: invoiceNumber,
     client: q.client || "",
+    phone: q.phone || q.telephone || "",
+    telephone: q.phone || q.telephone || "",
+    address: q.address || q.adresse || "",
+    adresse: q.address || q.adresse || "",
     clientId: q.clientId || q.clientUid || "",
     clientUid: q.clientUid || q.clientId || "",
     email: q.email || "",
     date: today(),
-    proforma: q.number || q.id,
+    proforma: linkedProId,
+    proformaId: linkedProId,
+    ID_Proforma: linkedProId,
+    reservationId: linkedResId,
+    ID_Reservation: linkedResId,
+    ID_Facture: invoiceNumber,
+    ID_Paiement: q.ID_Paiement || "",
     amount: q.amount || 0,
     service: q.service || "Transport & Services LAPERLE TOUR HT",
     route: q.route || "",
-    reservationId: q.reservationId || "",
     paymentMethod: paymentMethodLabel,
     paymentModality: q.modalitePaiement || "Paiement Intégral",
     paymentReference: q.referencePaiement || "",
@@ -8155,16 +8396,18 @@ async function createInvoiceFromQuote(index) {
 
     // Mettre à jour la proforma d'origine
     q.factureGenerated = invoiceNumber;
+    q.ID_Facture = invoiceNumber;
     q.status = "Facturée";
     save();
     await saveDocumentToFirestore("factures", newInvoice);
     await saveDocumentToFirestore("proformas", q);
 
     // Mettre à jour la réservation liée si existante
-    if (q.reservationId) {
-      const res = (list("reservations") || []).find(r => r.id === q.reservationId || r.code === q.reservationId);
+    if (linkedResId) {
+      const res = (list("reservations") || []).find(r => r.id === linkedResId || r.code === linkedResId);
       if (res) {
         res.factureGenerated = invoiceNumber;
+        res.ID_Facture = invoiceNumber;
         res.status = "Facturée";
         save();
         await saveDocumentToFirestore("reservations", res);
@@ -8821,27 +9064,47 @@ async function handleValidatePaymentFromInvoiceId(factureId, notifId) {
   const targetUid = f.clientId || f.clientUid || f.uid || "";
   const clientEmail = (f.email || "").toLowerCase().trim();
 
+  // Coordonnées client complètes (Téléphone & Adresse)
+  const clientObj = (list("clients") || []).find(c => (targetUid && (c.id === targetUid || c.clientId === targetUid)) || (clientEmail && c.email && c.email.toLowerCase() === clientEmail)) || {};
+  const userObj = (state.utilisateurs || []).find(u => (targetUid && (u.uid === targetUid || u.id === targetUid)) || (clientEmail && u.email && u.email.toLowerCase() === clientEmail)) || {};
+  const clientPhone = f.phone || f.telephone || clientObj.phone || clientObj.telephone || userObj.telephone || userObj.phone || "";
+  const clientAddress = f.address || f.adresse || clientObj.address || clientObj.zone || userObj.adresse || userObj.address || "";
+
+  const resId = f.ID_Reservation || f.reservationId || "";
+  const proId = f.ID_Proforma || f.proforma || f.proformaId || "";
+
   // 1. Passer la facture à "Payée"
   f.status = "Payée";
   f.paidAt = new Date().toISOString();
   f.updatedAt = new Date().toISOString();
-  save();
-  await saveDocumentToFirestore("factures", f);
+  if (clientPhone && !f.phone) { f.phone = clientPhone; f.telephone = clientPhone; }
+  if (clientAddress && !f.address) { f.address = clientAddress; f.adresse = clientAddress; }
 
   // 2. Mettre à jour la ligne dans la collection paiements si existante ou en créer une
-  const existingPay = (list("paiements") || []).find(p => p.factureId === fNum);
+  const existingPay = (list("paiements") || []).find(p => p.factureId === fNum || p.facture === fNum || p.ID_Facture === fNum);
+  let effectivePayId = existingPay ? (existingPay.id || existingPay.number) : null;
+
   if (existingPay) {
     existingPay.status = "Reçu";
     existingPay.validatedAt = new Date().toISOString();
+    existingPay.facture = fNum;
+    existingPay.factureId = fNum;
+    existingPay.ID_Facture = fNum;
+    if (resId) { existingPay.ID_Reservation = resId; existingPay.reservationId = resId; }
+    if (proId) { existingPay.ID_Proforma = proId; existingPay.proforma = proId; existingPay.proformaId = proId; }
+    existingPay.ID_Paiement = existingPay.id || existingPay.number;
     if (!existingPay.clientId && targetUid) existingPay.clientId = targetUid;
     if (!existingPay.clientUid && targetUid) existingPay.clientUid = targetUid;
     if (!existingPay.uid && targetUid) existingPay.uid = targetUid;
     if (!existingPay.email && clientEmail) existingPay.email = clientEmail;
+    if (!existingPay.phone && clientPhone) { existingPay.phone = clientPhone; existingPay.telephone = clientPhone; }
+    if (!existingPay.address && clientAddress) { existingPay.address = clientAddress; existingPay.adresse = clientAddress; }
     save();
     await saveDocumentToFirestore("paiements", existingPay);
   } else {
     try {
       const payId = nextNumber("PAY", "paiements");
+      effectivePayId = payId;
       const payEntry = {
         id: payId,
         clientId: targetUid,
@@ -8849,7 +9112,20 @@ async function handleValidatePaymentFromInvoiceId(factureId, notifId) {
         uid: targetUid,
         email: clientEmail,
         client: clientName,
+        phone: clientPhone,
+        telephone: clientPhone,
+        address: clientAddress,
+        adresse: clientAddress,
+        facture: fNum,
         factureId: fNum,
+        ID_Facture: fNum,
+        ID_Proforma: proId,
+        proforma: proId,
+        proformaId: proId,
+        ID_Reservation: resId,
+        reservationId: resId,
+        ID_Paiement: payId,
+        paiementId: payId,
         date: today(),
         amount: amount,
         method: f.paymentMethod || "MonCash",
@@ -8865,13 +9141,29 @@ async function handleValidatePaymentFromInvoiceId(factureId, notifId) {
     } catch (e) {}
   }
 
+  // Lier le paiement dans la facture
+  if (effectivePayId) {
+    f.ID_Paiement = effectivePayId;
+    f.paiementId = effectivePayId;
+    f.payId = effectivePayId;
+  }
+  save();
+  await saveDocumentToFirestore("factures", f);
+
   // 3. Mettre à jour la réservation liée si existante
-  if (f.reservationId) {
-    const res = (list("reservations") || []).find(r => r.id === f.reservationId || r.code === f.reservationId);
+  const effectiveResId = resId || f.reservationId;
+  if (effectiveResId) {
+    const res = (list("reservations") || []).find(r => r.id === effectiveResId || r.code === effectiveResId);
     if (res) {
       res.payment = "Payé";
       res.status = "Confirmée";
       res.statut = "Confirmée";
+      res.factureGenerated = fNum;
+      res.ID_Facture = fNum;
+      if (effectivePayId) {
+        res.ID_Paiement = effectivePayId;
+        res.paiementId = effectivePayId;
+      }
       save();
       await saveDocumentToFirestore("reservations", res);
     }
@@ -8996,10 +9288,12 @@ function printDocument(type, index) {
       <b>DOCUMENT</b><br>
       N° ${esc(o.number || o.id || o.code || '—')}<br>
       Date : ${esc(o.date || today())}
-      ${isQuote ? "" : (o.proforma ? "<br>N° Proforma lié : " + esc(o.proforma) : "")}
-      ${o.reservationId ? "<br>Réf. Réservation : " + esc(o.reservationId) : ""}
-      ${isPayment && o.method ? "<br>Mode de règlement : " + esc(o.method) : ""}
-      ${isPayment && o.reference ? "<br>Référence reçu : " + esc(o.reference) : ""}
+      ${(o.ID_Reservation || o.reservationId) ? `<br><b>Réf. Réservation :</b> ${esc(o.ID_Reservation || o.reservationId)}` : ""}
+      ${(!isQuote && (o.ID_Proforma || o.proforma || o.proformaId)) ? `<br><b>N° Devis Proforma :</b> ${esc(o.ID_Proforma || o.proforma || o.proformaId)}` : ""}
+      ${(!isInvoice && (o.ID_Facture || o.facture || o.factureId)) ? `<br><b>N° Facture liée :</b> ${esc(o.ID_Facture || o.facture || o.factureId)}` : ""}
+      ${(!isPayment && (o.ID_Paiement || o.paiementId || o.payId)) ? `<br><b>N° Reçu de Paiement :</b> ${esc(o.ID_Paiement || o.paiementId || o.payId)}` : ""}
+      ${isPayment && o.method ? `<br><b>Mode de règlement :</b> ${esc(o.method)}` : ""}
+      ${isPayment && o.reference ? `<br><b>Réf. Transaction / Reçu :</b> ${esc(o.reference)}` : ""}
     </div>
   </div>
   <div class="box" style="margin-top:15px">
