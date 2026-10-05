@@ -486,6 +486,24 @@ app.post('/api/proforma-requests', async (req, res) => {
   }
 });
 
+// Upload direct et exact du logo officiel (sans aucune retouche ni compression déformante)
+app.post('/api/upload-logo', express.json({ limit: '20mb' }), (req, res) => {
+  try {
+    const { dataUrl } = req.body || {};
+    if (!dataUrl || !dataUrl.includes('base64,')) {
+      return res.status(400).json({ error: 'Données image invalides (base64 requis).' });
+    }
+    const base64Data = dataUrl.split(';base64,').pop();
+    const buffer = Buffer.from(base64Data, 'base64');
+    const targetPath = path.join(__dirname, 'logo-laperle.jpg');
+    fs.writeFileSync(targetPath, buffer);
+    return res.json({ success: true, message: 'Logo officiel remplacé avec succès et sans altération.' });
+  } catch (err) {
+    console.error('Erreur upload logo:', err?.message);
+    return res.status(500).json({ error: 'Impossible de sauvegarder le logo.' });
+  }
+});
+
 // Retired endpoints: credentials, fabricated profiles and client-supplied role changes are not accepted.
 app.post(['/api/auth/login', '/api/auth/google', '/api/auth/reset-users', '/api/auth/user/:uid/upgrade-client'], (_req, res) => res.sendStatus(410));
 // Vercel serves the frontend files from its static output. Keep this Express

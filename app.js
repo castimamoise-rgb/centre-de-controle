@@ -11499,5 +11499,36 @@ window.testFirebaseConnectionUI = testFirebaseConnectionUI;
 window.globalSearch = globalSearch;
 window.createInvoiceFromQuote = createInvoiceFromQuote;
 window.printDocument = printDocument;
+async function uploadExactLogoFile(event) {
+  const file = event?.target?.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const dataUrl = e.target.result;
+    try {
+      if (typeof showToast === 'function') showToast('Téléversement du logo officiel...');
+      const res = await fetch('/api/upload-logo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataUrl })
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (typeof showToast === 'function') showToast('✅ Logo officiel inséré sans aucune modification !');
+        const buster = '?t=' + Date.now();
+        document.querySelectorAll('img[src*="logo-laperle"]').forEach(img => {
+          img.src = 'logo-laperle.jpg' + buster;
+        });
+      } else {
+        if (typeof showToast === 'function') showToast('❌ ' + (json.error || 'Erreur'));
+      }
+    } catch (err) {
+      if (typeof showToast === 'function') showToast('❌ ' + err.message);
+    }
+  };
+  reader.readAsDataURL(file);
+}
+window.uploadExactLogoFile = uploadExactLogoFile;
+
 window.drawTable = drawTable;
 window.openUserRoleModal = openUserRoleModal;

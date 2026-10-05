@@ -399,8 +399,9 @@
 <div id="app" style="display:none;">
   <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
   <aside class="sidebar" id="sidebar">
-    <div class="side-brand">
-      <img src="logo-laperle.jpg" alt="LAPERLE TOUR HT">
+    <div class="side-brand" style="cursor:pointer;position:relative" title="Cliquez pour insérer votre logo officiel sans altération" onclick="document.getElementById('sideLogoUploadInput').click()">
+      <img src="logo-laperle.jpg" alt="LAPERLE TOUR HT" id="sidebarLogoImg">
+      <input type="file" id="sideLogoUploadInput" accept="image/*" style="display:none" onchange="uploadExactLogoFile(event)">
     </div>
     <nav id="mainNav"></nav>
     <div class="side-footer">
