@@ -5247,7 +5247,7 @@ function drawTable(key) {
                   if (x[0] === "passengers") {
                     return `<td><b>${esc(val || 1)}</b> <small style="color:#64748b">pass.</small></td>`;
                   }
-                  return `<td>${formatCell(val, x[2])}</td>`;
+                  return `<td>${formatCell(val, x[2], x[0], canon)}</td>`;
                 }).join("")}
                 <td class="action-cell">
                   ${canEdit ? (canon === "utilisateurs" ? (() => {
@@ -5371,8 +5371,98 @@ function drawTable(key) {
   `;
 }
 
-function formatCell(v, t) {
+function formatTraceableLink(v, fieldKey = "", canonContext = "") {
+  if (v === undefined || v === null || v === "") return null;
+  const s = String(v).trim();
+  if (!s || s === "—") return null;
+  const up = s.toUpperCase();
+
+  // 1. Détection Facture : préfixe FAC- ou champ facture / ID_Facture
+  if (up.startsWith("FAC-") || fieldKey === "ID_Facture" || (fieldKey === "facture" && canonContext === "paiements") || (fieldKey === "number" && canonContext === "factures")) {
+    return `<button type="button" 
+      class="traceable-badge badge-fac"
+      onclick="event.stopPropagation();openLinkedDocument('factures', '${esc(s)}')" 
+      title="Cliquer pour ouvrir la Facture ${esc(s)}"
+      style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;transition:all 0.15s ease;"
+      onmouseover="this.style.background='#dcfce7';this.style.borderColor='#86efac';this.style.transform='translateY(-1px)'"
+      onmouseout="this.style.background='#f0fdf4';this.style.borderColor='#bbf7d0';this.style.transform='translateY(0)'">
+      <span>🧾</span>
+      <span>${esc(s)}</span>
+      <span style="font-size:10px;opacity:0.8">↗</span>
+    </button>`;
+  }
+
+  // 2. Détection Devis Proforma : préfixe PRO- / PT- ou champ proforma / ID_Proforma
+  if (up.startsWith("PRO-") || up.startsWith("PT-") || fieldKey === "ID_Proforma" || fieldKey === "proforma" || (fieldKey === "number" && canonContext === "proformas")) {
+    return `<button type="button" 
+      class="traceable-badge badge-pro"
+      onclick="event.stopPropagation();openLinkedDocument('proformas', '${esc(s)}')" 
+      title="Cliquer pour ouvrir le Devis Proforma ${esc(s)}"
+      style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;transition:all 0.15s ease;"
+      onmouseover="this.style.background='#dbeafe';this.style.borderColor='#93c5fd';this.style.transform='translateY(-1px)'"
+      onmouseout="this.style.background='#eff6ff';this.style.borderColor='#bfdbfe';this.style.transform='translateY(0)'">
+      <span>📄</span>
+      <span>${esc(s)}</span>
+      <span style="font-size:10px;opacity:0.8">↗</span>
+    </button>`;
+  }
+
+  // 3. Détection Réservation : préfixe RES- ou champ ID_Reservation / reservationId
+  if (up.startsWith("RES-") || fieldKey === "ID_Reservation" || fieldKey === "reservationId" || (fieldKey === "id" && ["reservations", "bookings"].includes(canonContext))) {
+    return `<button type="button" 
+      class="traceable-badge badge-res"
+      onclick="event.stopPropagation();openLinkedDocument('reservations', '${esc(s)}')" 
+      title="Cliquer pour ouvrir la Réservation ${esc(s)}"
+      style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;transition:all 0.15s ease;"
+      onmouseover="this.style.background='#fde68a';this.style.borderColor='#f59e0b';this.style.transform='translateY(-1px)'"
+      onmouseout="this.style.background='#fef3c7';this.style.borderColor='#fde68a';this.style.transform='translateY(0)'">
+      <span>🎫</span>
+      <span>${esc(s)}</span>
+      <span style="font-size:10px;opacity:0.8">↗</span>
+    </button>`;
+  }
+
+  // 4. Détection Reçu de Paiement : préfixe PAY- ou champ ID_Paiement / paiementId
+  if (up.startsWith("PAY-") || fieldKey === "ID_Paiement" || fieldKey === "paiementId" || (fieldKey === "id" && ["paiements", "payments"].includes(canonContext))) {
+    return `<button type="button" 
+      class="traceable-badge badge-pay"
+      onclick="event.stopPropagation();openLinkedDocument('paiements', '${esc(s)}')" 
+      title="Cliquer pour ouvrir le Reçu de Paiement ${esc(s)}"
+      style="background:#fdf2f8;color:#9d174d;border:1px solid #fbcfe8;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;transition:all 0.15s ease;"
+      onmouseover="this.style.background='#fce7f3';this.style.borderColor='#f472b6';this.style.transform='translateY(-1px)'"
+      onmouseout="this.style.background='#fdf2f8';this.style.borderColor='#fbcfe8';this.style.transform='translateY(0)'">
+      <span>💰</span>
+      <span>${esc(s)}</span>
+      <span style="font-size:10px;opacity:0.8">↗</span>
+    </button>`;
+  }
+
+  // 5. Détection Client : préfixe CL- ou champ clientId
+  if (up.startsWith("CL-") || fieldKey === "clientId" || (fieldKey === "id" && canonContext === "clients")) {
+    return `<button type="button" 
+      class="traceable-badge badge-cl"
+      onclick="event.stopPropagation();openClientDossier('${esc(s)}')" 
+      title="Cliquer pour ouvrir le Dossier Client 360° ${esc(s)}"
+      style="background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;transition:all 0.15s ease;"
+      onmouseover="this.style.background='#dbeafe';this.style.borderColor='#93c5fd';this.style.transform='translateY(-1px)'"
+      onmouseout="this.style.background='#eff6ff';this.style.borderColor='#bfdbfe';this.style.transform='translateY(0)'">
+      <span>👤</span>
+      <span>${esc(s)}</span>
+      <span style="font-size:10px;opacity:0.8">↗</span>
+    </button>`;
+  }
+
+  return null;
+}
+window.formatTraceableLink = formatTraceableLink;
+
+function formatCell(v, t, fieldKey = "", canonContext = "") {
   if (v === undefined || v === null || v === "") return "—";
+
+  // Liens traçables universels pour tous les numéros de documents
+  const traceable = formatTraceableLink(v, fieldKey, canonContext);
+  if (traceable) return traceable;
+
   if (t === "roles" || Array.isArray(v)) {
     const list = Array.isArray(v) ? v : [v];
     return list.map(r => {
@@ -6202,9 +6292,11 @@ function viewRow(key, index) {
       else if (k === "phone") val = o.telephone || o.phone;
       else if (k === "address") val = o.adresse || o.address;
     }
+    const traceable = formatTraceableLink(val, k, canon);
+    const displayVal = traceable || esc(val || "—");
     return `
       <div class="info">
-        <b>${x[1]}</b><br>${esc(val || "—")}
+        <b>${x[1]}</b><br>${displayVal}
       </div>
     `;
   }).join("");
@@ -6545,7 +6637,7 @@ function openClientDossier(clientIdOrName) {
               <tbody>
                 ${clientReservations.map(r => `
                   <tr>
-                    <td><b>${esc(r.code || r.id)}</b></td>
+                    <td>${formatTraceableLink(r.code || r.id, 'id', 'reservations') || `<b>${esc(r.code || r.id)}</b>`}</td>
                     <td>${esc(r.date || '—')}</td>
                     <td>${esc(r.origin && r.destination ? r.origin + ' ➔ ' + r.destination : (r.route || '—'))}</td>
                     <td>${esc(r.passengers || 1)}</td>
@@ -6579,7 +6671,7 @@ function openClientDossier(clientIdOrName) {
                   const qIdx = list("proformas").indexOf(q);
                   return `
                     <tr>
-                      <td><b>${esc(q.number || q.id)}</b></td>
+                      <td>${formatTraceableLink(q.number || q.id, 'number', 'proformas') || `<b>${esc(q.number || q.id)}</b>`}</td>
                       <td>${esc(q.date || '—')}</td>
                       <td>${esc(q.route || q.service || '—')}</td>
                       <td><b>${money(q.amount || 0)}</b></td>
@@ -6610,16 +6702,17 @@ function openClientDossier(clientIdOrName) {
         ` : `
           <div style="overflow-x:auto">
             <table class="table" style="font-size:12px;margin:0">
-              <thead><tr><th>N° Facture</th><th>Date</th><th>Échéance</th><th>Montant</th><th>Statut</th><th>Action</th></tr></thead>
+              <thead><tr><th>N° Facture</th><th>Date</th><th>Échéance</th><th>Proforma liée</th><th>Montant</th><th>Statut</th><th>Action</th></tr></thead>
               <tbody>
                 ${clientFactures.map(f => {
                   const fIdx = list("factures").indexOf(f);
                   const isPaid = f.status === 'Payée';
                   return `
                     <tr>
-                      <td><b>${esc(f.number || f.id)}</b></td>
+                      <td>${formatTraceableLink(f.number || f.id, 'number', 'factures') || `<b>${esc(f.number || f.id)}</b>`}</td>
                       <td>${esc(f.date || '—')}</td>
                       <td>${esc(f.due || '—')}</td>
+                      <td>${formatTraceableLink(f.ID_Proforma || f.proforma, 'ID_Proforma', 'factures') || esc(f.ID_Proforma || f.proforma || '—')}</td>
                       <td><b>${money(f.amount || 0)}</b></td>
                       <td><span class="badge ${isPaid ? 'green' : 'orange'}">${esc(f.status || 'À recevoir')}</span></td>
                       <td style="white-space:nowrap">
@@ -6654,9 +6747,9 @@ function openClientDossier(clientIdOrName) {
                   const pIdx = list("paiements").indexOf(p);
                   return `
                     <tr>
-                      <td><b>${esc(p.id || p.number)}</b></td>
+                      <td>${formatTraceableLink(p.id || p.number, 'id', 'paiements') || `<b>${esc(p.id || p.number)}</b>`}</td>
                       <td>${esc(p.date || '—')}</td>
-                      <td>${esc(p.ID_Facture || p.facture || p.factureId || '—')}</td>
+                      <td>${formatTraceableLink(p.ID_Facture || p.facture || p.factureId, 'ID_Facture', 'paiements') || esc(p.ID_Facture || p.facture || p.factureId || '—')}</td>
                       <td><span class="badge blue">${esc(p.method || 'MonCash')}</span></td>
                       <td><b style="color:#16a34a">${money(p.amount || 0)}</b></td>
                       <td><span class="badge ${['Reçu', 'Validé', 'Payé'].includes(p.status) ? 'green' : 'orange'}">${esc(p.status || 'Reçu')}</span></td>
