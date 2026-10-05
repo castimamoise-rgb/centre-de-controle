@@ -3617,6 +3617,125 @@ function openReservationPageFromCalendar(resId) {
 }
 window.openReservationPageFromCalendar = openReservationPageFromCalendar;
 
+function renderAdminFinancialChart() {
+  const container = document.getElementById("adminFinancialRechartsContainer");
+  if (!container) return;
+
+  const currentYear = new Date().getFullYear();
+  const monthsShort = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sept", "Oct", "Nov", "Déc"];
+  const monthsFull = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+
+  const payments = (list("paiements") || []).filter(p => ["Reçu", "Validé", "Payé"].includes(p.status));
+  const expenses = list("finances") || [];
+
+  const monthlyData = monthsShort.map((m, idx) => {
+    let rev = payments.filter(p => {
+      if (!p.date) return false;
+      const d = new Date(p.date);
+      return !isNaN(d.getTime()) && d.getMonth() === idx && d.getFullYear() === currentYear;
+    }).reduce((s, p) => s + Number(p.amount || 0), 0);
+
+    let exp = expenses.filter(x => {
+      if (!x.date) return false;
+      const d = new Date(x.date);
+      return !isNaN(d.getTime()) && d.getMonth() === idx && d.getFullYear() === currentYear;
+    }).reduce((s, x) => s + Number(x.amount || 0), 0);
+
+    return {
+      month: m,
+      fullMonth: monthsFull[idx],
+      revenus: rev,
+      depenses: exp,
+      benefice: rev - exp
+    };
+  });
+
+  // Si React et Recharts sont chargés dans la page
+  if (window.React && window.ReactDOM && window.Recharts) {
+    try {
+      const { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, Legend, CartesianGrid } = window.Recharts;
+      const e = window.React.createElement;
+
+      const CustomTooltip = ({ active, payload, label }) => {
+        if (active && payload && payload.length) {
+          const revVal = payload.find(p => p.dataKey === "revenus")?.value || 0;
+          const expVal = payload.find(p => p.dataKey === "depenses")?.value || 0;
+          const net = revVal - expVal;
+          return e("div", {
+            style: {
+              background: "#081b38",
+              border: "1.5px solid #1e3a8a",
+              borderRadius: "10px",
+              padding: "12px 16px",
+              color: "#fff",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.5)",
+              fontSize: "12px",
+              minWidth: "190px"
+            }
+          },
+            e("div", { style: { fontWeight: "800", color: "#fcd34d", marginBottom: "6px", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: "4px" } }, label),
+            e("div", { style: { color: "#34d399", display: "flex", justifyContent: "space-between", margin: "4px 0" } },
+              e("span", null, "● Revenus :"),
+              e("b", null, money(revVal))
+            ),
+            e("div", { style: { color: "#f87171", display: "flex", justifyContent: "space-between", margin: "4px 0" } },
+              e("span", null, "● Dépenses :"),
+              e("b", null, money(expVal))
+            ),
+            e("div", { style: { color: net >= 0 ? "#38bdf8" : "#fbbf24", display: "flex", justifyContent: "space-between", marginTop: "6px", borderTop: "1px dashed rgba(255,255,255,0.15)", paddingTop: "4px" } },
+              e("span", null, "● Marge Nette :"),
+              e("b", null, money(net))
+            )
+          );
+        }
+        return null;
+      };
+
+      const chartElement = e(ResponsiveContainer, { width: "100%", height: 300 },
+        e(AreaChart, { data: monthlyData, margin: { top: 15, right: 15, left: 10, bottom: 5 } },
+          e("defs", null,
+            e("linearGradient", { id: "rechartsRevGrad", x1: "0", y1: "0", x2: "0", y2: "1" },
+              e("stop", { offset: "5%", stopColor: "#10b981", stopOpacity: 0.85 }),
+              e("stop", { offset: "95%", stopColor: "#10b981", stopOpacity: 0.05 })
+            ),
+            e("linearGradient", { id: "rechartsExpGrad", x1: "0", y1: "0", x2: "0", y2: "1" },
+              e("stop", { offset: "5%", stopColor: "#f43f5e", stopOpacity: 0.85 }),
+              e("stop", { offset: "95%", stopColor: "#f43f5e", stopOpacity: 0.05 })
+            )
+          ),
+          e(CartesianGrid, { strokeDasharray: "3 3", stroke: "rgba(255,255,255,0.07)" }),
+          e(XAxis, { dataKey: "month", stroke: "#94a3b8", fontSize: 12, tickLine: false }),
+          e(YAxis, { stroke: "#94a3b8", fontSize: 11, tickLine: false, tickFormatter: (v) => `${(v/1000).toFixed(0)}k` }),
+          e(Tooltip, { content: e(CustomTooltip) }),
+          e(Legend, { wrapperStyle: { paddingTop: "12px", fontSize: "12px", color: "#cbd5e1" } }),
+          e(Area, { type: "monotone", dataKey: "revenus", name: "Revenus encaissés (HTG)", stroke: "#10b981", strokeWidth: 3, fillOpacity: 1, fill: "url(#rechartsRevGrad)" }),
+          e(Area, { type: "monotone", dataKey: "depenses", name: "Dépenses engagées (HTG)", stroke: "#f43f5e", strokeWidth: 3, fillOpacity: 1, fill: "url(#rechartsExpGrad)" })
+        )
+      );
+
+      if (window.ReactDOM.createRoot) {
+        if (!container._reactRoot) {
+          container._reactRoot = window.ReactDOM.createRoot(container);
+        }
+        container._reactRoot.render(chartElement);
+      } else if (window.ReactDOM.render) {
+        window.ReactDOM.render(chartElement, container);
+      }
+      return;
+    } catch (err) {
+      console.warn("Erreur instanciation Recharts:", err);
+    }
+  }
+
+  // Fallback si chargement asynchrone
+  setTimeout(() => {
+    if (window.Recharts && window.React && window.ReactDOM && document.getElementById("adminFinancialRechartsContainer")) {
+      renderAdminFinancialChart();
+    }
+  }, 250);
+}
+window.renderAdminFinancialChart = renderAdminFinancialChart;
+
 function dashboard() {
   const roles = normalizeRoles(currentUserRoles);
   const hasStaffRole = roles.some(r => ['admin', 'direction', 'comptabilite', 'secretaire', 'operations', 'lecture_seule'].includes(r));
@@ -3953,6 +4072,33 @@ function dashboard() {
               </div>
             </div>
 
+            <!-- Composant de Visualisation Financière Recharts (Évolution Mensuelle Revenus & Dépenses) -->
+            <div class="admin-card-dark" style="margin-top:16px" id="adminFinancialChartCard">
+              <div class="admin-card-head" style="flex-wrap:wrap;gap:8px">
+                <div>
+                  <h3 style="display:flex;align-items:center;gap:6px">
+                    <span>📈</span> <span>Évolution Mensuelle des Revenus & Dépenses</span>
+                  </h3>
+                  <div style="color:#94a3b8;font-size:11px;margin-top:2px">
+                    Analyse financière visuelle Recharts • Encaissements vs Dépenses • Exercice ${new Date().getFullYear()}
+                  </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                  <div style="font-size:11px;color:#cbd5e1;background:rgba(255,255,255,0.05);padding:5px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.1)">
+                    <span style="color:#10b981;font-weight:700">● Revenus : ${money(received)}</span> &nbsp;|&nbsp; 
+                    <span style="color:#f43f5e;font-weight:700">● Dépenses : ${money(spent)}</span> &nbsp;|&nbsp; 
+                    <span style="color:#38bdf8;font-weight:700">● Net : ${money(netProfit)}</span>
+                  </div>
+                  <button onclick="go('finances')" class="admin-btn-pill">Trésorerie ›</button>
+                </div>
+              </div>
+              <div id="adminFinancialRechartsContainer" style="width:100%;height:320px;margin-top:12px;position:relative">
+                <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8;font-size:12px">
+                  Chargement de la visualisation Recharts...
+                </div>
+              </div>
+            </div>
+
             <!-- Deux bannières promo (Orange et Bleue) -->
             <div class="admin-promo-grid">
               <!-- Bannière Orange -->
@@ -4129,6 +4275,7 @@ function dashboard() {
         </div>
       </div>
     `;
+    setTimeout(() => renderAdminFinancialChart(), 50);
     return;
   }
 
@@ -5065,6 +5212,22 @@ function drawTable(key) {
               <tr style="${isArchived ? 'opacity:0.6;background:#f9fafb;' : ''}">
                 ${cols.map(x => {
                   const val = canon === "utilisateurs" ? resolveUserField(o, x[0]) : o[x[0]];
+                  if (canon === "clients" && x[0] === "id") {
+                    const displayId = val || o.id || o.clientId || `CL-${String(i + 1).padStart(4, "0")}`;
+                    return `<td>
+                      <button type="button" 
+                        class="client-table-badge"
+                        onclick="openClientDossier('${esc(displayId)}')" 
+                        title="Ouvrir le dossier 360° du client ${esc(o.name || displayId)} (Réservations, Proformas, Factures, Paiements)"
+                        style="background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;transition:all 0.15s ease;"
+                        onmouseover="this.style.background='#dbeafe';this.style.borderColor='#93c5fd';this.style.transform='translateY(-1px)'"
+                        onmouseout="this.style.background='#eff6ff';this.style.borderColor='#bfdbfe';this.style.transform='translateY(0)'">
+                        <span>👤</span>
+                        <span>${esc(displayId)}</span>
+                        <span style="font-size:10px;opacity:0.8">↗</span>
+                      </button>
+                    </td>`;
+                  }
                   if ((canon === "reservations" || canon === "bookings") && x[0] === "id") {
                     const displayId = val || o.code || `RES-${String(i + 1).padStart(4, "0")}`;
                     return `<td>
@@ -6214,6 +6377,12 @@ function viewRow(key, index) {
     extraButtons = `
       <button class="primary" onclick="closeModal();printDocument('facture',${index})">🖨️ PDF Facture</button>
     `;
+  } else if (canon === "clients") {
+    extraButtons = `
+      <button class="primary" style="background:#082b70;border-color:#082b70;display:inline-flex;align-items:center;gap:6px" onclick="closeModal();openClientDossier('${esc(o.id || o.clientId || o.name)}')">
+        <span>📂</span> <span>Consulter le Dossier Client 360° (Réservations, Proformas, Factures, Paiements)</span>
+      </button>
+    `;
   }
 
   const canEdit = hasPermission("write", canon);
@@ -6255,6 +6424,269 @@ function openLinkedDocument(col, docId) {
   }
 }
 window.openLinkedDocument = openLinkedDocument;
+
+function openClientDossier(clientIdOrName) {
+  if (!clientIdOrName) return;
+  const allClients = list("clients") || [];
+  const allUsers = state.utilisateurs || [];
+  const searchKey = String(clientIdOrName).trim().toLowerCase();
+
+  let client = allClients.find(c => 
+    String(c.id || "").toLowerCase() === searchKey ||
+    String(c.clientId || "").toLowerCase() === searchKey ||
+    String(c.name || c.nom || "").toLowerCase() === searchKey ||
+    String(c.email || "").toLowerCase() === searchKey
+  );
+  if (!client) {
+    client = allUsers.find(u => 
+      String(u.id || u.uid || "").toLowerCase() === searchKey ||
+      String(u.email || "").toLowerCase() === searchKey ||
+      String(u.name || u.nom || "").toLowerCase() === searchKey
+    );
+  }
+  if (!client) {
+    client = { id: clientIdOrName, name: clientIdOrName, email: "", phone: "", address: "" };
+  }
+
+  const clientName = client.name || client.nom || client.client || clientIdOrName;
+  const clientId = client.id || client.clientId || clientIdOrName;
+  const clientEmail = (client.email || "").toLowerCase().trim();
+  const clientPhone = client.phone || client.telephone || "";
+  const clientAddress = client.address || client.adresse || client.zone || "";
+
+  // Matcher universel multi-critères pour rattacher l'historique complet
+  const isMatch = (d) => {
+    if (!d) return false;
+    const cId = String(clientId).toLowerCase();
+    const dCId = String(d.clientId || d.clientUid || d.uid || "").toLowerCase();
+    if (cId && dCId && (dCId === cId)) return true;
+    if (clientEmail && d.email && String(d.email).toLowerCase().trim() === clientEmail) return true;
+    const dName = String(d.client || d.nomClient || "").toLowerCase().trim();
+    const cName = String(clientName).toLowerCase().trim();
+    if (dName && cName && (dName === cName || dName.includes(cName) || cName.includes(dName))) return true;
+    if (cId && (dName.includes(cId) || String(d.notes || "").toLowerCase().includes(cId))) return true;
+    return false;
+  };
+
+  const clientReservations = (list("reservations") || []).filter(isMatch);
+  const clientProformas = (list("proformas") || []).filter(isMatch);
+  const clientFactures = (list("factures") || []).filter(isMatch);
+  const clientPaiements = (list("paiements") || []).filter(isMatch);
+
+  const totalFacture = clientFactures.reduce((s, f) => s + Number(f.amount || 0), 0);
+  const totalPaye = clientPaiements.filter(p => ["Reçu", "Validé", "Payé"].includes(p.status)).reduce((s, p) => s + Number(p.amount || 0), 0);
+  const soldeDu = Math.max(0, totalFacture - totalPaye);
+
+  const cleanPhone = clientPhone.replace(/[^0-9]/g, '');
+
+  document.getElementById("modal").innerHTML = `
+    <div class="modal-head" style="background:#082b70;color:#fff;border-radius:12px 12px 0 0;padding:18px 24px">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="width:48px;height:48px;border-radius:12px;background:#f7941d;color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;box-shadow:0 4px 10px rgba(0,0,0,0.2)">
+          👤
+        </div>
+        <div>
+          <h2 style="margin:0;color:#fff;font-size:19px;display:flex;align-items:center;gap:8px">
+            <span>${esc(clientName)}</span>
+            <span style="font-size:12px;background:rgba(255,255,255,0.2);padding:2px 8px;border-radius:6px;font-weight:600">ID: ${esc(clientId)}</span>
+          </h2>
+          <small style="color:#cbd5e1;font-size:12px">Dossier Client 360° • Vue Responsable LAPERLE TOUR HT</small>
+        </div>
+      </div>
+      <button class="close" onclick="closeModal()" style="color:#fff;font-size:24px;opacity:0.85">×</button>
+    </div>
+
+    <!-- Coordonnées & Bilan Comptable Synthétique -->
+    <div style="padding:18px 24px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:14px">
+      <div>
+        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:6px">Coordonnées de contact</div>
+        <div style="font-size:13px;color:#1e293b;line-height:1.6">
+          ${clientPhone ? `<div>📞 <b>${esc(clientPhone)}</b> ${cleanPhone ? `<a href="https://wa.me/${cleanPhone}" target="_blank" style="margin-left:6px;color:#16a34a;font-weight:700;text-decoration:none">💬 WhatsApp</a>` : ''}</div>` : '<div>📞 Téléphone non renseigné</div>'}
+          ${clientEmail ? `<div>✉️ <a href="mailto:${esc(clientEmail)}" style="color:#0284c7;text-decoration:none">${esc(clientEmail)}</a></div>` : '<div>✉️ Email non renseigné</div>'}
+          ${clientAddress ? `<div>📍 ${esc(clientAddress)}</div>` : '<div>📍 Adresse non renseignée</div>'}
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <div style="flex:1;min-width:110px;background:#ffffff;border:1px solid #cbd5e1;border-radius:10px;padding:10px 14px;box-shadow:0 1px 3px rgba(0,0,0,0.04)">
+          <div style="font-size:11px;color:#64748b;font-weight:600">🧾 Total Facturé</div>
+          <div style="font-size:15px;font-weight:800;color:#082b70;margin-top:2px">${money(totalFacture)}</div>
+          <small style="font-size:10px;color:#64748b">${clientFactures.length} facture(s)</small>
+        </div>
+        <div style="flex:1;min-width:110px;background:#ffffff;border:1px solid #cbd5e1;border-radius:10px;padding:10px 14px;box-shadow:0 1px 3px rgba(0,0,0,0.04)">
+          <div style="font-size:11px;color:#64748b;font-weight:600">💰 Total Encaissé</div>
+          <div style="font-size:15px;font-weight:800;color:#16a34a;margin-top:2px">${money(totalPaye)}</div>
+          <small style="font-size:10px;color:#16a34a">${clientPaiements.length} règlement(s)</small>
+        </div>
+        <div style="flex:1;min-width:110px;background:#ffffff;border:1px solid ${soldeDu > 0 ? '#fca5a5' : '#86efac'};border-radius:10px;padding:10px 14px;box-shadow:0 1px 3px rgba(0,0,0,0.04)">
+          <div style="font-size:11px;color:${soldeDu > 0 ? '#dc2626' : '#16a34a'};font-weight:600">⚖️ Solde Dû</div>
+          <div style="font-size:15px;font-weight:800;color:${soldeDu > 0 ? '#dc2626' : '#16a34a'};margin-top:2px">${money(soldeDu)}</div>
+          <small style="font-size:10px;color:${soldeDu > 0 ? '#dc2626' : '#16a34a'};font-weight:600">${soldeDu > 0 ? '⚠️ En attente' : '✅ Soldé'}</small>
+        </div>
+      </div>
+    </div>
+
+    <!-- Navigation des 4 documents du client -->
+    <div style="padding:18px 24px;max-height:60vh;overflow-y:auto">
+      
+      <!-- 1. RÉSERVATIONS -->
+      <div style="margin-bottom:20px;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+        <div style="padding:12px 16px;background:#f1f5f9;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">
+          <b style="color:#0f172a;font-size:13.5px;display:flex;align-items:center;gap:6px">
+            <span>🎫</span> <span>Réservations de ce client (${clientReservations.length})</span>
+          </b>
+          <button type="button" class="tiny" onclick="closeModal();openForm('reservations')">＋ Nouvelle Réservation</button>
+        </div>
+        ${clientReservations.length === 0 ? `
+          <div style="padding:14px;text-align:center;color:#94a3b8;font-size:12px">Aucune réservation pour ce client.</div>
+        ` : `
+          <div style="overflow-x:auto">
+            <table class="table" style="font-size:12px;margin:0">
+              <thead><tr><th>Code</th><th>Date</th><th>Trajet</th><th>Passagers</th><th>Montant</th><th>Statut</th><th>Action</th></tr></thead>
+              <tbody>
+                ${clientReservations.map(r => `
+                  <tr>
+                    <td><b>${esc(r.code || r.id)}</b></td>
+                    <td>${esc(r.date || '—')}</td>
+                    <td>${esc(r.origin && r.destination ? r.origin + ' ➔ ' + r.destination : (r.route || '—'))}</td>
+                    <td>${esc(r.passengers || 1)}</td>
+                    <td><b>${money(r.amount || r.price || 0)}</b></td>
+                    <td><span class="badge ${['Confirmée', 'Effectuée'].includes(r.status) ? 'green' : 'orange'}">${esc(r.status || 'En attente')}</span></td>
+                    <td><button type="button" class="tiny" onclick="openLinkedDocument('reservations', '${esc(r.id || r.code)}')">Consulter ›</button></td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        `}
+      </div>
+
+      <!-- 2. PROFORMAS -->
+      <div style="margin-bottom:20px;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+        <div style="padding:12px 16px;background:#f1f5f9;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">
+          <b style="color:#0f172a;font-size:13.5px;display:flex;align-items:center;gap:6px">
+            <span>📄</span> <span>Devis Proformas (${clientProformas.length})</span>
+          </b>
+          <button type="button" class="tiny" onclick="closeModal();openForm('proformas')">＋ Nouveau Devis</button>
+        </div>
+        ${clientProformas.length === 0 ? `
+          <div style="padding:14px;text-align:center;color:#94a3b8;font-size:12px">Aucun devis proforma émis pour ce client.</div>
+        ` : `
+          <div style="overflow-x:auto">
+            <table class="table" style="font-size:12px;margin:0">
+              <thead><tr><th>N° Proforma</th><th>Date</th><th>Trajet / Service</th><th>Montant</th><th>Statut</th><th>Action</th></tr></thead>
+              <tbody>
+                ${clientProformas.map(q => {
+                  const qIdx = list("proformas").indexOf(q);
+                  return `
+                    <tr>
+                      <td><b>${esc(q.number || q.id)}</b></td>
+                      <td>${esc(q.date || '—')}</td>
+                      <td>${esc(q.route || q.service || '—')}</td>
+                      <td><b>${money(q.amount || 0)}</b></td>
+                      <td><span class="badge ${['Acceptée', 'Facturée'].includes(q.status) ? 'green' : 'orange'}">${esc(q.status || 'Envoyée')}</span></td>
+                      <td style="white-space:nowrap">
+                        <button type="button" class="tiny" onclick="openLinkedDocument('proformas', '${esc(q.number || q.id)}')">Consulter</button>
+                        ${qIdx >= 0 ? `<button type="button" class="tiny" onclick="printDocument('proforma', ${qIdx})">🖨️ PDF</button>` : ''}
+                      </td>
+                    </tr>
+                  `;
+                }).join("")}
+              </tbody>
+            </table>
+          </div>
+        `}
+      </div>
+
+      <!-- 3. FACTURES -->
+      <div style="margin-bottom:20px;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+        <div style="padding:12px 16px;background:#f1f5f9;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">
+          <b style="color:#0f172a;font-size:13.5px;display:flex;align-items:center;gap:6px">
+            <span>🧾</span> <span>Factures (${clientFactures.length})</span>
+          </b>
+          <button type="button" class="tiny" onclick="closeModal();openForm('factures')">＋ Nouvelle Facture</button>
+        </div>
+        ${clientFactures.length === 0 ? `
+          <div style="padding:14px;text-align:center;color:#94a3b8;font-size:12px">Aucune facture enregistrée pour ce client.</div>
+        ` : `
+          <div style="overflow-x:auto">
+            <table class="table" style="font-size:12px;margin:0">
+              <thead><tr><th>N° Facture</th><th>Date</th><th>Échéance</th><th>Montant</th><th>Statut</th><th>Action</th></tr></thead>
+              <tbody>
+                ${clientFactures.map(f => {
+                  const fIdx = list("factures").indexOf(f);
+                  const isPaid = f.status === 'Payée';
+                  return `
+                    <tr>
+                      <td><b>${esc(f.number || f.id)}</b></td>
+                      <td>${esc(f.date || '—')}</td>
+                      <td>${esc(f.due || '—')}</td>
+                      <td><b>${money(f.amount || 0)}</b></td>
+                      <td><span class="badge ${isPaid ? 'green' : 'orange'}">${esc(f.status || 'À recevoir')}</span></td>
+                      <td style="white-space:nowrap">
+                        <button type="button" class="tiny" onclick="openLinkedDocument('factures', '${esc(f.number || f.id)}')">Consulter</button>
+                        ${fIdx >= 0 ? `<button type="button" class="tiny" onclick="printDocument('facture', ${fIdx})">🖨️ PDF</button>` : ''}
+                      </td>
+                    </tr>
+                  `;
+                }).join("")}
+              </tbody>
+            </table>
+          </div>
+        `}
+      </div>
+
+      <!-- 4. PAIEMENTS -->
+      <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+        <div style="padding:12px 16px;background:#f1f5f9;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">
+          <b style="color:#0f172a;font-size:13.5px;display:flex;align-items:center;gap:6px">
+            <span>💰</span> <span>Règlements & Paiements (${clientPaiements.length})</span>
+          </b>
+          <button type="button" class="tiny" onclick="closeModal();openForm('paiements')">＋ Encaisser Paiement</button>
+        </div>
+        ${clientPaiements.length === 0 ? `
+          <div style="padding:14px;text-align:center;color:#94a3b8;font-size:12px">Aucun paiement enregistré pour ce client.</div>
+        ` : `
+          <div style="overflow-x:auto">
+            <table class="table" style="font-size:12px;margin:0">
+              <thead><tr><th>N° Reçu</th><th>Date</th><th>Facture liée</th><th>Mode</th><th>Montant</th><th>Statut</th><th>Action</th></tr></thead>
+              <tbody>
+                ${clientPaiements.map(p => {
+                  const pIdx = list("paiements").indexOf(p);
+                  return `
+                    <tr>
+                      <td><b>${esc(p.id || p.number)}</b></td>
+                      <td>${esc(p.date || '—')}</td>
+                      <td>${esc(p.ID_Facture || p.facture || p.factureId || '—')}</td>
+                      <td><span class="badge blue">${esc(p.method || 'MonCash')}</span></td>
+                      <td><b style="color:#16a34a">${money(p.amount || 0)}</b></td>
+                      <td><span class="badge ${['Reçu', 'Validé', 'Payé'].includes(p.status) ? 'green' : 'orange'}">${esc(p.status || 'Reçu')}</span></td>
+                      <td style="white-space:nowrap">
+                        <button type="button" class="tiny" onclick="openLinkedDocument('paiements', '${esc(p.id || p.number)}')">Consulter</button>
+                        ${pIdx >= 0 ? `<button type="button" class="tiny" onclick="printDocument('paiements', ${pIdx})">🖨️ Reçu</button>` : ''}
+                      </td>
+                    </tr>
+                  `;
+                }).join("")}
+              </tbody>
+            </table>
+          </div>
+        `}
+      </div>
+
+    </div>
+
+    <!-- Actions Pied de page -->
+    <div class="form-actions" style="padding:14px 24px;border-top:1px solid #e2e8f0;background:#f8fafc;display:flex;justify-content:space-between;align-items:center">
+      <small style="color:#64748b">Système de Traçabilité Intégral LAPERLE TOUR HT</small>
+      <div style="display:flex;gap:10px">
+        <button type="button" class="primary" onclick="closeModal()">Fermer le Dossier</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById("modalBackdrop").classList.add("open");
+}
+window.openClientDossier = openClientDossier;
 
 function closeModal() {
   document.getElementById("modalBackdrop").classList.remove("open");
