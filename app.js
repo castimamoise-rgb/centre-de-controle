@@ -908,37 +908,7 @@ function buildNavigation() {
     return;
   }
 
-  // Utilisateur avec rôle PROSPECT : Espace dédié (Profil & Réservations)
-  const normCurrentRoles = normalizeRoles(currentUserRoles);
-  if (!isSuper && normCurrentRoles.length === 1 && normCurrentRoles[0] === ROLES.PROSPECT) {
-    const header = document.createElement("div");
-    header.className = "nav-section-title";
-    header.textContent = "Espace Prospect";
-    nav.appendChild(header);
-
-    const bProf = document.createElement("button");
-    bProf.className = "nav-item" + (current === "profile" ? " active" : "");
-    bProf.dataset.key = "profile";
-    bProf.innerHTML = `<span class="nav-icon">👤</span><span>Mon Profil & Statut</span><span class="chev">›</span>`;
-    bProf.onclick = () => go("profile");
-    nav.appendChild(bProf);
-
-    const bRes = document.createElement("button");
-    bRes.className = "nav-item" + (current === "reservations" ? " active" : "");
-    bRes.dataset.key = "reservations";
-    bRes.innerHTML = `<span class="nav-icon">🎫</span><span>Mes Réservations</span><span class="nav-badge" id="navBadge_reservations" style="display:none">0</span><span class="chev">›</span>`;
-    bRes.onclick = () => go("reservations");
-    nav.appendChild(bRes);
-
-    const bLogout = document.createElement("button");
-    bLogout.className = "nav-item";
-    bLogout.style.color = "#b91c1c";
-    bLogout.innerHTML = `<span class="nav-icon">🚪</span><span>Se déconnecter</span><span class="chev">›</span>`;
-    bLogout.onclick = () => logoutUser();
-    nav.appendChild(bLogout);
-    return;
-  }
-
+  // Navigation basée sur les modules autorisés (y compris Espace Client et Prospect)
   NAV_SECTIONS.forEach(sec => {
     const visibleItems = sec.items.filter(key => {
       const canon = canonicalCol(key);
@@ -1991,7 +1961,7 @@ function setupFirestoreListeners() {
 
   const hasStaffRole = roles.some(r => ['admin', 'direction', 'comptabilite', 'secretaire', 'operations'].includes(r));
   const isChauffeurOnly = !hasStaffRole && roles.includes('chauffeur');
-  const isClientOnly = !hasStaffRole && !roles.includes('chauffeur') && roles.includes('client');
+  const isClientOnly = !hasStaffRole && !roles.includes('chauffeur') && (roles.includes('client') || roles.includes('prospect'));
 
   // 1. CHAUFFEUR ONLY: Read ONLY assigned documents via indexed queries
   if (isChauffeurOnly) {
@@ -3257,7 +3227,7 @@ function render() {
   }
 
   const isSolelyProspect = !isSuper && normCurrentRoles.length === 1 && normCurrentRoles[0] === ROLES.PROSPECT;
-  if ((canon === "profile" && isSolelyProspect) || (canon === "dashboard" && isSolelyProspect)) {
+  if (canon === "profile" && isSolelyProspect) {
     renderLectureSeuleProfilePage();
     return;
   }
@@ -3622,7 +3592,7 @@ function dashboard() {
   const roles = normalizeRoles(currentUserRoles);
   const hasStaffRole = roles.some(r => ['admin', 'direction', 'comptabilite', 'secretaire', 'operations', 'lecture_seule'].includes(r));
   const isChauffeurOnly = !hasStaffRole && roles.includes('chauffeur');
-  const isClientOnly = !hasStaffRole && !roles.includes('chauffeur') && roles.includes('client');
+  const isClientOnly = !hasStaffRole && !roles.includes('chauffeur') && (roles.includes('client') || roles.includes('prospect'));
   const canSeeFinances = roles.some(r => ['admin', 'direction', 'comptabilite', 'lecture_seule'].includes(r));
   const displayName = currentUser ? (currentUser.displayName || currentUser.email.split('@')[0]) : "Utilisateur";
 

@@ -198,14 +198,17 @@ function roleCanAccessModule(normRole, m) {
   if (normRole === ROLES.CLIENT) {
     const allowed = [
       'dashboard', 'reservations', 'abonnements', 'eleves', 
-      'factures', 'proformas', 'paiements', 'notifications', 'profile'
+      'factures', 'proformas', 'paiements', 'notifications', 'profile', 'profil'
     ];
     return allowed.includes(m);
   }
 
   if (normRole === ROLES.PROSPECT) {
-    // Le PROSPECT peut voir uniquement son propre profil et créer une réservation
-    return m === 'profile' || m === 'profil' || m === 'reservations';
+    // Le PROSPECT accède à son tableau de bord client, ses réservations, ses devis, ses factures et ses paiements
+    const allowed = [
+      'dashboard', 'reservations', 'proformas', 'factures', 'paiements', 'notifications', 'profile', 'profil'
+    ];
+    return allowed.includes(m);
   }
 
   if (normRole === ROLES.LECTURE_SEULE) {
@@ -296,13 +299,16 @@ function roleHasAction(normRole, m, act) {
   }
 
   if (normRole === ROLES.CLIENT) {
-    if (m === 'reservations' && act === 'create') return true;
+    if (m === 'reservations' && (act === 'create' || act === 'write')) return true;
+    if (m === 'proformas' && (act === 'create' || act === 'write')) return true;
     return act === 'read';
   }
 
   if (normRole === ROLES.PROSPECT) {
-    if (m === 'reservations' && (act === 'create' || act === 'read')) return true;
+    if (m === 'reservations' && (act === 'create' || act === 'write' || act === 'read')) return true;
+    if (m === 'proformas' && (act === 'create' || act === 'write' || act === 'read')) return true;
     if ((m === 'profile' || m === 'profil') && (act === 'read' || act === 'update')) return true;
+    if (['factures', 'paiements', 'notifications', 'dashboard'].includes(m)) return act === 'read';
     return false;
   }
 
@@ -503,9 +509,9 @@ export function filterDataForUser(moduleKey, items, userProfile) {
     return [];
   }
 
-  // 7. PROSPECT : voit UNIQUEMENT ses propres réservations, devis proforma et notifications
+  // 7. PROSPECT : voit UNIQUEMENT ses propres réservations, devis proforma, factures, paiements et notifications
   if (roles.includes(ROLES.PROSPECT)) {
-    if (['reservations', 'proformas'].includes(m)) {
+    if (['reservations', 'proformas', 'factures', 'paiements'].includes(m)) {
       return items.filter(matchesClientDoc);
     }
     if (m === 'notifications') {
