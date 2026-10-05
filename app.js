@@ -1437,6 +1437,17 @@ function renderNotificationDropdown() {
               </button>
             </div>
           `;
+        } else if (isStaff && (item.actionType === 'payment_proof_submitted' || item.title?.includes('Preuve')) && item.factureId && !item.actionCompleted) {
+          actionHtml = `
+            <div style="margin: 8px 0 6px 0; display: flex; gap: 6px; flex-wrap: wrap;">
+              <button class="notif-action-btn" style="background:#0284c7;color:#fff;border-color:#0284c7;font-weight:700;padding:5px 10px;font-size:11px" onclick="event.stopPropagation(); viewPaymentProofById('${item.factureId}')">
+                👁️ Voir la Capture / Reçu
+              </button>
+              <button class="notif-action-btn" style="background:#15803d;color:#fff;border-color:#15803d;font-weight:700;padding:5px 10px;font-size:11px" onclick="event.stopPropagation(); handleValidatePaymentFromInvoiceId('${item.factureId}', '${item.id}')">
+                ✅ Valider & Acquitter la Facture (${escapeHtml(item.factureId)})
+              </button>
+            </div>
+          `;
         } else if (isStaff && (item.actionType === 'proforma_accepted' || item.title?.includes('validé')) && item.proformaId && !item.actionCompleted) {
           actionHtml = `
             <div style="margin: 8px 0 6px 0; display: flex; gap: 6px; flex-wrap: wrap;">
@@ -1458,7 +1469,10 @@ function renderNotificationDropdown() {
           const docType = item.factureId ? 'facture' : 'proforma';
           const docId = item.factureId || item.proformaId;
           const pDoc = item.proformaId ? (state.proformas || []).find(p => p.number === item.proformaId || p.id === item.proformaId) : null;
+          const fDoc = item.factureId ? (state.factures || []).find(f => f.number === item.factureId || f.id === item.factureId) : null;
           const hasRequestedInvoice = pDoc?.demandeFacture || pDoc?.factureGenerated;
+          const hasSubmittedPaymentProof = !!(fDoc?.paymentProof || fDoc?.preuvePaiement);
+          const isInvoicePaid = fDoc?.status === 'Payée';
           actionHtml = `
             <div style="margin: 8px 0 6px 0; display: flex; gap: 6px; flex-wrap: wrap;">
               <button class="notif-action-btn" style="background:#082b70;color:#fff;border-color:#082b70;font-weight:700;padding:5px 10px;font-size:11px" onclick="event.stopPropagation(); handleOpenDocumentFromAlert('${docType}', '${docId}')">
@@ -1473,6 +1487,17 @@ function renderNotificationDropdown() {
                 <button class="notif-action-btn" style="background:#15803d;color:#fff;border-color:#15803d;font-weight:700;padding:5px 10px;font-size:11px" onclick="event.stopPropagation(); handleOpenDocumentFromAlert('facture', '${pDoc.factureGenerated}')">
                   🧾 Facture disponible (${escapeHtml(pDoc.factureGenerated)})
                 </button>
+              ` : ''}
+              ${item.factureId && !isInvoicePaid && !hasSubmittedPaymentProof ? `
+                <button class="notif-action-btn" style="background:#15803d;color:#fff;border-color:#15803d;font-weight:700;padding:5px 10px;font-size:11px" onclick="event.stopPropagation(); openConfirmPaymentModal('${item.factureId}')">
+                  📸 Confirmer Paiement (Capture)
+                </button>
+              ` : ''}
+              ${item.factureId && hasSubmittedPaymentProof ? `
+                <button class="notif-action-btn" style="background:#0284c7;color:#fff;border-color:#0284c7;font-weight:700;padding:5px 10px;font-size:11px" onclick="event.stopPropagation(); viewPaymentProofById('${item.factureId}')">
+                  👁️ Mon Reçu Soumis
+                </button>
+                <span class="badge orange" style="font-size:10px;padding:3px 6px">⏳ En cours de validation</span>
               ` : ''}
             </div>
           `;
@@ -4726,7 +4751,7 @@ function documentModuleIntro(key) {
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
           <div>
             <b style="font-size:14px;color:#0d592f">🧾 Module Factures LAPERLE TOUR HT</b><br>
-            Factures numérotées <b>FT-YYYYMMDD-XXX</b> reliées aux proformas, suivi des encaissements et impression <b>PDF</b> acquittée.
+            Factures numérotées <b>FAC-XXX</b> reliées aux proformas, suivi des encaissements et impression <b>PDF</b> acquittée.
           </div>
           <div style="display:flex;gap:8px;font-size:12px;flex-wrap:wrap">
             <span class="badge" style="background:#fff;border:1px solid #c3edd3"><b>${invList.length}</b> Facture(s)</span>
@@ -5026,9 +5051,31 @@ function drawTable(key) {
                       `;
                     }
                   })() : ""}
-                  ${canon === "factures" ? `
-                    <button class="tiny" onclick="printDocument('facture',${i})">PDF Facture</button>
-                  ` : ""}
+                  ${canon === "factures" ? (() => {
+                    const roles = normalizeRoles(currentUserRoles);
+                    const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
+                    const isPaid = o.status === "Payée";
+                    const hasProof = !!(o.paymentProof || o.preuvePaiement);
+                    let proofBtn = '';
+                    if (hasProof) {
+                      proofBtn = `<button class="tiny" style="color:#0284c7;border-color:#bae6fd;background:#f0f9ff;font-weight:700" onclick="viewPaymentProof(${i})" title="Consulter la capture d'écran du reçu">👁️ Preuve reçu</button>`;
+                    }
+                    if (isStaff) {
+                      return `
+                        ${proofBtn}
+                        ${!isPaid && hasProof ? `<button class="tiny" style="color:#15803d;border-color:#bbf7d0;background:#f0fdf4;font-weight:700" onclick="handleValidatePaymentFromInvoice(${i})">✅ Valider Paiement</button>` : ''}
+                        ${!isPaid && !hasProof ? `<button class="tiny" style="color:#15803d;border-color:#bbf7d0;background:#f0fdf4" onclick="handleQuickMarkPaid(${i})">Marquer Payée</button>` : ''}
+                        <button class="tiny" onclick="printDocument('facture',${i})">PDF Facture</button>
+                      `;
+                    } else {
+                      return `
+                        ${proofBtn}
+                        ${!isPaid && !hasProof ? `<button class="tiny" style="color:#15803d;border-color:#bbf7d0;background:#f0fdf4;font-weight:700" onclick="openConfirmPaymentModal(${i})" title="Confirmer le règlement et transmettre la capture d'écran">📸 Confirmer Paiement (Capture)</button>` : ''}
+                        ${!isPaid && hasProof ? `<span class="badge orange" style="font-size:10px;padding:3px 6px">⏳ Paiement soumis (En vérification)</span>` : ''}
+                        <button class="tiny" onclick="printDocument('facture',${i})">PDF Facture</button>
+                      `;
+                    }
+                  })() : ""}
                   ${canDelete && canon !== "utilisateurs" ? `<button class="tiny delete" onclick="removeRow('${canon}',${i})">Archiver / Suppr.</button>` : ""}
                   ${canDelete && canon === "utilisateurs" && !isSuperAdminEmail(o.email) && o.uid !== currentUser?.uid && o.id !== currentUser?.uid ? `<button class="tiny delete" onclick="removeRow('${canon}',${i})">Supprimer</button>` : ""}
                 </td>
@@ -6126,7 +6173,7 @@ async function handleConfirmClientReservation() {
     const cleanAmount = 0;
 
     // 1. Création de l'enregistrement de réservation conforme au schéma complet de la plateforme
-    const resId = "RES-" + Date.now().toString(36).toUpperCase();
+    const resId = nextNumber("RES", "reservations");
     const resItem = {
       id: resId,
       code: resId,
@@ -8252,6 +8299,481 @@ async function handleCreateInvoiceFromQuoteId(quoteId, notifId) {
 }
 window.handleCreateInvoiceFromQuoteId = handleCreateInvoiceFromQuoteId;
 
+// =========================================================================
+// GESTION DES PREUVES DE PAIEMENT & ENVOI DE CAPTURES (MonCash, Natcash, Bancaire)
+// =========================================================================
+
+let currentProofBase64 = null;
+
+function handleProofImageSelected(input) {
+  const file = input?.files?.[0];
+  if (!file) return;
+
+  // Limitation à 5MB
+  if (file.size > 5 * 1024 * 1024) {
+    showToast("Le fichier sélectionné est trop volumineux (max 5 Mo).", "error");
+    input.value = "";
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const rawDataUrl = e.target.result;
+    
+    // Si c'est une image, on l'optimise/compresse à max 1200px pour Firestore
+    if (file.type && file.type.startsWith("image/")) {
+      const img = new Image();
+      img.onload = function() {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        const maxDim = 1200;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        canvas.width = w;
+        canvas.height = h;
+        ctx.drawImage(img, 0, 0, w, h);
+        const compressed = canvas.toDataURL("image/jpeg", 0.82);
+        currentProofBase64 = compressed;
+        
+        const previewImg = document.getElementById("proofPreviewImg");
+        const previewContainer = document.getElementById("proofPreviewContainer");
+        if (previewImg && previewContainer) {
+          previewImg.src = compressed;
+          previewContainer.style.display = "block";
+        }
+      };
+      img.src = rawDataUrl;
+    } else {
+      currentProofBase64 = rawDataUrl;
+      const previewImg = document.getElementById("proofPreviewImg");
+      const previewContainer = document.getElementById("proofPreviewContainer");
+      if (previewImg && previewContainer) {
+        previewImg.src = "logo-laperle.jpg";
+        previewContainer.style.display = "block";
+      }
+    }
+  };
+  reader.readAsDataURL(file);
+}
+window.handleProofImageSelected = handleProofImageSelected;
+
+function clearProofPreview() {
+  currentProofBase64 = null;
+  const input = document.getElementById("proofFileInput");
+  if (input) input.value = "";
+  const previewContainer = document.getElementById("proofPreviewContainer");
+  if (previewContainer) previewContainer.style.display = "none";
+}
+window.clearProofPreview = clearProofPreview;
+
+function openConfirmPaymentModal(identifier) {
+  let f = null;
+  let idx = -1;
+  const facturesList = list("factures") || [];
+  if (typeof identifier === 'number') {
+    idx = identifier;
+    f = facturesList[idx];
+  } else {
+    idx = facturesList.findIndex(item => item.id === identifier || item.number === identifier);
+    if (idx !== -1) f = facturesList[idx];
+  }
+  if (!f) {
+    showToast("Facture introuvable.", "error");
+    return;
+  }
+
+  currentProofBase64 = null;
+  const fNum = f.number || f.id;
+  const clientName = f.client || currentUserProfile?.nom || currentUser?.displayName || "Client";
+  const amount = Number(f.amount || 0);
+  const route = f.route || f.service || "Transport & Services LAPERLE TOUR HT";
+  const currentMethod = f.paymentMethod || "MonCash";
+
+  const modalEl = document.getElementById("modal");
+  if (!modalEl) return;
+
+  modalEl.innerHTML = `
+    <div class="modal-head">
+      <div>
+        <h2 style="color:#082b70">📸 Confirmer Paiement & Envoyer Capture</h2>
+        <small>Facture officielle N° <b>${esc(fNum)}</b> • Montant : <b>${money(amount)}</b></small>
+      </div>
+      <button class="close" onclick="closeModal()">×</button>
+    </div>
+
+    <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-weight:700;color:#15803d;font-size:13px">Facture ${esc(fNum)} — ${esc(route)}</div>
+        <div style="font-size:12px;color:#475569;margin-top:2px">Client : <b>${esc(clientName)}</b></div>
+      </div>
+      <div style="text-align:right">
+        <small style="color:#64748b;font-size:11px">Total à régler :</small><br>
+        <b style="font-size:17px;color:#15803d">${money(amount)}</b>
+      </div>
+    </div>
+
+    <form id="confirmPaymentForm" onsubmit="executeSubmitPaymentProof(event, ${idx})" style="display:flex;flex-direction:column;gap:12px">
+      <div class="field">
+        <label><b>Mode de règlement utilisé :</b> <span style="color:#b91c1c">*</span></label>
+        <select name="method" required style="font-weight:700;font-size:13.5px">
+          <option value="MonCash" ${currentMethod.includes("MonCash") ? "selected" : ""}>📱 MonCash (Transfert ou Paiement Marchand)</option>
+          <option value="Natcash" ${currentMethod.includes("Natcash") ? "selected" : ""}>📲 Natcash</option>
+          <option value="Virement Bancaire (Sogebank)" ${currentMethod.includes("Sogebank") ? "selected" : ""}>🏦 Virement Sogebank</option>
+          <option value="Virement Bancaire (Unibank)" ${currentMethod.includes("Unibank") ? "selected" : ""}>🏦 Virement Unibank</option>
+          <option value="Autre Virement Bancaire" ${currentMethod.includes("Virement") && !currentMethod.includes("Sogebank") && !currentMethod.includes("Unibank") ? "selected" : ""}>🏦 Virement BNC / Capital Bank / BUH</option>
+          <option value="Dépôt direct en Agence">💵 Dépôt direct à l'agence principale</option>
+          <option value="Chèque d'Entreprise">🏢 Chèque d'Entreprise / Bon</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label><b>Numéro de Référence / Transaction ID :</b> <span style="color:#b91c1c">*</span></label>
+        <input type="text" name="reference" placeholder="Ex: Transaction MonCash #948271 ou N° de bordereau bancaire" required style="font-size:13px">
+        <small style="color:#64748b;font-size:11px;margin-top:3px">Le code de confirmation SMS reçu de MonCash/Natcash ou la référence du virement.</small>
+      </div>
+
+      <div class="field">
+        <label><b>Capture d'écran / Photo du reçu :</b> <span style="color:#b91c1c">*</span></label>
+        <input type="file" id="proofFileInput" accept="image/*,application/pdf" capture="environment" required onchange="handleProofImageSelected(this)" style="padding:8px;border:1.5px dashed #0284c7;background:#f8fafc;border-radius:8px;width:100%;cursor:pointer">
+        <small style="color:#64748b;font-size:11px;margin-top:3px">Prenez une photo de votre reçu ou sélectionnez une capture d'écran de transaction.</small>
+      </div>
+
+      <!-- Zone de prévisualisation de la capture -->
+      <div id="proofPreviewContainer" style="display:none;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:11px;font-weight:700;color:#082b70;margin-bottom:6px">Aperçu de votre capture d'écran :</div>
+        <img id="proofPreviewImg" src="" alt="Aperçu du reçu" style="max-height:220px;max-width:100%;border-radius:6px;box-shadow:0 2px 6px rgba(0,0,0,0.1);object-fit:contain;margin:0 auto;display:block">
+        <button type="button" class="tiny delete" style="margin-top:8px" onclick="clearProofPreview()">🗑️ Changer de photo</button>
+      </div>
+
+      <div class="field">
+        <label><b>Remarque ou note (Optionnel) :</b></label>
+        <textarea name="notes" rows="2" placeholder="Ex: Paiement effectué depuis le numéro 3835-XXXX par Jean..."></textarea>
+      </div>
+
+      <div class="form-actions" style="margin-top:10px">
+        <button type="button" class="secondary" onclick="closeModal()">Annuler</button>
+        <button type="submit" id="btnSubmitPaymentProof" class="primary" style="background:#15803d;border-color:#15803d;font-weight:700">
+          📤 Transmettre la Preuve de Paiement
+        </button>
+      </div>
+    </form>
+  `;
+
+  document.getElementById("modalBackdrop").classList.add("open");
+}
+window.openConfirmPaymentModal = openConfirmPaymentModal;
+
+async function executeSubmitPaymentProof(event, index) {
+  event.preventDefault();
+  const f = list("factures")[index];
+  if (!f) return;
+
+  const form = event.target;
+  const method = form.method.value;
+  const reference = (form.reference.value || "").trim();
+  const notes = (form.notes.value || "").trim();
+
+  if (!currentProofBase64) {
+    showToast("Veuillez sélectionner ou prendre une photo de votre reçu/capture d'écran.", "error");
+    return;
+  }
+
+  const btn = document.getElementById("btnSubmitPaymentProof");
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Transmission en cours...";
+  }
+
+  const fNum = f.number || f.id;
+  const clientName = f.client || currentUserProfile?.nom || currentUser?.displayName || "Client";
+  const amount = Number(f.amount || 0);
+
+  // 1. Mettre à jour la facture
+  f.status = "Paiement soumis";
+  f.paymentMethod = method;
+  f.paymentReference = reference;
+  f.paymentProof = {
+    image: currentProofBase64,
+    method,
+    reference,
+    notes,
+    submittedAt: new Date().toISOString(),
+    submittedBy: currentUser?.email || 'client'
+  };
+  f.updatedAt = new Date().toISOString();
+  save();
+  await saveDocumentToFirestore("factures", f);
+
+  // 2. Créer ou mettre à jour la ligne dans la collection paiements
+  try {
+    const payId = nextNumber("PAY", "paiements");
+    const payEntry = {
+      id: payId,
+      client: clientName,
+      factureId: fNum,
+      date: today(),
+      amount: amount,
+      method: method,
+      status: "En attente de vérification",
+      reference: reference,
+      notes: `Preuve soumise par le client pour la facture ${fNum}.${notes ? ' Note : ' + notes : ''}`,
+      proofImage: currentProofBase64,
+      createdAt: new Date().toISOString()
+    };
+    list("paiements").unshift(payEntry);
+    save();
+    await saveDocumentToFirestore("paiements", payEntry);
+  } catch (payErr) {
+    console.warn("Enregistrement paiement notice:", payErr);
+  }
+
+  // 3. Notification prioritaire dans la cloche des responsables (Staff / Comptabilité)
+  const notifId = `NOTIF-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  const notifPayload = {
+    id: notifId,
+    title: `🔔 Preuve de paiement reçue (${fNum})`,
+    message: `Le client ${clientName} a soumis une capture de reçu pour la facture ${fNum} (${money(amount)}) via ${method} (Réf: ${reference}). En attente de validation comptable.`,
+    type: 'finance',
+    priority: 'high',
+    actionType: 'payment_proof_submitted',
+    docType: 'facture',
+    factureId: fNum,
+    targetRole: 'staff',
+    forRole: 'staff',
+    targetUid: 'staff',
+    isInternal: true,
+    broadcast: false,
+    read: false,
+    date: new Date().toISOString(),
+    senderUid: currentUser?.uid || '',
+    senderName: clientName
+  };
+
+  if (!Array.isArray(state.notifications)) state.notifications = [];
+  state.notifications.unshift({ ...notifPayload });
+  newlyArrivedNotificationIds.add(notifId);
+  updateNotificationBadge();
+  if (isNotifDropdownOpen) renderNotificationDropdown();
+
+  try {
+    await createNotification(notifPayload, notifId);
+  } catch (err) {
+    console.warn("Erreur envoi notification preuve paiement:", err);
+  }
+
+  closeModal();
+  render();
+  showToast(`✅ Preuve de paiement pour la facture ${fNum} transmise aux responsables avec succès.`);
+}
+window.executeSubmitPaymentProof = executeSubmitPaymentProof;
+
+function viewPaymentProof(identifier) {
+  let f = null;
+  const facturesList = list("factures") || [];
+  if (typeof identifier === 'number') {
+    f = facturesList[identifier];
+  } else {
+    f = facturesList.find(item => item.id === identifier || item.number === identifier);
+  }
+  if (!f) {
+    showToast("Facture introuvable.", "error");
+    return;
+  }
+
+  const proof = f.paymentProof || {};
+  const image = proof.image || f.proofImage || '';
+  const fNum = f.number || f.id;
+  const roles = normalizeRoles(currentUserRoles);
+  const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
+  const isPaid = f.status === "Payée";
+
+  const modalEl = document.getElementById("modal");
+  if (!modalEl) return;
+
+  modalEl.innerHTML = `
+    <div class="modal-head">
+      <div>
+        <h2 style="color:#082b70">📸 Preuve de Paiement — Facture ${esc(fNum)}</h2>
+        <small>Client : <b>${esc(f.client || 'Client')}</b> • Montant : <b>${money(f.amount || 0)}</b></small>
+      </div>
+      <button class="close" onclick="closeModal()">×</button>
+    </div>
+
+    <div style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:12px 14px;margin-bottom:12px;font-size:12.5px;color:#1e293b;line-height:1.5">
+      <b>Mode de règlement :</b> ${esc(proof.method || f.paymentMethod || 'Non spécifié')}<br>
+      <b>Numéro de référence :</b> <span style="font-weight:700;color:#082b70">${esc(proof.reference || f.paymentReference || 'Non spécifié')}</span><br>
+      <b>Date de soumission :</b> ${proof.submittedAt ? new Date(proof.submittedAt).toLocaleString('fr-FR') : 'Récemment'}<br>
+      ${proof.notes ? `<b>Note du client :</b> <i>${esc(proof.notes)}</i><br>` : ''}
+      <b>Statut actuel :</b> <span class="badge ${isPaid ? 'green' : 'orange'}" style="font-size:11px;font-weight:700">${esc(f.status || 'En attente')}</span>
+    </div>
+
+    <div style="text-align:center;background:#0f172a;border-radius:10px;padding:14px;margin-bottom:14px">
+      ${image ? `
+        <img src="${image}" alt="Capture de paiement" style="max-height:420px;max-width:100%;border-radius:6px;object-fit:contain;margin:0 auto;display:block;box-shadow:0 4px 12px rgba(0,0,0,0.3)">
+      ` : `
+        <div style="color:#94a3b8;padding:40px 20px">Aucune image de reçu enregistrée pour cette preuve.</div>
+      `}
+    </div>
+
+    <div class="form-actions" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <button type="button" class="secondary" onclick="closeModal()">Fermer</button>
+      <div style="display:flex;gap:8px">
+        ${image ? `<a href="${image}" download="recu-${fNum}.jpg" class="primary" style="background:#0284c7;border-color:#0284c7;text-decoration:none;display:inline-flex;align-items:center;gap:4px;padding:7px 14px;font-weight:700;font-size:13px;border-radius:8px;color:#fff">💾 Télécharger la capture</a>` : ''}
+        ${isStaff && !isPaid ? `
+          <button type="button" class="primary green" style="font-weight:700" onclick="closeModal();handleValidatePaymentFromInvoiceId('${fNum}')">
+            ✅ Valider le Paiement & Acquitter la Facture
+          </button>
+        ` : ''}
+      </div>
+    </div>
+  `;
+
+  document.getElementById("modalBackdrop").classList.add("open");
+}
+window.viewPaymentProof = viewPaymentProof;
+
+function viewPaymentProofById(factureId) {
+  viewPaymentProof(factureId);
+}
+window.viewPaymentProofById = viewPaymentProofById;
+
+async function handleValidatePaymentFromInvoice(index) {
+  const f = list("factures")[index];
+  if (!f) return;
+  await handleValidatePaymentFromInvoiceId(f.number || f.id);
+}
+window.handleValidatePaymentFromInvoice = handleValidatePaymentFromInvoice;
+
+async function handleValidatePaymentFromInvoiceId(factureId, notifId) {
+  const f = (list("factures") || []).find(item => item.id === factureId || item.number === factureId);
+  if (!f) {
+    showToast("Facture introuvable.", "error");
+    return;
+  }
+
+  const fNum = f.number || f.id;
+  const clientName = f.client || "Client";
+  const amount = Number(f.amount || 0);
+  const targetUid = f.clientId || f.clientUid || f.uid || "";
+  const clientEmail = (f.email || "").toLowerCase().trim();
+
+  // 1. Passer la facture à "Payée"
+  f.status = "Payée";
+  f.paidAt = new Date().toISOString();
+  f.updatedAt = new Date().toISOString();
+  save();
+  await saveDocumentToFirestore("factures", f);
+
+  // 2. Mettre à jour la ligne dans la collection paiements si existante ou en créer une
+  const existingPay = (list("paiements") || []).find(p => p.factureId === fNum);
+  if (existingPay) {
+    existingPay.status = "Reçu";
+    existingPay.validatedAt = new Date().toISOString();
+    save();
+    await saveDocumentToFirestore("paiements", existingPay);
+  } else {
+    try {
+      const payId = nextNumber("PAY", "paiements");
+      const payEntry = {
+        id: payId,
+        client: clientName,
+        factureId: fNum,
+        date: today(),
+        amount: amount,
+        method: f.paymentMethod || "MonCash",
+        status: "Reçu",
+        reference: f.paymentReference || "",
+        notes: `Règlement validé pour la facture ${fNum}`,
+        proofImage: f.paymentProof?.image || "",
+        createdAt: new Date().toISOString()
+      };
+      list("paiements").unshift(payEntry);
+      save();
+      await saveDocumentToFirestore("paiements", payEntry);
+    } catch (e) {}
+  }
+
+  // 3. Mettre à jour la réservation liée si existante
+  if (f.reservationId) {
+    const res = (list("reservations") || []).find(r => r.id === f.reservationId || r.code === f.reservationId);
+    if (res) {
+      res.payment = "Payé";
+      res.status = "Confirmée";
+      res.statut = "Confirmée";
+      save();
+      await saveDocumentToFirestore("reservations", res);
+    }
+  }
+
+  // 4. Marquer la notification du responsable comme complétée
+  (state.notifications || []).forEach(n => {
+    if (n.factureId === fNum || n.id === notifId) {
+      n.actionCompleted = true;
+      n.actionCompletedDoc = fNum;
+      n.read = true;
+    }
+  });
+
+  if (notifId) {
+    try {
+      await updateDoc(doc(db, 'notifications', notifId), {
+        read: true,
+        actionCompleted: true,
+        actionCompletedDoc: fNum,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (e) {}
+  }
+
+  // 5. Notification de félicitations / reçu officiel acquitté au client
+  if (targetUid || clientEmail) {
+    try {
+      const clientNotifId = `NOTIF-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      const clientNotif = {
+        id: clientNotifId,
+        title: `✅ Paiement validé & Facture ${fNum} acquittée !`,
+        message: `Votre règlement de ${money(amount)} pour la facture ${fNum} a été validé avec succès par la Direction LAPERLE TOUR HT. Votre reçu officiel est disponible sur votre espace.`,
+        type: 'finance',
+        priority: 'high',
+        targetUid: targetUid || 'all',
+        clientId: targetUid || '',
+        broadcast: !targetUid,
+        email: clientEmail,
+        read: false,
+        date: new Date().toISOString(),
+        factureId: fNum,
+        senderUid: currentUser?.uid || 'staff',
+        senderName: 'Direction LAPERLE TOUR HT'
+      };
+      await createNotification(clientNotif, clientNotifId);
+    } catch (notifErr) {
+      console.warn("Erreur alerte client paiement validé:", notifErr);
+    }
+  }
+
+  updateNotificationBadge();
+  render();
+  showToast(`✅ Paiement validé pour la facture ${fNum} ! Facture marquée comme Payée.`);
+}
+window.handleValidatePaymentFromInvoiceId = handleValidatePaymentFromInvoiceId;
+
+async function handleQuickMarkPaid(index) {
+  const f = list("factures")[index];
+  if (!f) return;
+  if (!confirm(`Confirmer le règlement intégral de ${money(f.amount || 0)} pour la facture ${f.number || f.id} ?`)) return;
+  await handleValidatePaymentFromInvoiceId(f.number || f.id);
+}
+window.handleQuickMarkPaid = handleQuickMarkPaid;
+
 function printDocument(type, index) {
   const isQuote = type === "proforma" || type === "quote";
   const key = isQuote ? "proformas" : "factures";
@@ -8336,6 +8858,30 @@ function printDocument(type, index) {
               return `<span class="badge" style="background:#e0f2fe;color:#0369a1;padding:8px 14px;font-size:12px;font-weight:700">⏳ Facture demandée via ${esc(o.moyenPaiement || 'paiement')}</span>`;
             } else {
               return `<button class="primary" style="background:#16a34a;border-color:#16a34a;font-weight:700" onclick="closeModal();openRequestInvoiceFromQuoteModal(${index})">💳 DEMANDER FACTURE ET MOYEN DE PAIEMENT</button>`;
+            }
+          }
+        })() : ""}
+        ${!isQuote ? (() => {
+          const roles = normalizeRoles(currentUserRoles);
+          const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
+          const isPaid = o.status === "Payée";
+          const hasProof = !!(o.paymentProof || o.preuvePaiement);
+          if (isStaff) {
+            return `
+              ${hasProof ? `<button class="primary" style="background:#0284c7;border-color:#0284c7" onclick="closeModal();viewPaymentProof(${index})">👁️ Voir la Capture Reçu</button>` : ""}
+              ${!isPaid && hasProof ? `<button class="primary green" onclick="closeModal();handleValidatePaymentFromInvoice(${index})">✅ Valider Paiement & Acquitter</button>` : ""}
+              ${!isPaid && !hasProof ? `<button class="primary green" onclick="closeModal();handleQuickMarkPaid(${index})">Marquer Payée</button>` : ""}
+            `;
+          } else {
+            if (isPaid) {
+              return `<span class="badge green" style="padding:8px 14px;font-size:12px;font-weight:700">✅ Facture Acquittée</span>`;
+            } else if (hasProof) {
+              return `
+                <button class="primary" style="background:#0284c7;border-color:#0284c7" onclick="closeModal();viewPaymentProof(${index})">👁️ Mon Reçu Soumis</button>
+                <span class="badge orange" style="padding:8px 14px;font-size:12px;font-weight:700">⏳ Preuve soumise (En vérification)</span>
+              `;
+            } else {
+              return `<button class="primary" style="background:#15803d;border-color:#15803d;font-weight:700" onclick="closeModal();openConfirmPaymentModal(${index})">📸 Confirmer Paiement (Envoyer Capture)</button>`;
             }
           }
         })() : ""}

@@ -17,19 +17,14 @@ import {
 const COLLECTION_NAME = 'proformas';
 
 export function generateProformaNumber(existingList = []) {
-  const now = new Date();
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
-  const prefix = `PT-${yyyy}-${mm}-${dd}`;
-  
+  const prefix = 'PRO';
   let maxSeq = 0;
   existingList.forEach(item => {
     const num = String(item.number || item.id || '');
-    if (num.startsWith(prefix)) {
-      const parts = num.split('-');
-      const last = parseInt(parts[parts.length - 1], 10);
-      if (!isNaN(last) && last > maxSeq) maxSeq = last;
+    const m = num.match(/(?:PRO|PT)-?(\d+)$/i) || num.match(/(\d+)$/);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (!isNaN(n) && n > maxSeq) maxSeq = n;
     }
   });
   return `${prefix}-${String(maxSeq + 1).padStart(3, '0')}`;

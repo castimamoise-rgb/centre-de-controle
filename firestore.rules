@@ -568,7 +568,12 @@ service cloud.firestore {
     match /factures/{factureId} {
       allow get, list: if canReadFinances() || 
         (isClient() && isClientDoc(existing()));
-      allow create, update: if canManageFinances() && isValidId(factureId) && isValidFacture(incoming());
+      allow create: if canManageFinances() && isValidId(factureId) && isValidFacture(incoming());
+      allow update: if isValidId(factureId) && (
+        (canManageFinances() && isValidFacture(incoming())) ||
+        (isSignedIn() && isClientDoc(existing()) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['paymentProof', 'paymentMethod', 'paymentReference', 'status', 'updatedAt', 'updatedBy']))
+      );
       allow delete: if isAdmin() && isValidId(factureId);
     }
     match /invoices/{invoiceId} {
