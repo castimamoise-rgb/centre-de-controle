@@ -435,8 +435,17 @@ export function filterDataForUser(moduleKey, items, userProfile) {
     // 4. Concordance stricte sur le Nom complet (SEULEMENT si aucun clientId contradictoire et nom non-générique)
     const docClient = String(doc.client || doc.nomClient || doc.name || doc.nom || '').toLowerCase().trim();
     const isGeneric = (w) => !w || ['client', 'prospect', 'utilisateur', 'user', 'nouveau client', 'admin'].includes(w) || w.length < 3;
-    if (docClient && !isGeneric(docClient) && userName && !isGeneric(userName)) {
-      if (docClient === userName) return true;
+    if (docClient && !isGeneric(docClient)) {
+      if (userName && !isGeneric(userName) && docClient === userName) return true;
+      if (userUsername && docClient === userUsername) return true;
+    }
+
+    // 5. Pour les paiements liés à une facture du client
+    if (m === 'paiements' && doc.factureId) {
+      if (typeof window !== 'undefined' && window.state && Array.isArray(window.state.factures)) {
+        const fac = window.state.factures.find(f => f.number === doc.factureId || f.id === doc.factureId);
+        if (fac && matchesClientDoc(fac)) return true;
+      }
     }
 
     return false;

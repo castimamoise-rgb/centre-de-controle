@@ -477,12 +477,13 @@ service cloud.firestore {
     match /paiements/{paiementId} {
       allow get, list: if canReadFinances() || 
         (isClient() && isClientDoc(existing()));
-      allow create, update: if canManageFinances() && isValidId(paiementId) && isValidPaiement(incoming());
+      allow create: if isValidId(paiementId) && (canManageFinances() || (isSignedIn() && isClientDoc(incoming()))) && isValidPaiement(incoming());
+      allow update: if isValidId(paiementId) && (canManageFinances() || (isSignedIn() && isClientDoc(existing()))) && isValidPaiement(incoming());
       allow delete: if isAdmin() && isValidId(paiementId);
     }
     match /payments/{paymentId} {
       allow get, list: if canReadFinances() || (isClient() && isClientDoc(existing()));
-      allow create, update: if canManageFinances() && isValidId(paymentId);
+      allow create, update: if isValidId(paymentId) && (canManageFinances() || (isSignedIn() && isClientDoc(incoming())));
       allow delete: if isAdmin() && isValidId(paymentId);
     }
 

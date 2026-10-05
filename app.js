@@ -562,7 +562,10 @@ const SCHEMAS = {
     ["notes", "Notes", "textarea"]
   ],
   paiements: [
-    ["client", "Client", "text"],
+    ["client", "Nom complet du Client *", "text"],
+    ["phone", "Téléphone du Client *", "tel"],
+    ["email", "Email du Client *", "email"],
+    ["address", "Adresse complète du Client *", "text"],
     ["date", "Date", "date"],
     ["amount", "Montant HTG", "number"],
     ["method", "Mode de règlement", "select:MonCash|Cash|Virement|Chèque|Autre"],
@@ -573,7 +576,10 @@ const SCHEMAS = {
     ["notes", "Notes", "textarea"]
   ],
   payments: [
-    ["client", "Client", "text"],
+    ["client", "Nom complet du Client *", "text"],
+    ["phone", "Téléphone du Client *", "tel"],
+    ["email", "Email du Client *", "email"],
+    ["address", "Adresse complète du Client *", "text"],
     ["date", "Date", "date"],
     ["amount", "Montant HTG", "number"],
     ["method", "Mode", "select:MonCash|Cash|Virement|Autre"],
@@ -582,7 +588,10 @@ const SCHEMAS = {
     ["notes", "Notes", "textarea"]
   ],
   reservations: [
-    ["client", "Client", "text"],
+    ["client", "Nom complet du Client *", "text"],
+    ["phone", "Téléphone du Client *", "tel"],
+    ["email", "Email du Client *", "email"],
+    ["address", "Adresse complète du Client *", "text"],
     ["date", "Date", "date"],
     ["time", "Heure", "time"],
     ["origin", "Lieu de départ", "text"],
@@ -596,7 +605,10 @@ const SCHEMAS = {
     ["notes", "Notes", "textarea"]
   ],
   bookings: [
-    ["client", "Client", "text"],
+    ["client", "Nom complet du Client *", "text"],
+    ["phone", "Téléphone du Client *", "tel"],
+    ["email", "Email du Client *", "email"],
+    ["address", "Adresse complète du Client *", "text"],
     ["date", "Date", "date"],
     ["time", "Heure", "time"],
     ["route", "Trajet", "text"],
@@ -622,7 +634,10 @@ const SCHEMAS = {
     ["notes", "Notes", "textarea"]
   ],
   proformas: [
-    ["client", "Client", "text"],
+    ["client", "Nom complet du Client *", "text"],
+    ["phone", "Téléphone du Client *", "tel"],
+    ["email", "Email du Client *", "email"],
+    ["address", "Adresse complète du Client *", "text"],
     ["date", "Date", "date"],
     ["route", "Trajet", "text"],
     ["service", "Service", "select:Transport scolaire|Abonnement travail|Taxi privé|Transport privé|Location|Tourisme"],
@@ -632,7 +647,10 @@ const SCHEMAS = {
     ["notes", "Notes", "textarea"]
   ],
   quotes: [
-    ["client", "Client", "text"],
+    ["client", "Nom complet du Client *", "text"],
+    ["phone", "Téléphone du Client *", "tel"],
+    ["email", "Email du Client *", "email"],
+    ["address", "Adresse complète du Client *", "text"],
     ["date", "Date", "date"],
     ["route", "Trajet", "text"],
     ["service", "Service", "select:Transport scolaire|Abonnement travail|Taxi privé|Transport privé|Location|Tourisme"],
@@ -642,7 +660,10 @@ const SCHEMAS = {
     ["notes", "Notes", "textarea"]
   ],
   factures: [
-    ["client", "Client", "text"],
+    ["client", "Nom complet du Client *", "text"],
+    ["phone", "Téléphone du Client *", "tel"],
+    ["email", "Email du Client *", "email"],
+    ["address", "Adresse complète du Client *", "text"],
     ["date", "Date", "date"],
     ["proforma", "N° Proforma lié", "text"],
     ["amount", "Montant HTG", "number"],
@@ -651,7 +672,10 @@ const SCHEMAS = {
     ["notes", "Notes", "textarea"]
   ],
   invoices: [
-    ["client", "Client", "text"],
+    ["client", "Nom complet du Client *", "text"],
+    ["phone", "Téléphone du Client *", "tel"],
+    ["email", "Email du Client *", "email"],
+    ["address", "Adresse complète du Client *", "text"],
     ["date", "Date", "date"],
     ["proforma", "N° Proforma lié", "text"],
     ["amount", "Montant HTG", "number"],
@@ -679,6 +703,7 @@ const SCHEMAS = {
 
 // Initial state
 let state = loadState();
+window.state = state;
 let current = location.hash.slice(1) || "dashboard";
 let currentPage = current;
 
@@ -1269,6 +1294,45 @@ function reconcileClientDocumentNotifications() {
         };
         state.notifications.unshift(notifPayload);
         hasAdded = true;
+      }
+    });
+
+    // 3. Paiements de ce client : rattacher rétroactivement si facture correspondante ou identité correspondante
+    (state.paiements || []).forEach(p => {
+      if (p.archived) return;
+      let isMine = false;
+      if (p.clientId === uid || p.clientUid === uid || p.uid === uid) isMine = true;
+      if (p.email && email && p.email.toLowerCase().trim() === email) isMine = true;
+
+      // Rattachement via la facture liée au paiement
+      if (!isMine && p.factureId) {
+        const relatedFac = (state.factures || []).find(f => f.number === p.factureId || f.id === p.factureId);
+        if (relatedFac) {
+          const fUid = relatedFac.clientId || relatedFac.clientUid || relatedFac.uid;
+          if (fUid === uid || (relatedFac.email && email && relatedFac.email.toLowerCase().trim() === email) || (myName && relatedFac.client && relatedFac.client.toLowerCase().trim() === myName)) {
+            isMine = true;
+          }
+        }
+      }
+
+      // Rattachement via concordance de nom de client
+      if (!isMine && p.client) {
+        const pClientClean = String(p.client).toLowerCase().trim();
+        const hasMatchingFacOrRes = (state.factures || []).some(f => (f.clientId === uid || f.clientUid === uid || f.uid === uid || (f.email && email && f.email.toLowerCase().trim() === email)) && f.client && String(f.client).toLowerCase().trim() === pClientClean) ||
+                                    (state.reservations || []).some(r => (r.clientId === uid || r.clientUid === uid || r.uid === uid || (r.email && email && r.email.toLowerCase().trim() === email)) && r.client && String(r.client).toLowerCase().trim() === pClientClean);
+        if (hasMatchingFacOrRes) isMine = true;
+      }
+
+      if (isMine) {
+        let changed = false;
+        if (!p.clientId) { p.clientId = uid; changed = true; }
+        if (!p.clientUid) { p.clientUid = uid; changed = true; }
+        if (!p.uid) { p.uid = uid; changed = true; }
+        if (!p.email && email) { p.email = email; changed = true; }
+        if (changed) {
+          hasAdded = true;
+          saveDocumentToFirestore("paiements", p).catch(() => {});
+        }
       }
     });
 
@@ -5248,6 +5312,26 @@ function openForm(key, index = -1) {
     let obj = {};
     new FormData(e.target).forEach((v, k) => obj[k] = v.trim());
 
+    // Validation stricte des 4 informations obligatoires du client pour tous les documents
+    if (["reservations", "bookings", "proformas", "quotes", "factures", "invoices", "paiements", "payments"].includes(canon)) {
+      const missing = [];
+      if (!obj.client || obj.client.trim().length < 2) missing.push("Nom complet du client");
+      const cleanPhone = (obj.phone || "").replace(/[^0-9]/g, '');
+      if (!cleanPhone || cleanPhone.length < 8) missing.push("Numéro de téléphone valide (au moins 8 chiffres)");
+      if (!obj.email || !obj.email.includes("@") || !obj.email.includes(".")) missing.push("Adresse email valide");
+      if (!obj.address || obj.address.trim().length < 3) missing.push("Adresse complète (ville, commune, rue)");
+
+      if (missing.length > 0) {
+        resetSubmitBtn();
+        showToast(`⚠️ Informations client obligatoires manquantes :\n• ${missing.join("\n• ")}`, "error");
+        return;
+      }
+
+      // Synchroniser les alias de champs pour compatibilité universelle
+      obj.telephone = obj.phone;
+      obj.adresse = obj.address;
+    }
+
     const previousItem = index >= 0 ? { ...list(canon)[index] } : null;
     if (index >= 0) {
       const old = list(canon)[index];
@@ -5616,11 +5700,10 @@ function fieldHTMLLinked(id, label, type, val, key) {
         : (currentUserProfile?.name || currentUser?.displayName || currentUser?.email || "Client");
       return `
         <div class="field">
-          <label>Client (Votre compte)</label>
-          <input name="client" value="${esc(myClientName)}" readonly style="background:#f0f4f9;font-weight:700">
+          <label>Nom complet du Client *</label>
+          <input name="client" value="${esc(myClientName)}" readonly required style="background:#f0f4f9;font-weight:700">
           <input type="hidden" name="clientId" value="${esc(currentUser?.uid || '')}">
           <input type="hidden" name="clientUid" value="${esc(currentUser?.uid || '')}">
-          <input type="hidden" name="email" value="${esc(currentUser?.email || '')}">
         </div>
       `;
     }
@@ -5642,7 +5725,9 @@ function fieldHTMLLinked(id, label, type, val, key) {
         id: c.id,
         clientId: c.clientId || c.id,
         name: c.name || c.nom || 'Client',
-        email: c.email || ''
+        email: c.email || '',
+        phone: c.phone || c.telephone || '',
+        address: c.address || c.zone || c.adresse || ''
       });
     });
 
@@ -5654,26 +5739,63 @@ function fieldHTMLLinked(id, label, type, val, key) {
           id: uUid,
           clientId: uUid,
           name: u.name || u.nom || (u.email ? u.email.split('@')[0] : 'Client'),
-          email: u.email || ''
+          email: u.email || '',
+          phone: u.telephone || u.phone || '',
+          address: u.adresse || u.address || ''
         });
       }
     });
 
     if (!options.length) {
-      return `<div class="field"><label>Client</label><input name="client" value="${esc(val)}" placeholder="Nom du client"></div>`;
+      return `<div class="field"><label>Nom complet du Client *</label><input name="client" value="${esc(val)}" required placeholder="Nom complet du client"></div>`;
     }
 
     return `
       <div class="field">
-        <label>Client</label>
-        <select name="client" onchange="const sel = this.options[this.selectedIndex]; const f = this.form; if (f && sel) { if (f.clientId) f.clientId.value = sel.dataset.clientid || ''; if (f.clientUid) f.clientUid.value = sel.dataset.clientid || ''; if (f.email && sel.dataset.email) f.email.value = sel.dataset.email; }">
+        <label>Nom complet du Client *</label>
+        <select name="client" required onchange="const sel = this.options[this.selectedIndex]; const f = this.form; if (f && sel) { if (f.clientId) f.clientId.value = sel.dataset.clientid || ''; if (f.clientUid) f.clientUid.value = sel.dataset.clientid || ''; if (f.email && sel.dataset.email) f.email.value = sel.dataset.email; if (f.phone && sel.dataset.phone) f.phone.value = sel.dataset.phone; if (f.address && sel.dataset.address) f.address.value = sel.dataset.address; }">
           <option value="">-- Sélectionner un client --</option>
-          ${options.map(c => `<option value="${esc(c.name)}" data-clientid="${esc(c.clientId)}" data-email="${esc(c.email)}" ${c.name === val || c.id === val ? "selected" : ""}>${esc(c.name)}${c.email ? ' (' + esc(c.email) + ')' : ''}</option>`).join("")}
+          ${options.map(c => `<option value="${esc(c.name)}" data-clientid="${esc(c.clientId)}" data-email="${esc(c.email)}" data-phone="${esc(c.phone)}" data-address="${esc(c.address)}" ${c.name === val || c.id === val ? "selected" : ""}>${esc(c.name)}${c.phone ? ' • ' + esc(c.phone) : ''}${c.email ? ' (' + esc(c.email) + ')' : ''}</option>`).join("")}
         </select>
         <input type="hidden" name="clientId" value="">
         <input type="hidden" name="clientUid" value="">
       </div>
     `;
+  }
+  if (["reservations", "bookings", "proformas", "quotes", "factures", "invoices", "paiements", "payments"].includes(canon)) {
+    if (id === "phone") {
+      const callerRoles = normalizeRoles(currentUserRoles);
+      const isClientUser = (callerRoles.includes(ROLES.CLIENT) || callerRoles.includes(ROLES.PROSPECT)) && !callerRoles.includes(ROLES.ADMIN);
+      const defaultPhone = val || (isClientUser ? (currentUserProfile?.telephone || currentUserProfile?.phone || "") : "");
+      return `
+        <div class="field">
+          <label>${label}</label>
+          <input name="phone" type="tel" required placeholder="+509 XXXX-XXXX" value="${esc(defaultPhone)}">
+        </div>
+      `;
+    }
+    if (id === "email") {
+      const callerRoles = normalizeRoles(currentUserRoles);
+      const isClientUser = (callerRoles.includes(ROLES.CLIENT) || callerRoles.includes(ROLES.PROSPECT)) && !callerRoles.includes(ROLES.ADMIN);
+      const defaultEmail = val || (isClientUser ? (currentUserProfile?.email || currentUser?.email || "") : "");
+      return `
+        <div class="field">
+          <label>${label}</label>
+          <input name="email" type="email" required placeholder="client@exemple.com" value="${esc(defaultEmail)}">
+        </div>
+      `;
+    }
+    if (id === "address") {
+      const callerRoles = normalizeRoles(currentUserRoles);
+      const isClientUser = (callerRoles.includes(ROLES.CLIENT) || callerRoles.includes(ROLES.PROSPECT)) && !callerRoles.includes(ROLES.ADMIN);
+      const defaultAddress = val || (isClientUser ? (currentUserProfile?.adresse || currentUserProfile?.address || "") : "");
+      return `
+        <div class="field">
+          <label>${label}</label>
+          <input name="address" type="text" required placeholder="Ville, Commune, Rue, Repère..." value="${esc(defaultAddress)}">
+        </div>
+      `;
+    }
   }
   if (canon === "reservations" && id === "demandeProforma") {
     const callerRoles = normalizeRoles(currentUserRoles);
@@ -8573,8 +8695,14 @@ async function executeSubmitPaymentProof(event, index) {
   // 2. Créer ou mettre à jour la ligne dans la collection paiements
   try {
     const payId = nextNumber("PAY", "paiements");
+    const clientUid = f.clientId || f.clientUid || f.uid || currentUser?.uid || '';
+    const clientEmail = (f.email || currentUser?.email || '').toLowerCase().trim();
     const payEntry = {
       id: payId,
+      clientId: clientUid,
+      clientUid: clientUid,
+      uid: clientUid,
+      email: clientEmail,
       client: clientName,
       factureId: fNum,
       date: today(),
@@ -8735,6 +8863,10 @@ async function handleValidatePaymentFromInvoiceId(factureId, notifId) {
   if (existingPay) {
     existingPay.status = "Reçu";
     existingPay.validatedAt = new Date().toISOString();
+    if (!existingPay.clientId && targetUid) existingPay.clientId = targetUid;
+    if (!existingPay.clientUid && targetUid) existingPay.clientUid = targetUid;
+    if (!existingPay.uid && targetUid) existingPay.uid = targetUid;
+    if (!existingPay.email && clientEmail) existingPay.email = clientEmail;
     save();
     await saveDocumentToFirestore("paiements", existingPay);
   } else {
@@ -8742,6 +8874,10 @@ async function handleValidatePaymentFromInvoiceId(factureId, notifId) {
       const payId = nextNumber("PAY", "paiements");
       const payEntry = {
         id: payId,
+        clientId: targetUid,
+        clientUid: targetUid,
+        uid: targetUid,
+        email: clientEmail,
         client: clientName,
         factureId: fNum,
         date: today(),
@@ -8833,12 +8969,31 @@ window.handleQuickMarkPaid = handleQuickMarkPaid;
 
 function printDocument(type, index) {
   const isQuote = type === "proforma" || type === "quote";
-  const key = isQuote ? "proformas" : "factures";
+  const isInvoice = type === "facture" || type === "invoice";
+  const isReservation = type === "reservation" || type === "booking";
+  const isPayment = type === "paiement" || type === "payment" || type === "receipt";
+
+  let key = "factures";
+  if (isQuote) key = "proformas";
+  else if (isReservation) key = "reservations";
+  else if (isPayment) key = "paiements";
+
   const o = list(key)[index];
   if (!o) return;
 
-  const title = isQuote ? "PROFORMA" : "FACTURE";
-  const client = list("clients").find(c => c.name === o.client || c.id === o.client) || {};
+  let title = "FACTURE OFFICIELLE";
+  if (isQuote) title = "DEVIS PROFORMA";
+  else if (isReservation) title = "BON DE RÉSERVATION";
+  else if (isPayment) title = "REÇU OFFICIEL DE RÈGLEMENT";
+
+  const client = list("clients").find(c => c.name === o.client || c.id === o.client || (o.clientId && (c.id === o.clientId || c.clientId === o.clientId))) || {};
+  const user = (state.utilisateurs || []).find(u => (o.clientId && (u.uid === o.clientId || u.id === o.clientId)) || (o.email && u.email && u.email.toLowerCase() === o.email.toLowerCase()) || (o.client && u.name && u.name.toLowerCase() === o.client.toLowerCase())) || {};
+
+  const clientName = o.client || client.name || user.name || "Client";
+  const clientPhone = o.phone || o.telephone || client.phone || client.telephone || user.telephone || user.phone || "Non renseigné";
+  const clientEmail = o.email || client.email || user.email || "Non renseigné";
+  const clientAddress = o.address || o.adresse || client.address || client.zone || user.adresse || user.address || "Port-au-Prince, Haïti";
+
   const company = localStorage.getItem("LAPERLE_COMPANY") || "LAPERLE TOUR HT";
   const phone = localStorage.getItem("LAPERLE_PHONE") || "+509 4440 8687";
   const email = localStorage.getItem("LAPERLE_EMAIL") || "laperletourht@gmail.com";
@@ -8853,21 +9008,35 @@ function printDocument(type, index) {
     w = null;
   }
 
-  const docHTML = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${title} ${esc(o.number || o.id)}</title>
+  const docHTML = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${title} ${esc(o.number || o.id || o.code || '')}</title>
   <style>
   body{font-family:Arial,sans-serif;margin:0;color:#102b61;background:#fff}.doc{max-width:800px;margin:auto;padding:40px}.head{display:flex;justify-content:space-between;align-items:center;border-bottom:6px solid #123c98;padding-bottom:18px}.logo{width:150px;height:100px;object-fit:contain}.brand h1{margin:0;font-size:27px}.brand h1 span{color:#f7941d}.brand p{margin:6px 0;color:#526b8e}.tag{font-weight:700;color:#35a853;font-size:12px}.title{font-size:30px;font-weight:800;margin:28px 0 15px}.meta{display:flex;gap:15px}.box{flex:1;border:1px solid #dce4ee;border-radius:10px;padding:15px}.total{text-align:right;font-size:25px;font-weight:800;margin:25px 0;color:#0b3275}.foot{margin-top:60px;border-top:3px solid #35a853;padding-top:12px;text-align:center;font-size:12px;color:#667991}@media print{button{display:none}}
   </style></head><body><div class="doc">
   <div class="head"><img class="logo" src="logo-laperle.jpg"><div class="brand"><h1>LAPERLE <span>TOUR HT</span></h1><p>${esc(slogan)}</p><div class="tag">Confort • Sécurité • Confiance</div></div></div>
   <div class="title">${title}</div>
   <div class="meta">
-    <div class="box"><b>Client</b><br>${esc(o.client || client.name || "—")}<br>${esc(client.phone || "")}<br>${esc(client.email || "")}</div>
-    <div class="box"><b>Document</b><br>N° ${esc(o.number || o.id)}<br>Date : ${esc(o.date || today())}${isQuote ? "" : "<br>N° Proforma lié : " + esc(o.proforma || "—")}</div>
+    <div class="box">
+      <b>DESTINATAIRE / CLIENT</b><br>
+      <strong>Nom complet :</strong> ${esc(clientName)}<br>
+      <strong>Téléphone :</strong> ${esc(clientPhone)}<br>
+      <strong>Email :</strong> ${esc(clientEmail)}<br>
+      <strong>Adresse complète :</strong> ${esc(clientAddress)}
+    </div>
+    <div class="box">
+      <b>DOCUMENT</b><br>
+      N° ${esc(o.number || o.id || o.code || '—')}<br>
+      Date : ${esc(o.date || today())}
+      ${isQuote ? "" : (o.proforma ? "<br>N° Proforma lié : " + esc(o.proforma) : "")}
+      ${o.reservationId ? "<br>Réf. Réservation : " + esc(o.reservationId) : ""}
+      ${isPayment && o.method ? "<br>Mode de règlement : " + esc(o.method) : ""}
+      ${isPayment && o.reference ? "<br>Référence reçu : " + esc(o.reference) : ""}
+    </div>
   </div>
   <div class="box" style="margin-top:15px">
     <b>Détails de la prestation</b>
-    <p>Service : ${esc(o.service || "Transport & Services LAPERLE TOUR HT")}</p>
-    <p>Trajet : ${esc(o.route || "—")}</p>
-    <p>${isQuote ? "Validité" : "Échéance"} : ${esc(isQuote ? (o.validity || "—") : (o.due || "—"))}</p>
+    <p>Service : ${esc(o.service || (isPayment ? "Règlement de prestation transport" : "Transport & Services LAPERLE TOUR HT"))}</p>
+    <p>Trajet : ${esc(o.route || (o.origin && o.destination ? o.origin + " ➔ " + o.destination : "—"))}</p>
+    <p>${isQuote ? "Validité" : "Échéance / Statut"} : ${esc(isQuote ? (o.validity || "—") : (o.due || o.status || "—"))}</p>
   </div>
   <div class="total">TOTAL : ${money(o.amount || 0)}</div>
   <p><b>Paiement :</b> MonCash ${esc(moncash)} | <b>Contact :</b> ${esc(phone)} | <b>Email :</b> ${esc(email)}</p>
@@ -8880,20 +9049,33 @@ function printDocument(type, index) {
   } else {
     document.getElementById("modal").innerHTML = `
       <div class="modal-head">
-        <div><h2>${title} ${esc(o.number || o.id)}</h2><small>Aperçu du document</small></div>
+        <div><h2>${title} ${esc(o.number || o.id || o.code || '')}</h2><small>Aperçu du document</small></div>
         <button class="close" onclick="closeModal()">×</button>
       </div>
       <div style="background:#fff;border:1px solid #dce4ee;border-radius:10px;padding:20px;margin-bottom:15px">
         <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #123c98;padding-bottom:12px">
           <div><h3 style="margin:0;color:#082b70">LAPERLE <span style="color:#f7941d">TOUR HT</span></h3><small style="color:#667991">${esc(slogan)}</small></div>
-          <div style="text-align:right"><div style="font-weight:800;font-size:18px;color:#082b70">${title}</div><span style="color:#f7941d;font-weight:700">N° ${esc(o.number || o.id)}</span></div>
+          <div style="text-align:right"><div style="font-weight:800;font-size:18px;color:#082b70">${title}</div><span style="color:#f7941d;font-weight:700">N° ${esc(o.number || o.id || o.code || '')}</span></div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
-          <div class="info"><b>Client</b><br>${esc(o.client || client.name || "—")}<br>${esc(client.phone || "")}</div>
-          <div class="info"><b>Document</b><br>Date : ${esc(o.date || today())}${isQuote ? "" : "<br>N° Proforma lié : " + esc(o.proforma || "—")}</div>
+          <div class="info">
+            <b>DESTINATAIRE / CLIENT</b><br>
+            <strong>Nom complet :</strong> ${esc(clientName)}<br>
+            <strong>Téléphone :</strong> ${esc(clientPhone)}<br>
+            <strong>Email :</strong> ${esc(clientEmail)}<br>
+            <strong>Adresse complète :</strong> ${esc(clientAddress)}
+          </div>
+          <div class="info">
+            <b>DOCUMENT</b><br>
+            Date : ${esc(o.date || today())}
+            ${isQuote ? "" : (o.proforma ? "<br>N° Proforma lié : " + esc(o.proforma) : "")}
+            ${o.reservationId ? "<br>Réf. Réservation : " + esc(o.reservationId) : ""}
+            ${isPayment && o.method ? "<br>Mode de règlement : " + esc(o.method) : ""}
+            ${isPayment && o.reference ? "<br>Référence reçu : " + esc(o.reference) : ""}
+          </div>
         </div>
         <div class="info" style="margin-top:10px">
-          <b>Détails</b><br>Service : ${esc(o.service || "Transport LAPERLE TOUR HT")}<br>Trajet : ${esc(o.route || "—")}<br>${isQuote ? "Validité" : "Échéance"} : ${esc(isQuote ? (o.validity || "—") : (o.due || "—"))}
+          <b>Détails</b><br>Service : ${esc(o.service || (isPayment ? "Règlement de prestation transport" : "Transport LAPERLE TOUR HT"))}<br>Trajet : ${esc(o.route || (o.origin && o.destination ? o.origin + " ➔ " + o.destination : "—"))}<br>${isQuote ? "Validité" : "Échéance / Statut"} : ${esc(isQuote ? (o.validity || "—") : (o.due || o.status || "—"))}
         </div>
         <div style="text-align:right;font-size:20px;font-weight:800;color:#0b3275;margin-top:15px">TOTAL : ${money(o.amount || 0)}</div>
         <p style="font-size:12px;color:#555;margin:8px 0 0">Paiement : MonCash ${esc(moncash)} • Contact : ${esc(phone)} • ${esc(email)}</p>
