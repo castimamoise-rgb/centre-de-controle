@@ -524,6 +524,14 @@ button, input, select, textarea {
   line-height: 1.4;
 }
 
+/* Bloc Express Inscription masqué */
+.auth-express-card,
+#authViewRegister > div.auth-express-card,
+#authViewRegister > div:nth-of-type(2),
+#authViewRegister > .auth-sep-wrap {
+  display: none !important;
+}
+
 /* Grille 2 colonnes pour Nom / Prénom sur la même ligne (conformément au modèle) */
 .auth-row-2col {
   display: grid;

@@ -5065,620 +5065,288 @@ function dashboard() {
     const availableVehicles = Math.max(0, activeVehiclesCount - busyVehiclesCount);
     const fleetOccupancyPct = Math.round((busyVehiclesCount / (activeVehiclesCount || 1)) * 100) || 84.2;
 
-    const adminDisplayName = (currentUser?.displayName || currentUser?.email?.split('@')[0] || "ALEX CARTER").toUpperCase();
-    const currentMonthYearUpper = new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }).toUpperCase();
-    const revPerAsset = Math.round(received / (activeVehiclesCount || 1));
-    const revenuePerAssetDisplay = revPerAsset > 0 ? (revPerAsset > 50000 ? '$' + (Math.round(revPerAsset / 130)).toLocaleString() : money(revPerAsset)) : '$12,450';
+    const adminDisplayName = currentUser?.displayName || currentUser?.email?.split('@')[0] || "Administrateur";
+    const currentMonthYearUpper = new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    const recentReservations = reservationsList.slice(0, 6);
+    const upcomingTrips = list("plannings").filter(x => !x.archived).slice(0, 4);
 
-    // Circumference for 170px donut with r=65
+    // Circumference for 160px donut with r=65
     const circumference = 2 * Math.PI * 65; // ~408.4
     const orangeStrokeDash = (circumference * fleetOccupancyPct) / 100;
     const orangeStrokeOffset = circumference - orangeStrokeDash;
 
     document.getElementById("page").innerHTML = `
-      <div class="admin-dashboard-wrap">
-        <!-- ================================================================ -->
-        <!-- 1. FINANCES GLOBALES DE L'ENTREPRISE (AU PREMIER PLAN / AU TOP)  -->
-        <!-- ================================================================ -->
-        <div class="admin-card-dark" style="margin-bottom:20px" id="adminFinancialChartCard">
-          <!-- En-tête : Grands Indicateurs Financiers de l'Entreprise -->
-          <div class="admin-financial-hero-grid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(210px, 1fr));gap:14px;margin-bottom:18px">
-            <!-- 1. Total Encaissé -->
-            <div style="background:#07162c;border:1.5px solid rgba(16,185,129,0.35);padding:18px 20px;border-radius:14px;box-shadow:0 0 16px rgba(16,185,129,0.12)">
-              <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;font-weight:700;display:flex;align-items:center;gap:6px">
-                <span>💵</span> TOTAL ENCAISSÉ
-              </div>
-              <div style="font-size:28px;font-weight:900;color:#10b981;margin-top:6px;line-height:1.1;letter-spacing:-0.5px">
-                ${money(received)}
-              </div>
-              <div style="font-size:11px;color:#6ee7b7;margin-top:6px;font-weight:600">
-                ● Entrées réelles validées
-              </div>
+      <div class="admin-dashboard-wrap clean-executive">
+        <!-- 1. En-tête exécutif de bienvenue -->
+        <div class="manager-welcome-bar">
+          <div>
+            <h2 class="manager-welcome-title">👋 Bonjour, ${esc(adminDisplayName)}</h2>
+            <div class="manager-welcome-sub">
+              <span>Centre de Contrôle Opérationnel LAPERLE TOUR HT</span>
+              <span>•</span>
+              <span class="user-role-badge admin">ADMINISTRATION & GESTION</span>
+              <span>•</span>
+              <span>📅 ${esc(currentMonthYearUpper)}</span>
             </div>
+          </div>
+          <div class="manager-actions-cluster">
+            <button class="manager-btn-primary" onclick="openForm('reservations')">
+              <span>+</span> <span>Nouvelle Réservation</span>
+            </button>
+            <button class="manager-btn-secondary" onclick="openForm('proformas')">
+              <span>+</span> <span>Créer un Proforma</span>
+            </button>
+            <button class="manager-btn-secondary" onclick="go('finances')">
+              <span>Trésorerie ›</span>
+            </button>
+          </div>
+        </div>
 
-            <!-- 2. Total Décaissé -->
-            <div style="background:#07162c;border:1.5px solid rgba(244,63,94,0.35);padding:18px 20px;border-radius:14px;box-shadow:0 0 16px rgba(244,63,94,0.12)">
-              <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;font-weight:700;display:flex;align-items:center;gap:6px">
-                <span>📉</span> TOTAL DÉCAISSÉ
-              </div>
-              <div style="font-size:28px;font-weight:900;color:#f43f5e;margin-top:6px;line-height:1.1;letter-spacing:-0.5px">
-                ${money(spent)}
-              </div>
-              <div style="font-size:11px;color:#fda4af;margin-top:6px;font-weight:600">
-                ● Dépenses, carburant & entretien
-              </div>
+        <!-- 2. Grille des 4 KPIs Stratégiques -->
+        <div class="manager-kpi-grid">
+          <!-- KPI 1 : Total Encaissé -->
+          <div class="manager-kpi-card" onclick="go('finances')">
+            <div class="manager-kpi-top">
+              <span class="manager-kpi-label">Chiffre d'Affaires</span>
+              <div class="manager-kpi-icon" style="background:#e0f2fe;color:#0284c7">💵</div>
             </div>
-
-            <!-- 3. Résultat Net -->
-            <div style="background:#07162c;border:1.5px solid rgba(56,189,248,0.4);padding:18px 20px;border-radius:14px;box-shadow:0 0 16px rgba(56,189,248,0.12)">
-              <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;font-weight:700;display:flex;align-items:center;gap:6px">
-                <span>💎</span> RÉSULTAT NET
-              </div>
-              <div style="font-size:28px;font-weight:900;color:${netProfit >= 0 ? '#38bdf8' : '#fbbf24'};margin-top:6px;line-height:1.1;letter-spacing:-0.5px">
-                ${money(netProfit)}
-              </div>
-              <div style="font-size:11px;color:#bae6fd;margin-top:6px;font-weight:600">
-                ● Solde net disponible
-              </div>
-            </div>
-
-            <!-- 4. Marge Réalisée -->
-            <div style="background:#07162c;border:1.5px solid rgba(252,211,77,0.35);padding:18px 20px;border-radius:14px;box-shadow:0 0 16px rgba(252,211,77,0.12)">
-              <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;font-weight:700;display:flex;align-items:center;gap:6px">
-                <span>📊</span> MARGE OPÉRATIONNELLE
-              </div>
-              <div style="font-size:28px;font-weight:900;color:#fcd34d;margin-top:6px;line-height:1.1;letter-spacing:-0.5px">
-                ${received > 0 ? Math.round((netProfit / received) * 100) + '%' : '0%'}
-              </div>
-              <div style="font-size:11px;color:#fde68a;margin-top:6px;font-weight:600">
-                ● Taux de rentabilité global
-              </div>
+            <div class="manager-kpi-val">${money(received)}</div>
+            <div class="manager-kpi-bottom">
+              <span class="manager-kpi-tag green">● Bénéfice net : ${money(netProfit)}</span>
+              <span style="color:#0284c7;font-weight:600">Trésorerie ›</span>
             </div>
           </div>
 
-          <!-- Barre de titre et outils du graphique -->
-          <div class="admin-card-head" style="flex-wrap:wrap;gap:10px;border-top:1px solid rgba(255,255,255,0.08);padding-top:16px">
-            <div>
-              <h3 style="display:flex;align-items:center;gap:8px">
-                <span style="font-size:20px">📊</span>
-                <span>Revenus Mensuels vs Dépenses (Graphique en barres Recharts)</span>
-              </h3>
-              <div style="color:#94a3b8;font-size:11.5px;margin-top:3px">
-                Visualisation analytique Recharts • Comparaison mensuelle des encaissements et décaissements • Exercice ${new Date().getFullYear()}
-              </div>
+          <!-- KPI 2 : Réservations Actives -->
+          <div class="manager-kpi-card" onclick="go('reservations')">
+            <div class="manager-kpi-top">
+              <span class="manager-kpi-label">Réservations Actives</span>
+              <div class="manager-kpi-icon" style="background:#fef3c7;color:#d97706">📅</div>
             </div>
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-              <!-- Sélecteur de mode Barres Recharts -->
-              <div class="admin-chart-toggle-group" style="display:inline-flex;background:rgba(255,255,255,0.06);border-radius:20px;padding:2px;border:1px solid rgba(255,255,255,0.1)">
-                <button type="button" id="btnChartModeGrouped" onclick="window.setAdminChartMode('grouped')" class="admin-chart-toggle-btn active" style="padding:5px 12px;border-radius:16px;border:none;font-size:11px;font-weight:700;cursor:pointer;background:#2563eb;color:#ffffff;transition:all 0.15s ease">
-                  📊 Barres groupées
-                </button>
-                <button type="button" id="btnChartModeStacked" onclick="window.setAdminChartMode('stacked')" class="admin-chart-toggle-btn" style="padding:5px 12px;border-radius:16px;border:none;font-size:11px;font-weight:700;cursor:pointer;background:transparent;color:#94a3b8;transition:all 0.15s ease">
-                  📑 Barres empilées
-                </button>
-              </div>
-
-              <!-- Sélecteur de période -->
-              <select id="adminChartPeriodSelect" onchange="window.setAdminChartPeriod(this.value)" style="background:#0f1f42;color:#e2e8f0;border:1px solid rgba(255,255,255,0.18);padding:6px 12px;border-radius:8px;font-size:11.5px;font-weight:600;outline:none;cursor:pointer">
-                <option value="year" ${window.adminChartConfig?.period === 'year' ? 'selected' : ''}>Année complète (12 mois)</option>
-                <option value="6months" ${window.adminChartConfig?.period === '6months' ? 'selected' : ''}>6 derniers mois</option>
-                <option value="quarter" ${window.adminChartConfig?.period === 'quarter' ? 'selected' : ''}>Trimestre en cours</option>
-              </select>
-
-              <button type="button" onclick="exportAdminFinancialChartPDF()" class="admin-btn-pill" style="background:#059669;border-color:#10b981;color:#ffffff;display:inline-flex;align-items:center;gap:6px" title="Exporter les données du graphique vers un document PDF">
-                <span>📄</span> <span>Exporter PDF</span>
-              </button>
-              <button onclick="go('finances')" class="admin-btn-pill">Trésorerie ›</button>
+            <div class="manager-kpi-val">${reservationsList.filter(x => ['Confirmée', 'En cours', 'En attente'].includes(x.status)).length}</div>
+            <div class="manager-kpi-bottom">
+              <span class="manager-kpi-tag orange">${reservationsList.filter(x => x.status === 'Confirmée').length} confirmées</span>
+              <span style="color:#d97706;font-weight:600">Voir tout ›</span>
             </div>
           </div>
 
-          <!-- Conteneur Recharts du Bar Chart -->
-          <div id="adminFinancialRechartsContainer" style="width:100%;height:330px;position:relative">
-            <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8;font-size:12px">
-              Chargement du graphique en barres Recharts...
+          <!-- KPI 3 : Flotte en Mission -->
+          <div class="manager-kpi-card" onclick="go('vehicules')">
+            <div class="manager-kpi-top">
+              <span class="manager-kpi-label">Flotte en Mission</span>
+              <div class="manager-kpi-icon" style="background:#dcfce7;color:#16a34a">🚙</div>
+            </div>
+            <div class="manager-kpi-val">${fleetOccupancyPct}%</div>
+            <div class="manager-kpi-bottom">
+              <span class="manager-kpi-tag blue">${busyVehiclesCount} / ${activeVehiclesCount} véhicules</span>
+              <span style="color:#16a34a;font-weight:600">Gestion flotte ›</span>
+            </div>
+          </div>
+
+          <!-- KPI 4 : Clients & Abonnés -->
+          <div class="manager-kpi-card" onclick="go('clients')">
+            <div class="manager-kpi-top">
+              <span class="manager-kpi-label">Clients & Abonnés</span>
+              <div class="manager-kpi-icon" style="background:#f3e8ff;color:#9333ea">👥</div>
+            </div>
+            <div class="manager-kpi-val">${list("clients").filter(x => !x.archived).length + list("abonnements").filter(x => !x.archived).length}</div>
+            <div class="manager-kpi-bottom">
+              <span class="manager-kpi-tag purple">${list("abonnements").filter(x => !x.archived).length} abonnements</span>
+              <span style="color:#9333ea;font-weight:600">Clients ›</span>
             </div>
           </div>
         </div>
 
-        <!-- ================================================================ -->
-        <!-- 2. FLEET ANALYTICS DASHBOARD (Inspiré de la maquette)             -->
-        <!-- ================================================================ -->
-        <div class="cyber-dashboard-container">
-          <!-- 1. Cyber Header Bar -->
-          <div class="cyber-header-bar">
-            <div class="cyber-header-title-block">
-              <span style="color:#38bdf8;font-weight:900">FLEET ANALYTICS DASHBOARD</span>
-              <span class="sep">|</span>
-              <span style="color:#e2e8f0">${currentMonthYearUpper}</span>
-              <span class="sep">|</span>
-              <span style="color:#fcd34d">${esc(adminDisplayName)}</span>
-            </div>
-            <div class="cyber-header-tools">
-              <button type="button" class="cyber-tool-btn" onclick="openUniversalAdminSearchModal()" title="Recherche Rapide">🔍</button>
-              <button type="button" class="cyber-tool-btn" onclick="go('parametres')" title="Paramètres Flotte & Tarifs">⚙️</button>
-              <button type="button" class="cyber-tool-btn" onclick="renderAdminFleetAnalyticsDashboard(); showToast('🔄 Données de la flotte actualisées !');" title="Actualiser les données">🔄</button>
-            </div>
-          </div>
-
-          <!-- 2. Cyber KPI Grid (6 Cartes Néon 2x3) -->
-          <div class="cyber-kpi-grid">
-            <!-- 1. Fleet Utilisation % -->
-            <div class="cyber-kpi-card cyber-kpi-cyan">
-              <div class="cyber-kpi-main">
-                <div class="cyber-kpi-title">Fleet Utilisation %</div>
-                <div class="cyber-kpi-val">${fleetOccupancyPct}%</div>
-                <div class="cyber-kpi-bottom">
-                  <span class="cyber-badge-cyan">+3.1% ↑ (vs LW)</span>
-                  <a onclick="go('vehicules')" class="cyber-tracking-link">🚙 Suivi Flotte ›</a>
+        <!-- 3. Disposition Principale (2 Colonnes) -->
+        <div class="manager-main-layout">
+          <!-- COLONNE GAUCHE (Graphique + Dernières Activités) -->
+          <div class="manager-left-col">
+            <!-- A. Graphique Financier & Activité -->
+            <div class="manager-card" id="adminFinancialChartCard">
+              <div class="manager-card-header">
+                <div>
+                  <h3 class="manager-card-title">
+                    <span>📊 Évolution des Revenus & Dépenses</span>
+                  </h3>
+                  <p class="manager-card-sub">Exercice ${new Date().getFullYear()} • Comparaison mensuelle des encaissements et décaissements</p>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  <div class="admin-chart-toggle-group" style="display:inline-flex;background:#f1f5f9;border-radius:20px;padding:2px;border:1px solid #e2e8f0">
+                    <button type="button" id="btnChartModeGrouped" onclick="window.setAdminChartMode('grouped')" class="admin-chart-toggle-btn active" style="padding:4px 10px;border-radius:16px;border:none;font-size:11px;font-weight:700;cursor:pointer;background:#082b70;color:#ffffff">
+                      Groupé
+                    </button>
+                    <button type="button" id="btnChartModeStacked" onclick="window.setAdminChartMode('stacked')" class="admin-chart-toggle-btn" style="padding:4px 10px;border-radius:16px;border:none;font-size:11px;font-weight:700;cursor:pointer;background:transparent;color:#64748b">
+                      Empilé
+                    </button>
+                  </div>
+                  <select id="adminChartPeriodSelect" onchange="window.setAdminChartPeriod(this.value)" style="background:#ffffff;color:#334155;border:1px solid #cbd5e1;padding:5px 10px;border-radius:8px;font-size:11.5px;font-weight:600;outline:none;cursor:pointer">
+                    <option value="year" ${window.adminChartConfig?.period === 'year' ? 'selected' : ''}>Année (12 mois)</option>
+                    <option value="6months" ${window.adminChartConfig?.period === '6months' ? 'selected' : ''}>6 derniers mois</option>
+                    <option value="quarter" ${window.adminChartConfig?.period === 'quarter' ? 'selected' : ''}>Ce trimestre</option>
+                  </select>
+                  <button type="button" onclick="exportAdminFinancialChartPDF()" class="manager-btn-secondary" style="padding:5px 12px;font-size:11px" title="Exporter en PDF">
+                    📄 PDF
+                  </button>
                 </div>
               </div>
-              <div class="cyber-kpi-icon-wrap">
-                <svg width="46" height="46" viewBox="0 0 48 48" fill="none">
-                  <rect x="4" y="16" width="26" height="22" rx="3" stroke="#34d399" stroke-width="2.5" fill="rgba(52,211,153,0.1)"/>
-                  <path d="M30 22H38L44 28V38H30V22Z" stroke="#34d399" stroke-width="2.5" fill="rgba(52,211,153,0.1)"/>
-                  <circle cx="12" cy="38" r="4" stroke="#34d399" stroke-width="2.5" fill="#0b1528"/>
-                  <circle cx="36" cy="38" r="4" stroke="#34d399" stroke-width="2.5" fill="#0b1528"/>
-                  <rect x="22" y="6" width="16" height="14" rx="2" stroke="#34d399" stroke-width="2" fill="rgba(52,211,153,0.2)"/>
-                  <line x1="26" y1="4" x2="26" y2="8" stroke="#34d399" stroke-width="2"/>
-                  <line x1="34" y1="4" x2="34" y2="8" stroke="#34d399" stroke-width="2"/>
-                </svg>
-              </div>
-            </div>
 
-            <!-- 2. Revenue/Asset -->
-            <div class="cyber-kpi-card cyber-kpi-blue">
-              <div class="cyber-kpi-main">
-                <div class="cyber-kpi-title">Revenue/Asset</div>
-                <div class="cyber-kpi-val">${revenuePerAssetDisplay}</div>
-                <div class="cyber-kpi-bottom">
-                  <span class="cyber-badge-blue">+5.8% ↑ (vs LW)</span>
-                  <a onclick="go('finances')" class="cyber-tracking-link">💰 Trésorerie ›</a>
-                </div>
-              </div>
-              <div class="cyber-kpi-icon-wrap">
-                <svg width="46" height="46" viewBox="0 0 48 48" fill="none">
-                  <rect x="6" y="8" width="28" height="16" rx="3" stroke="#60a5fa" stroke-width="2" fill="rgba(96,165,250,0.1)"/>
-                  <circle cx="20" cy="16" r="4" stroke="#60a5fa" stroke-width="2"/>
-                  <rect x="10" y="14" width="28" height="16" rx="3" stroke="#60a5fa" stroke-width="2" fill="rgba(96,165,250,0.15)"/>
-                  <circle cx="24" cy="22" r="4" stroke="#60a5fa" stroke-width="2"/>
-                  <rect x="24" y="26" width="14" height="12" rx="2" stroke="#60a5fa" stroke-width="2" fill="#0b1528"/>
-                  <path d="M38 30H43L46 33V38H38V30Z" stroke="#60a5fa" stroke-width="2" fill="#0b1528"/>
-                  <circle cx="28" cy="38" r="2.5" fill="#60a5fa"/>
-                  <circle cx="42" cy="38" r="2.5" fill="#60a5fa"/>
-                </svg>
-              </div>
-            </div>
-
-            <!-- 3. Lead Time -->
-            <div class="cyber-kpi-card cyber-kpi-yellow">
-              <div class="cyber-kpi-main">
-                <div class="cyber-kpi-title">Lead Time</div>
-                <div class="cyber-kpi-val">3.2 Days</div>
-                <div class="cyber-kpi-bottom">
-                  <span class="cyber-badge-yellow">-0.4 Days ↓ (vs LW)</span>
-                  <a onclick="go('reservations')" class="cyber-tracking-link">⏱️ Réservations ›</a>
-                </div>
-              </div>
-              <div class="cyber-kpi-icon-wrap">
-                <svg width="46" height="46" viewBox="0 0 48 48" fill="none">
-                  <circle cx="22" cy="26" r="14" stroke="#fbbf24" stroke-width="2.5" fill="rgba(251,191,36,0.1)"/>
-                  <line x1="22" y1="12" x2="22" y2="8" stroke="#fbbf24" stroke-width="2.5"/>
-                  <line x1="22" y1="26" x2="28" y2="20" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round"/>
-                  <rect x="28" y="24" width="16" height="14" rx="2" stroke="#fbbf24" stroke-width="2" fill="#0b1528"/>
-                  <line x1="32" y1="22" x2="32" y2="26" stroke="#fbbf24" stroke-width="2"/>
-                  <line x1="40" y1="22" x2="40" y2="26" stroke="#fbbf24" stroke-width="2"/>
-                </svg>
-              </div>
-            </div>
-
-            <!-- 4. Cancellations -->
-            <div class="cyber-kpi-card cyber-kpi-pink">
-              <div class="cyber-kpi-main">
-                <div class="cyber-kpi-title">Cancellations</div>
-                <div class="cyber-kpi-val">4.7%</div>
-                <div class="cyber-kpi-bottom">
-                  <span class="cyber-badge-pink">+1.1% ↑ (vs LW)</span>
-                  <a onclick="openDriverIncidentModal()" class="cyber-tracking-link">🚨 Incidents SOS ›</a>
-                </div>
-              </div>
-              <div class="cyber-kpi-icon-wrap">
-                <svg width="46" height="46" viewBox="0 0 48 48" fill="none">
-                  <rect x="6" y="16" width="22" height="18" rx="2" stroke="#fb7185" stroke-width="2" fill="rgba(251,113,133,0.1)"/>
-                  <path d="M28 22H36L42 27V34H28V22Z" stroke="#fb7185" stroke-width="2" fill="rgba(251,113,133,0.1)"/>
-                  <circle cx="13" cy="34" r="3.5" stroke="#fb7185" stroke-width="2" fill="#0b1528"/>
-                  <circle cx="35" cy="34" r="3.5" stroke="#fb7185" stroke-width="2" fill="#0b1528"/>
-                  <rect x="10" y="19" width="14" height="12" rx="2" fill="#e11d48"/>
-                  <path d="M14 22L20 28M20 22L14 28" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
-                </svg>
-              </div>
-            </div>
-
-            <!-- 5. NPS Score -->
-            <div class="cyber-kpi-card cyber-kpi-green">
-              <div class="cyber-kpi-main">
-                <div class="cyber-kpi-title">NPS Score</div>
-                <div class="cyber-kpi-val">68</div>
-                <div class="cyber-kpi-bottom">
-                  <span class="cyber-badge-green">+4 Pts ↑ (vs LM)</span>
-                  <a onclick="go('clients')" class="cyber-tracking-link">⭐ Relations Clients ›</a>
-                </div>
-              </div>
-              <div class="cyber-kpi-icon-wrap">
-                <svg width="46" height="46" viewBox="0 0 48 48" fill="none">
-                  <path d="M6 14L8 10L10 14L14 14L11 17L12 21L8 18L4 21L5 17L2 14Z" fill="#34d399" transform="scale(0.55) translate(4,10)"/>
-                  <path d="M6 14L8 10L10 14L14 14L11 17L12 21L8 18L4 21L5 17L2 14Z" fill="#34d399" transform="scale(0.55) translate(22,10)"/>
-                  <path d="M6 14L8 10L10 14L14 14L11 17L12 21L8 18L4 21L5 17L2 14Z" fill="#34d399" transform="scale(0.55) translate(40,10)"/>
-                  <path d="M6 14L8 10L10 14L14 14L11 17L12 21L8 18L4 21L5 17L2 14Z" fill="#34d399" transform="scale(0.55) translate(58,10)"/>
-                  <path d="M6 14L8 10L10 14L14 14L11 17L12 21L8 18L4 21L5 17L2 14Z" fill="#34d399" transform="scale(0.55) translate(76,10)"/>
-                  <path d="M16 38V28H22L26 20C27 18 29 18 29 20V26H38C40 26 41 27 41 29L38 40C37 42 35 42 33 42H20C18 42 16 40 16 38Z" stroke="#34d399" stroke-width="2.5" fill="rgba(52,211,153,0.2)"/>
-                </svg>
-              </div>
-            </div>
-
-            <!-- 6. Repeat Customer Rate -->
-            <div class="cyber-kpi-card cyber-kpi-sky">
-              <div class="cyber-kpi-main">
-                <div class="cyber-kpi-title">Repeat Customer Rate</div>
-                <div class="cyber-kpi-val">58.1%</div>
-                <div class="cyber-kpi-bottom">
-                  <span class="cyber-badge-sky">+2.9% ↑ (vs LM)</span>
-                  <a onclick="go('abonnements')" class="cyber-tracking-link">🎒 Abonnements ›</a>
-                </div>
-              </div>
-              <div class="cyber-kpi-icon-wrap">
-                <svg width="46" height="46" viewBox="0 0 48 48" fill="none">
-                  <path d="M24 10C31.7 10 38 16.3 38 24C38 27.5 36.7 30.7 34.5 33.2L38 36H28V26L31.6 29.6C33.1 28 34 26.1 34 24C34 18.5 29.5 14 24 14C20.5 14 17.5 15.8 15.8 18.5L12.4 15.6C15 12.2 19.2 10 24 10Z" fill="#38bdf8"/>
-                  <path d="M24 38C16.3 38 10 31.7 10 24C10 20.5 11.3 17.3 13.5 14.8L10 12H20V22L16.4 18.4C14.9 20 14 21.9 14 24C14 29.5 18.5 34 24 34C27.5 34 30.5 32.2 32.2 29.5L35.6 32.4C33 35.8 28.8 38 24 38Z" fill="#38bdf8"/>
-                  <circle cx="24" cy="24" r="3.5" fill="#38bdf8"/>
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <!-- 3. Middle Trend Panel : Fleet Utilisation & Revenue Trend -->
-          <div class="cyber-trend-panel">
-            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px">
-              <div>
-                <h3 style="margin:0;font-size:16px;color:#ffffff;font-weight:700">Fleet Utilisation & Revenue Trend</h3>
-                <div style="font-size:12px;color:#94a3b8;margin-top:2px">(last 12 months) • Suivi de performance LAPERLE TOUR HT</div>
-              </div>
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                <button type="button" onclick="exportAdminFinancialChartPDF()" class="admin-btn-pill" style="background:#059669;border-color:#10b981;color:#ffffff;display:inline-flex;align-items:center;gap:6px" title="Exporter en document PDF">
-                  <span>📄</span> <span>Exporter PDF</span>
-                </button>
-                <a onclick="go('finances')" class="cyber-tracking-link" style="padding:6px 12px">📈 Grand Livre Trésorerie ›</a>
-              </div>
-            </div>
-
-            <!-- Conteneur Recharts de la double courbe -->
-            <div id="adminFleetTrendRechartsContainer" style="width:100%;height:320px;position:relative">
-              <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8;font-size:12px">
-                Chargement de la courbe analytique néon...
-              </div>
-            </div>
-
-            <div style="display:flex;justify-content:center;align-items:center;gap:24px;margin-top:10px;font-size:12px;color:#cbd5e1">
-              <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:3px;background:#34d399;display:inline-block;border-radius:2px"></span> Utilisation</span>
-              <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:3px;background:#38bdf8;display:inline-block;border-radius:2px"></span> Revenue</span>
-            </div>
-          </div>
-
-          <!-- 4. Bottom 2 Analytical Breakdowns (Donut + Bars) -->
-          <div class="cyber-breakdown-row">
-            <!-- Gauche : Cancellations By Reason -->
-            <div class="cyber-breakdown-card">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-                <h3 style="margin:0;font-size:15px;color:#ffffff;font-weight:700">Cancellations By Reason</h3>
-                <a onclick="go('plannings')" class="cyber-tracking-link">📋 Suivi Plannings ›</a>
-              </div>
-              <div id="adminCancellationsPieContainer" style="width:100%;height:210px;position:relative">
+              <!-- Conteneur Recharts -->
+              <div id="adminFinancialRechartsContainer" style="width:100%;height:310px;position:relative">
                 <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8;font-size:12px">
-                  Chargement de l'anneau des motifs...
-                </div>
-              </div>
-              <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:11px;color:#cbd5e1;margin-top:6px;border-top:1px solid rgba(255,255,255,0.06);padding-top:8px">
-                <span style="color:#10b981">● Driver Delay 35%</span>
-                <span style="color:#0284c7">● Cust. Request 28%</span>
-                <span style="color:#eab308">● Vehicle Issue 19%</span>
-                <span style="color:#f43f5e">● Ops 18%</span>
-              </div>
-            </div>
-
-            <!-- Droite : Revenue per Vehicle Type -->
-            <div class="cyber-breakdown-card">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-                <h3 style="margin:0;font-size:15px;color:#ffffff;font-weight:700">Revenue per Vehicle Type</h3>
-                <a onclick="go('vehicules')" class="cyber-tracking-link">🚙 Gestion Flotte ›</a>
-              </div>
-              <div id="adminVehicleTypeBarContainer" style="width:100%;height:210px;position:relative">
-                <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8;font-size:12px">
-                  Chargement de l'histogramme...
-                </div>
-              </div>
-              <div style="display:flex;justify-content:space-between;font-size:11px;color:#94a3b8;margin-top:6px;border-top:1px solid rgba(255,255,255,0.06);padding-top:8px">
-                <span>Heavy: Minibus HiAce</span>
-                <span>Medium: SUV 4x4</span>
-                <span>Van: Scolaire</span>
-                <span>Sedan: VIP</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Raccourcis Rapides Administrateur -->
-        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px">
-          <button onclick="go('prospects')" class="admin-hero-btn primary" style="padding:8px 16px;border-radius:10px;font-size:12px">
-            🎯 Prospects (${prospectsList.length})
-          </button>
-          <button onclick="go('utilisateurs')" class="admin-hero-btn outline" style="padding:8px 16px;border-radius:10px;font-size:12px">
-            👥 Gérer les Comptes (${usersList.length})
-          </button>
-          <button onclick="openSyncAuthUsersModal()" class="admin-hero-btn outline" style="border-color:#38bdf8;color:#e0f2fe;padding:8px 16px;border-radius:10px;font-size:12px">
-            🔄 Synchroniser Firebase
-          </button>
-          <button onclick="openQuickRoleAssignModal()" class="admin-hero-btn outline" style="padding:8px 16px;border-radius:10px;font-size:12px">
-            🛡️ Attribuer un Rôle
-          </button>
-        </div>
-
-        <!-- Grille Principale (Colonne Gauche Opérations + Colonne Droite Agenda) -->
-        <div class="admin-grid-main">
-          <!-- Pile Gauche -->
-          <div class="admin-left-stack">
-            <!-- Sous-grille 2 cartes : Progression des Membres + Jauge Disponibilité Flotte -->
-            <div class="admin-subgrid-two">
-              <!-- Carte Progression Membres & Habilitations (Menu Déroulant) -->
-              <details class="admin-card-dark admin-dropdown-card" open>
-                <summary class="admin-card-head" style="margin-bottom:0;cursor:pointer">
-                  <div style="display:flex;align-items:center;gap:8px">
-                    <span class="dropdown-chevron">▼</span>
-                    <h3 style="margin:0">👥 Membres & Habilitations</h3>
-                    <span class="badge" style="background:rgba(59,130,246,0.18);color:#93c5fd;font-size:10.5px;font-weight:700">${usersList.length}</span>
-                  </div>
-                  <div style="display:flex;align-items:center;gap:6px" onclick="event.stopPropagation()">
-                    <button onclick="go('utilisateurs')" class="admin-btn-pill">Voir tout ›</button>
-                  </div>
-                </summary>
-                <div class="user-progress-list" style="margin-top:16px">
-                  ${usersList.slice(0, 6).map((u, i) => {
-                    const uName = resolveUserField(u, "name");
-                    const uEmail = resolveUserField(u, "email");
-                    const uRoles = resolveUserField(u, "roles");
-                    const primaryRole = uRoles[0] || 'prospect';
-                    const progressPcts = [95, 80, 68, 52, 40, 30];
-                    const pct = progressPcts[i % progressPcts.length];
-                    const avatarClass = primaryRole === 'admin' ? 'avatar-admin' : primaryRole === 'chauffeur' ? 'avatar-chauffeur' : primaryRole === 'secretaire' ? 'avatar-secretaire' : primaryRole === 'operations' ? 'avatar-ops' : 'avatar-client';
-                    const barColor = primaryRole === 'admin' ? '#3b82f6' : primaryRole === 'chauffeur' ? '#10b981' : primaryRole === 'secretaire' ? '#a855f7' : primaryRole === 'operations' ? '#f97316' : '#06b6d4';
-                    const initials = (uName || uEmail || 'U').split(' ').map(w => w.charAt(0)).slice(0, 2).join('').toUpperCase();
-                    return `
-                      <div class="user-progress-item">
-                        <div class="user-progress-avatar ${avatarClass}">${initials}</div>
-                        <div class="user-progress-info">
-                          <div class="user-progress-name-row">
-                            <span class="user-progress-name">${esc(uName)}</span>
-                            <span class="user-progress-role-tag ${avatarClass}">${ROLE_LABELS[primaryRole] || primaryRole.toUpperCase()}</span>
-                          </div>
-                          <div style="font-size:11px;color:#94a3b8;margin-top:1px">${esc(uEmail)}</div>
-                          <div class="user-progress-track">
-                            <div class="user-progress-fill" style="width:${pct}%;background:${barColor}"></div>
-                          </div>
-                        </div>
-                        <button onclick="openUserRoleModal(${i})" class="user-progress-btn" title="Changer le rôle et les habilitations">
-                          🛡️ Rôle
-                        </button>
-                      </div>
-                    `;
-                  }).join("")}
-                </div>
-              </details>
-
-              <!-- Carte Jauge Flotte -->
-              <div class="admin-card-dark">
-                <div class="admin-card-head">
-                  <h3>🚗 Disponibilité Flotte</h3>
-                  <span class="admin-btn-pill">Aujourd'hui</span>
-                </div>
-                <div class="fleet-donut-wrap" style="position:relative">
-                  <svg class="fleet-donut-svg" viewBox="0 0 160 160">
-                    <circle class="donut-bg" cx="80" cy="80" r="65" />
-                    <circle class="donut-val-orange" cx="80" cy="80" r="65" 
-                      stroke-dasharray="${circumference}" 
-                      stroke-dashoffset="${orangeStrokeOffset}" />
-                  </svg>
-                  <div class="donut-center-text">
-                    <b>${fleetOccupancyPct}%</b>
-                    <span>En mission</span>
-                  </div>
-                </div>
-                <div class="fleet-legend">
-                  <span><i class="fleet-legend-dot dot-orange"></i>${busyVehiclesCount} En mission</span>
-                  <span><i class="fleet-legend-dot dot-blue"></i>${availableVehicles} Disponibles</span>
-                </div>
-                <div style="margin-top:16px;padding:10px 14px;background:rgba(255,255,255,0.03);border-radius:10px;display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#94a3b8">
-                  <span>Capacité Flotte LAPERLE</span>
-                  <b style="color:#ffffff">${activeVehiclesCount} Véhicules</b>
+                  Chargement du graphique analytique...
                 </div>
               </div>
             </div>
 
-            <!-- Deux bannières promo (Orange et Bleue) -->
-            <div class="admin-promo-grid">
-              <!-- Bannière Orange -->
-              <div class="admin-promo-card promo-orange">
-                <div class="promo-body">
-                  <h4>Activité Financière & Croissance</h4>
-                  <p>Suivi en direct des encaissements, factures et abonnements scolaires. Bénéfice net calculé en temps réel.</p>
-                  <button onclick="go('finances')" class="promo-btn">Consulter la Trésorerie ›</button>
+            <!-- B. Dernières Réservations & Opérations -->
+            <div class="manager-card">
+              <div class="manager-card-header">
+                <div>
+                  <h3 class="manager-card-title">
+                    <span>⚡ Réservations Récentes</span>
+                  </h3>
+                  <p class="manager-card-sub">Dernières demandes et courses enregistrées dans le système</p>
                 </div>
-                <div class="promo-icon-illus">
-                  <svg width="70" height="70" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8">
-                    <line x1="12" y1="1" x2="12" y2="23"></line>
-                    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-                  </svg>
-                </div>
+                <button class="manager-btn-secondary" onclick="go('reservations')" style="padding:5px 12px;font-size:11px">
+                  Voir toutes les réservations ›
+                </button>
               </div>
 
-              <!-- Bannière Bleue -->
-              <div class="admin-promo-card promo-blue">
-                <div class="promo-body">
-                  <h4>Habilitations & Niveaux d'Accès</h4>
-                  <p>
-                    › Administrateur : Attribution totale des rôles<br>
-                    › Secrétariat & Opérations : Gestion plannings<br>
-                    › Chauffeurs & Clients : Espaces isolés
-                  </p>
-                  <button onclick="openQuickRoleAssignModal()" class="promo-btn">🛡️ Attribuer un Rôle ›</button>
+              ${recentReservations.length === 0 ? `
+                <div style="padding:30px;text-align:center;color:#94a3b8;font-size:13px">
+                  Aucune réservation récente enregistrée.
                 </div>
-                <div class="promo-icon-illus">
-                  <svg width="70" height="70" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="1.8">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-                    <path d="M9 12l2 2 4-4"></path>
-                  </svg>
-                </div>
-              </div>
-            </div>
-
-            <!-- Tableau / Annuaire Utilisateurs & Rôles (Menu Déroulant) -->
-            <details class="admin-card-dark admin-dropdown-card" style="margin-top:16px" open>
-              <summary class="admin-card-head" style="margin-bottom:0;cursor:pointer">
-                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                  <span class="dropdown-chevron">▼</span>
-                  <h3 style="margin:0">🛡️ Gestion des Rôles & Comptes Utilisateurs</h3>
-                  <span class="badge" style="background:rgba(247,148,29,0.18);color:#fcd34d;font-size:10.5px;font-weight:700">${usersList.length} comptes</span>
-                </div>
-                <div style="display:flex;align-items:center;gap:6px" onclick="event.stopPropagation()">
-                  <button onclick="openForm('utilisateurs')" class="admin-btn-pill">+ Créer un compte</button>
-                </div>
-              </summary>
-              <div style="margin-top:16px">
-                <div class="media-files-table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%">
-                  <table class="media-files-table">
+              ` : `
+                <div style="overflow-x:auto">
+                  <table class="recent-activity-table">
                     <thead>
                       <tr>
-                        <th>Utilisateur</th>
-                        <th>Email & Identifiant</th>
-                        <th>Rôle attribué</th>
+                        <th>Passager / Client</th>
+                        <th>Trajet & Date</th>
+                        <th>Montant</th>
                         <th>Statut</th>
-                        <th>Actions Administrateur</th>
+                        <th>Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      ${usersList.map((u, i) => {
-                        const uRoles = normalizeRoles(u.roles || u.role || ['client']);
-                        const primaryRole = uRoles[0] || 'client';
-                        const badgeCode = primaryRole === 'admin' ? 'AD' : primaryRole === 'operations' ? 'OP' : primaryRole === 'chauffeur' ? 'CH' : primaryRole === 'secretaire' ? 'SC' : 'CL';
-                        const badgeClass = primaryRole === 'admin' ? 'badge-ad' : primaryRole === 'operations' ? 'badge-op' : primaryRole === 'chauffeur' ? 'badge-ch' : primaryRole === 'secretaire' ? 'badge-sc' : 'badge-cl';
+                      ${recentReservations.map(r => {
+                        const statusClass = r.status === 'Confirmée' ? 'green' : (r.status === 'En cours' ? 'orange' : (r.status === 'Annulée' ? 'red' : 'blue'));
                         return `
                           <tr>
                             <td>
-                              <div style="display:flex;align-items:center;gap:12px">
-                                <div class="user-row-badge ${badgeClass}">${badgeCode}</div>
-                                <div>
-                                  <b style="color:#ffffff;font-size:13px">${esc(u.name || u.email)}</b>
-                                  <div style="font-size:11px;color:#94a3b8">${esc(u.phone || 'LAPERLE TEAM')}</div>
-                                </div>
-                              </div>
+                              <div style="font-weight:700;color:#082b70">${esc(r.client || r.name || 'Client')}</div>
+                              <div style="font-size:11px;color:#64748b">${esc(r.phone || r.telephone || '')}</div>
                             </td>
                             <td>
-                              <span style="color:#cbd5e1;font-size:12px">${esc(u.email || '—')}</span>
-                              <div style="font-size:10px;color:#64748b">Cloud Firestore</div>
+                              <div style="font-weight:600">${esc(r.route || (r.origin && r.destination ? `${r.origin} ➔ ${r.destination}` : 'Trajet Laperle'))}</div>
+                              <div style="font-size:11px;color:#64748b">📅 ${esc(r.date || today())} ${r.time ? `à ${esc(r.time)}` : ''}</div>
                             </td>
                             <td>
-                              ${uRoles.map(r => `<span class="user-role-badge ${r}" style="font-size:10px">${ROLE_LABELS[r] || r}</span>`).join(' ')}
+                              <b style="color:#082b70">${money(r.amount || 0)}</b>
                             </td>
                             <td>
-                              <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:${u.status === 'Inactif' ? '#f87171' : '#4ade80'}">
-                                <span style="width:7px;height:7px;border-radius:50%;background:${u.status === 'Inactif' ? '#ef4444' : '#22c55e'}"></span>
-                                ${esc(u.status || 'Actif')}
-                              </span>
+                              <span class="badge ${statusClass}">${esc(r.status || 'En attente')}</span>
                             </td>
                             <td>
-                              <button class="role-assign-btn" onclick="openUserRoleModal(${i})">
-                                🛡️ Modifier le Rôle
-                              </button>
+                              <button class="tiny" onclick="go('reservations')">Détails</button>
                             </td>
                           </tr>
                         `;
-                      }).join("")}
+                      }).join('')}
                     </tbody>
                   </table>
                 </div>
-              </div>
-            </details>
+              `}
+            </div>
           </div>
 
-          <!-- Pile Droite (Calendrier, Circuits & Raccourcis) -->
-          <div class="admin-right-stack">
-            <!-- Widget Calendrier Interactif des Réservations -->
-            <div class="calendar-widget" id="calendarWidgetContainer">
-              ${renderCalendarWidgetHTML()}
+          <!-- COLONNE DROITE (Widgets Complémentaires) -->
+          <div class="manager-right-col">
+            <!-- 1. Jauge Disponibilité Flotte -->
+            <div class="manager-card">
+              <div class="manager-card-header">
+                <div>
+                  <h3 class="manager-card-title">
+                    <span>🚙 Disponibilité de la Flotte</span>
+                  </h3>
+                  <p class="manager-card-sub">Capacité totale : ${activeVehiclesCount} véhicules</p>
+                </div>
+                <button class="manager-btn-secondary" onclick="go('vehicules')" style="padding:4px 8px;font-size:11px">Gérer</button>
+              </div>
+
+              <div style="display:flex;align-items:center;justify-content:center;padding:12px 0">
+                <div style="position:relative;width:140px;height:140px">
+                  <svg viewBox="0 0 160 160" style="width:100%;height:100%;transform:rotate(-90deg)">
+                    <circle cx="80" cy="80" r="65" stroke="#f1f5f9" stroke-width="16" fill="none" />
+                    <circle cx="80" cy="80" r="65" stroke="#082b70" stroke-width="16" fill="none"
+                      stroke-linecap="round"
+                      stroke-dasharray="${circumference}"
+                      stroke-dashoffset="${orangeStrokeOffset}" />
+                  </svg>
+                  <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+                    <span style="font-size:24px;font-weight:900;color:#082b70">${fleetOccupancyPct}%</span>
+                    <span style="font-size:11px;color:#64748b;font-weight:600">En mission</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style="display:flex;justify-content:space-around;padding-top:12px;border-top:1px solid #f1f5f9;font-size:12px">
+                <div style="text-align:center">
+                  <div style="color:#082b70;font-weight:800;font-size:16px">${busyVehiclesCount}</div>
+                  <div style="color:#64748b;font-size:11px">● En mission</div>
+                </div>
+                <div style="text-align:center">
+                  <div style="color:#16a34a;font-weight:800;font-size:16px">${availableVehicles}</div>
+                  <div style="color:#64748b;font-size:11px">● Disponibles</div>
+                </div>
+              </div>
             </div>
 
-            <!-- Circuits & Missions du Jour -->
-            <div class="admin-card-dark">
-              <div class="admin-card-head">
-                <h3>🚦 Circuits & Navettes du Jour</h3>
-                <button onclick="go('reservations')" class="admin-btn-pill">Voir tout ›</button>
+            <!-- 2. Circuits & Navettes Imminents -->
+            <div class="manager-card">
+              <div class="manager-card-header">
+                <div>
+                  <h3 class="manager-card-title">
+                    <span>🚦 Circuits & Navettes</span>
+                  </h3>
+                  <p class="manager-card-sub">Départs programmés du jour</p>
+                </div>
+                <button class="manager-btn-secondary" onclick="go('plannings')" style="padding:4px 8px;font-size:11px">Planning</button>
               </div>
 
-              <div class="mission-card">
-                <div class="mission-top">
-                  <span class="mission-title">Navette Scolaire Matin</span>
-                  <span class="user-role-badge chauffeur" style="font-size:9px">En cours</span>
+              ${upcomingTrips.length === 0 ? `
+                <div style="padding:18px;text-align:center;color:#94a3b8;font-size:12px">
+                  Aucun circuit planifié aujourd'hui.
                 </div>
-                <div class="mission-time">07h00 - 08h30 • Chauffeur : Wilner C.</div>
-                <div class="mission-avatars-row">
-                  <div class="mini-avatar-chip">WC</div>
-                  <div class="mini-avatar-chip" style="background:#065f46;color:#a7f3d0">VH</div>
-                  <span style="font-size:11px;color:#94a3b8;margin-left:4px">HiAce VH-001 (14 passagers)</span>
+              ` : `
+                <div style="display:flex;flex-direction:column;gap:10px">
+                  ${upcomingTrips.map(p => `
+                    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px">
+                      <div style="display:flex;justify-content:space-between;align-items:center">
+                        <b style="font-size:12.5px;color:#082b70">${esc(p.route || p.title || 'Navette')}</b>
+                        <span class="badge blue" style="font-size:10px">${esc(p.time || 'Aujourd\'hui')}</span>
+                      </div>
+                      <div style="font-size:11.5px;color:#64748b;margin-top:4px">
+                        Chauffeur : <b>${esc(p.driver || 'Assigné')}</b> • ${esc(p.vehicle || 'Véhicule Laperle')}
+                      </div>
+                    </div>
+                  `).join('')}
                 </div>
-              </div>
-
-              <div class="mission-card">
-                <div class="mission-top">
-                  <span class="mission-title">Circuit Côte des Arcadins</span>
-                  <span class="user-role-badge operations" style="font-size:9px">11h00</span>
-                </div>
-                <div class="mission-time">11h00 - 16h30 • Chauffeur : Jean-Marc P.</div>
-                <div class="mission-avatars-row">
-                  <div class="mini-avatar-chip" style="background:#7c2d12;color:#fdba74">JM</div>
-                  <div class="mini-avatar-chip" style="background:#1e3a8a;color:#93c5fd">TX</div>
-                  <span style="font-size:11px;color:#94a3b8;margin-left:4px">Tucson VH-002 (VIP)</span>
-                </div>
-              </div>
+              `}
             </div>
 
-            <!-- Raccourcis Opérationnels -->
-            <div class="admin-card-dark">
-              <div class="admin-card-head">
-                <h3>⚡ Modules Opérationnels</h3>
+            <!-- 3. Raccourcis Opérationnels -->
+            <div class="manager-card">
+              <div class="manager-card-header">
+                <h3 class="manager-card-title">
+                  <span>⚡ Raccourcis Rapides</span>
+                </h3>
               </div>
-
-              <div class="ops-shortcut-item" onclick="go('proformas')">
-                <div class="ops-icon-box box-orange">📄</div>
-                <div class="ops-shortcut-text">
-                  <div class="ops-shortcut-title">Devis Proformas</div>
-                  <div class="ops-shortcut-sub">${list('proformas').filter(x => !x.archived).length} Devis enregistrés</div>
-                </div>
-                <div class="ops-shortcut-arrow">›</div>
-              </div>
-
-              <div class="ops-shortcut-item" onclick="go('factures')">
-                <div class="ops-icon-box box-blue">🧾</div>
-                <div class="ops-shortcut-text">
-                  <div class="ops-shortcut-title">Factures & Recouvrements</div>
-                  <div class="ops-shortcut-sub">${list('factures').filter(x => !x.archived).length} Factures actives</div>
-                </div>
-                <div class="ops-shortcut-arrow">›</div>
-              </div>
-
-              <div class="ops-shortcut-item" onclick="go('reservations')">
-                <div class="ops-icon-box box-coral">📅</div>
-                <div class="ops-shortcut-text">
-                  <div class="ops-shortcut-title">Réservations Directes</div>
-                  <div class="ops-shortcut-sub">${list('reservations').filter(x => !x.archived).length} Réservations</div>
-                </div>
-                <div class="ops-shortcut-arrow">›</div>
+              <div class="quick-list">
+                <button onclick="go('proformas')">📄 Devis & Proformas (${list('proformas').filter(x => !x.archived).length}) <b>›</b></button>
+                <button onclick="go('factures')">🧾 Facturation & Recouvrement (${list('factures').filter(x => !x.archived).length}) <b>›</b></button>
+                <button onclick="go('prospects')">🎯 Suivi des Prospects (${prospectsList.length}) <b>›</b></button>
+                <button onclick="go('utilisateurs')">🛡️ Utilisateurs & Rôles (${usersList.length}) <b>›</b></button>
               </div>
             </div>
           </div>
@@ -5686,7 +5354,6 @@ function dashboard() {
       </div>
     `;
     setTimeout(() => {
-      renderAdminFleetAnalyticsDashboard();
       renderAdminFinancialChart();
     }, 50);
     return;
