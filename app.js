@@ -2531,8 +2531,20 @@ function initAuthUI(initialMode = "login") {
                                 errMsg.includes("pas encore inscrit") || 
                                 errMsg.includes("n'existe pas dans la base de données");
         if (err?.code === 'auth/admin-needs-google-sync' || (isSuperAdminEmail(identifier) && (isNotRegistered || err?.code === 'auth/wrong-password'))) {
-          setAuthMessage("warning", `ℹ️ <b>Compte Administrateur « ${esc(identifier)} » :</b><br>Ce compte est synchronisé avec Google dans Firebase. Pour activer votre mot de passe ou accéder directement à votre espace, cliquez sur le bouton ci-dessous :<br><button type="button" id="btnAdminGoogleSyncDirect" style="margin-top:10px;padding:9px 18px;background:#082b70;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:8px;box-shadow:0 3px 10px rgba(8,43,112,0.25);"><span>⚡ Continuer avec Google</span></button>`);
+          setAuthMessage("warning", `ℹ️ <b>Compte Administrateur « ${esc(identifier)} » :</b><br>Mot de passe incorrect ou mot de passe en attente de configuration dans Firebase.<br><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;"><button type="button" id="btnAdminForgotPwdDirect" style="padding:8px 14px;background:#082b70;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;">🔑 Définir / Réinitialiser le mot de passe</button><button type="button" id="btnAdminGoogleSyncDirect" style="padding:8px 14px;background:#ffffff;color:#082b70;border:1.5px solid #082b70;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;">⚡ Continuer avec Google</button></div>`);
           setTimeout(() => {
+            const btnReset = document.getElementById("btnAdminForgotPwdDirect");
+            if (btnReset) {
+              btnReset.onclick = async () => {
+                try {
+                  setAuthMessage("loading", `Envoi du lien de configuration de mot de passe à ${esc(identifier)}...`);
+                  await requestPasswordReset(identifier);
+                  setAuthMessage("success", `✅ Lien officiel de mot de passe envoyé à <b>${esc(identifier)}</b>. Consultez votre boîte de réception pour définir votre mot de passe et vous connecter.`);
+                } catch (rErr) {
+                  setAuthMessage("error", rErr?.message || "Erreur lors de l'envoi du lien.");
+                }
+              };
+            }
             const btnSync = document.getElementById("btnAdminGoogleSyncDirect");
             if (btnSync) {
               btnSync.onclick = () => {
