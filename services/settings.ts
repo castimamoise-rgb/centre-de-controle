@@ -19,6 +19,7 @@ export interface CompanySettingsData {
   email: string;
   address: string;
   currency: string;
+  logoUrl?: string;
   notes?: string;
   updatedAt: string;
   updatedBy: string;
@@ -37,6 +38,7 @@ export const DEFAULT_COMPANY_SETTINGS: CompanySettingsData = {
   email: 'direction@laperletour.ht',
   address: 'Pétion-Ville & Port-au-Prince, Haïti',
   currency: 'HTG',
+  logoUrl: 'logo-laperle.jpg',
   notes: 'Transport • Tourisme • Location • Abonnement scolaire et entreprises • Taxi privé',
   updatedAt: new Date().toISOString(),
   updatedBy: 'system'

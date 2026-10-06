@@ -237,6 +237,7 @@ async function saveSettingsToFirestore(settingsData) {
     updateFirebaseBadge("syncing");
     const userEmail = currentUser?.email || 'admin';
     await setDoc(doc(db, "settings", "company"), {
+      logoUrl: "logo-laperle.jpg",
       ...settingsData,
       updatedAt: new Date().toISOString(),
       updatedBy: userEmail
@@ -2872,6 +2873,71 @@ function initAuthUI(initialMode = "login") {
   });
 }
 
+/**
+ * Contrôle d'accès basé sur les rôles après connexion Firebase :
+ * Vérifie le rôle de l'utilisateur (Admin, Secrétaire, Direction, Comptabilité, etc.)
+ * et filtre l'affichage pour présenter UNIQUEMENT les modules autorisés.
+ */
+function verifierEtAppliquerControleAcces(user = currentUser, profile = currentUserProfile) {
+  if (!user) return [];
+
+  const userEmail = String(user?.email || profile?.email || '').trim().toLowerCase();
+  const isSuper = isSuperAdminEmail(userEmail);
+
+  // 1. Vérification du statut (inactif / suspendu)
+  if (!isSuper && profile && normalizeStatus(profile.status || profile.statutCompte) === "inactif") {
+    currentUserRoles = ["inactif"];
+    currentRole = "inactif";
+    renderAuthPage("deactivated");
+    return [];
+  }
+
+  // 2. Vérification et normalisation des rôles
+  if (isSuper) {
+    currentUserRoles = [ROLES.ADMIN];
+    currentRole = ROLES.ADMIN;
+  } else {
+    currentUserRoles = normalizeRoles(profile?.roles || profile?.role || [ROLES.PROSPECT]);
+    currentRole = currentUserRoles[0] || ROLES.PROSPECT;
+  }
+
+  // 3. Déterminer la liste exacte des modules autorisés pour ce rôle
+  const authorizedModules = ALL_MODULES.concat(["dashboard", "reports", "marketing", "settings", "profile"]).filter(modKey => {
+    const canon = canonicalCol(modKey);
+    if (isSuper) return true;
+    if (canon === "dashboard") return hasBusinessRole(currentUserRoles);
+    if (canon === "profile") return true;
+    return canAccessModule(currentUserRoles, canon, profile?.permissions);
+  });
+
+  // 4. Mettre à jour l'affichage de l'interface et de la navigation (affiche UNIQUEMENT les modules autorisés)
+  updateRoleBadge(currentUserRoles);
+  buildNavigation();
+
+  // 5. Routage sécurisé : redirection vers un module autorisé si nécessaire
+  const normCurrentRoles = normalizeRoles(currentUserRoles);
+  const currentCanon = canonicalCol(current || "dashboard");
+  const canAccessCurrent = isSuper || (currentCanon === "profile") || (
+    currentCanon === "dashboard" ? hasBusinessRole(currentUserRoles) : canAccessModule(currentUserRoles, currentCanon, profile?.permissions)
+  );
+
+  if (!canAccessCurrent) {
+    if (!isSuper && (!hasBusinessRole(currentUserRoles) || (normCurrentRoles.length === 1 && normCurrentRoles[0] === ROLES.PROSPECT))) {
+      current = "profile";
+      location.hash = "profile";
+    } else {
+      current = "dashboard";
+      location.hash = "dashboard";
+    }
+  }
+
+  return authorizedModules;
+}
+
+if (typeof window !== "undefined") {
+  window.verifierEtAppliquerControleAcces = verifierEtAppliquerControleAcces;
+}
+
 function completeUserSignIn(user, profile, isNew = false) {
   clearExplicitLogout();
   currentUser = user;
@@ -2938,10 +3004,10 @@ function completeUserSignIn(user, profile, isNew = false) {
     nameEl.textContent = currentUserProfile?.username ? `@${currentUserProfile.username}` : (currentUserProfile?.prenom || user.displayName?.split(" ")[0] || user.email?.split("@")[0] || user.phoneNumber || "Utilisateur");
   }
   updateFirebaseBadge("connected");
-  updateRoleBadge(currentUserRoles);
 
-  // 3. Mise à jour de la navigation
-  buildNavigation();
+  // 3. Contrôle d'accès : vérification du rôle de l'utilisateur après la connexion Firebase
+  // et affichage uniquement des modules autorisés
+  verifierEtAppliquerControleAcces(user, currentUserProfile);
 
   // 4. Routage selon habilitations :
   // - Super Admin & Admins / Staff -> Dashboard (Tableau de Bord complet)

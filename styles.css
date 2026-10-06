@@ -287,19 +287,26 @@ button, input, select, textarea {
 
 .auth-brand-logo-card {
   background: #ffffff;
-  border-radius: 12px;
-  padding: 5px 12px;
+  border-radius: 50%;
+  width: 76px;
+  height: 76px;
+  padding: 3px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28), 0 0 0 3px rgba(255, 255, 255, 0.35);
+  flex-shrink: 0;
 }
 .auth-brand-logo {
-  height: 44px;
-  width: auto;
-  max-width: 140px;
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
   object-fit: contain;
   display: block;
+  transition: transform 0.2s ease;
+}
+.auth-brand-logo:hover {
+  transform: scale(1.05);
 }
 
 .auth-brand-badge {

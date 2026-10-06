@@ -315,6 +315,7 @@
         "slogan": { "type": "string", "maxLength": 200 },
         "moncash": { "type": "string", "maxLength": 50 },
         "bank": { "type": "string", "maxLength": 200 },
+        "logoUrl": { "type": "string", "maxLength": 500 },
         "updatedAt": { "type": "string", "format": "date-time" },
         "ownerId": { "type": "string", "maxLength": 128 }
       },

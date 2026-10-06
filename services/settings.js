@@ -21,6 +21,7 @@ export const DEFAULT_COMPANY_SETTINGS = {
   email: 'direction@laperletour.ht',
   address: 'Pétion-Ville & Port-au-Prince, Haïti',
   currency: 'HTG',
+  logoUrl: 'logo-laperle.jpg',
   notes: 'Transport • Tourisme • Location • Abonnement scolaire et entreprises • Taxi privé',
   updatedAt: new Date().toISOString(),
   updatedBy: 'system'
