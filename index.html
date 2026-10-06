@@ -197,26 +197,19 @@
             <span class="auth-sep-line"></span>
           </div>
 
-          <!-- Nom et Prénom sur la même ligne (selon le modèle) -->
-          <div class="auth-row-2col">
-            <div class="auth-field">
-              <label for="authRegisterNom">Nom :</label>
-              <div class="auth-input-icon-wrap">
-                <span class="auth-icon-prefix">👤</span>
-                <input type="text" id="authRegisterNom" placeholder="Nom" autocomplete="family-name" required>
-              </div>
+          <!-- Nom complet sur une seule ligne (fusion Nom et Prénom) -->
+          <div class="auth-field">
+            <label for="authRegisterNomComplet">Nom complet : <span style="color:#dc2626;">*</span></label>
+            <div class="auth-input-icon-wrap">
+              <span class="auth-icon-prefix">👤</span>
+              <input type="text" id="authRegisterNomComplet" placeholder="Ex: Jean Dupont" autocomplete="name" required>
             </div>
-            <div class="auth-field">
-              <label for="authRegisterPrenom">Prénom :</label>
-              <div class="auth-input-icon-wrap">
-                <span class="auth-icon-prefix">👤</span>
-                <input type="text" id="authRegisterPrenom" placeholder="Prénom" autocomplete="given-name" required>
-              </div>
-            </div>
+            <input type="hidden" id="authRegisterNom">
+            <input type="hidden" id="authRegisterPrenom">
           </div>
 
           <div class="auth-field">
-            <label for="authRegisterEmail">Adresse e-mail :</label>
+            <label for="authRegisterEmail">Adresse e-mail : <span style="color:#dc2626;">*</span></label>
             <div class="auth-input-icon-wrap">
               <span class="auth-icon-prefix">✉️</span>
               <input type="email" id="authRegisterEmail" placeholder="nom@exemple.com" autocomplete="email" required>
@@ -226,7 +219,7 @@
           <!-- Téléphone / WhatsApp (+509) -->
           <div class="auth-field">
             <label for="authRegisterPhone">
-              Téléphone / WhatsApp :
+              Téléphone / WhatsApp : <span style="color:#dc2626;">*</span>
             </label>
             <div class="auth-phone-group">
               <div class="auth-phone-prefix">
@@ -240,22 +233,40 @@
             </div>
           </div>
 
-          <!-- Nom de profil / Username (optionnel) -->
+          <!-- Nom de profil / Username (Obligatoire pour les dossiers administratifs) -->
           <div class="auth-field">
             <label for="authRegisterUsername">
-              Nom de profil :
-              <span class="auth-label-badge" style="background:#f1f5f9;color:#475569;border-color:#cbd5e1">Optionnel</span>
+              Nom de profil / Identifiant : <span style="color:#dc2626;">*</span>
+              <span class="auth-label-badge" style="background:#fee2e2;color:#991b1b;border-color:#fca5a5">Obligatoire</span>
             </label>
             <div class="auth-input-icon-wrap">
               <span class="auth-icon-prefix">🏷️</span>
-              <input type="text" id="authRegisterUsername" placeholder="Ex: jean_dupont" autocomplete="nickname">
+              <input type="text" id="authRegisterUsername" placeholder="Ex: jean_dupont" autocomplete="nickname" required>
+            </div>
+            <div class="auth-field-hint">
+              Identifiant unique interne pour lier votre compte à vos dossiers.
+            </div>
+          </div>
+
+          <!-- Adresse / Commune en Haïti (Obligatoire pour documents administratifs : Factures, Proformas, Contrats) -->
+          <div class="auth-field">
+            <label for="authRegisterAddress">
+              Adresse / Ville (Haïti) : <span style="color:#dc2626;">*</span>
+              <span class="auth-label-badge" style="background:#fee2e2;color:#991b1b;border-color:#fca5a5">Obligatoire</span>
+            </label>
+            <div class="auth-input-icon-wrap">
+              <span class="auth-icon-prefix">📍</span>
+              <input type="text" id="authRegisterAddress" placeholder="Ex: Delmas 33, Port-au-Prince" autocomplete="street-address" required>
+            </div>
+            <div class="auth-field-hint">
+              Indispensable pour l'émission légale de vos factures, proformas et contrats de transport.
             </div>
           </div>
 
           <!-- Password : 4 - 8 chiffre/Alphanumérique (exactement comme écrit sur le modèle) -->
           <div class="auth-field">
             <label for="authRegisterPassword">
-              Password :
+              Password : <span style="color:#dc2626;">*</span>
               <span class="auth-label-badge">8 caractères minimum</span>
             </label>
             <div class="auth-input-icon-wrap">
@@ -267,7 +278,7 @@
 
           <!-- Password Confirmation -->
           <div class="auth-field">
-            <label for="authRegisterPasswordConfirm">Password Confirmation :</label>
+            <label for="authRegisterPasswordConfirm">Password Confirmation : <span style="color:#dc2626;">*</span></label>
             <div class="auth-input-icon-wrap">
               <span class="auth-icon-prefix">🔑</span>
               <input type="password" id="authRegisterPasswordConfirm" class="has-pwd-toggle" minlength="8" maxlength="128" placeholder="Confirmez votre mot de passe" autocomplete="new-password" required>

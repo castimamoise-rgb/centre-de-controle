@@ -148,16 +148,42 @@ export async function logoutUser() {
  * - Password Firebase (8 caractères minimum)
  * - Password Confirmation
  */
-export async function signUpWithEmailAndPasswordMethod({ nom, prenom, email, password, passwordConfirm, username, telephone }) {
-  if (!nom || !String(nom).trim()) {
-    throw new Error("Veuillez renseigner votre nom.");
-  }
-  if (!prenom || !String(prenom).trim()) {
-    throw new Error("Veuillez renseigner votre prénom.");
+export async function signUpWithEmailAndPasswordMethod({ nom, prenom, nomComplet, email, password, passwordConfirm, username, telephone, adresse }) {
+  const cleanNomComplet = String(nomComplet || '').trim();
+  let cleanNom = String(nom || '').trim();
+  let cleanPrenom = String(prenom || '').trim();
+
+  if (cleanNomComplet && (!cleanNom || !cleanPrenom)) {
+    const parts = cleanNomComplet.split(/\s+/);
+    cleanNom = cleanNom || parts[0] || cleanNomComplet;
+    cleanPrenom = cleanPrenom || parts.slice(1).join(" ") || cleanNom;
   }
 
+  if (!cleanNom && !cleanNomComplet) {
+    throw new Error("Veuillez renseigner votre nom complet.");
+  }
+  const fullName = cleanNomComplet || `${cleanNom} ${cleanPrenom}`.trim();
+
   let cleanEmail = String(email || '').trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) throw new Error('Une adresse e-mail valide est requise.');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) throw new Error('Une adresse e-mail valide est obligatoire.');
+
+  const cleanPhone = String(telephone || '').trim();
+  if (!cleanPhone) {
+    throw new Error("Veuillez renseigner votre numéro de téléphone ou WhatsApp.");
+  }
+
+  const cleanUsername = String(username || '').trim();
+  if (!cleanUsername) {
+    throw new Error("Le nom de profil / identifiant est obligatoire.");
+  }
+  if (cleanUsername.length < 3) {
+    throw new Error("Le nom de profil / identifiant doit comporter au moins 3 caractères.");
+  }
+
+  const cleanAdresse = String(adresse || '').trim();
+  if (!cleanAdresse) {
+    throw new Error("L'adresse / ville en Haïti est obligatoire pour l'établissement de vos documents administratifs.");
+  }
 
   if (!password) {
     throw new Error("Veuillez saisir un mot de passe.");
@@ -171,9 +197,6 @@ export async function signUpWithEmailAndPasswordMethod({ nom, prenom, email, pas
       throw new Error("La confirmation ne correspond pas au mot de passe saisi.");
     }
   }
-  const cleanNom = String(nom).trim();
-  const cleanPrenom = String(prenom).trim();
-  const fullName = `${cleanNom} ${cleanPrenom}`;
 
   // 1. Authentification Firebase Authentication (Source unique de vérité)
   let firebaseUser = null;
@@ -231,8 +254,11 @@ export async function signUpWithEmailAndPasswordMethod({ nom, prenom, email, pas
     nom: cleanNom,
     prenom: cleanPrenom,
     name: fullName,
-    username,
-    telephone,
+    username: cleanUsername,
+    telephone: cleanPhone,
+    phone: cleanPhone,
+    adresse: cleanAdresse,
+    address: cleanAdresse,
     email: cleanEmail
   });
 
@@ -240,8 +266,9 @@ export async function signUpWithEmailAndPasswordMethod({ nom, prenom, email, pas
     uid: uid,
     displayName: fullName,
     email: cleanEmail,
-    username: newProfile?.username || username || '',
-    phoneNumber: newProfile?.telephone || telephone || '',
+    username: newProfile?.username || cleanUsername || '',
+    phoneNumber: newProfile?.telephone || cleanPhone || '',
+    adresse: newProfile?.adresse || cleanAdresse || '',
     photoURL: newProfile?.photoURL || ''
   };
 
@@ -623,6 +650,8 @@ export async function createUserProfile(user, customData = {}) {
     username: customData.username || (email ? email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 40) : `user_${uid.slice(0, 6)}`),
     telephone: customData.telephone || user.phoneNumber || '',
     phone: customData.phone || user.phoneNumber || '',
+    adresse: customData.adresse || customData.address || '',
+    address: customData.address || customData.adresse || '',
     photoURL: customData.photoURL || user.photoURL || '',
     role: role,
     roles: roles,
