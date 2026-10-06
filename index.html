@@ -197,12 +197,19 @@
             <span class="auth-sep-line"></span>
           </div>
 
-          <!-- Nom complet sur une seule ligne (fusion Nom et Prénom) -->
+          <!-- Nom complet sur une seule ligne (fusion Nom et Prénom) avec validation en temps réel -->
           <div class="auth-field">
-            <label for="authRegisterNomComplet">Nom complet : <span style="color:#dc2626;">*</span></label>
+            <label for="authRegisterNomComplet" style="display:flex;align-items:center;justify-content:space-between;">
+              <span>Nom complet : <span style="color:#dc2626;">*</span></span>
+              <span id="authNomCompletStatusBadge" class="auth-label-badge" style="display:none;transition:all 0.25s ease;"></span>
+            </label>
             <div class="auth-input-icon-wrap">
               <span class="auth-icon-prefix">👤</span>
               <input type="text" id="authRegisterNomComplet" placeholder="Ex: Jean Dupont" autocomplete="name" required>
+            </div>
+            <div id="authNomCompletHint" class="auth-field-hint" style="display:flex;align-items:center;gap:6px;margin-top:6px;transition:all 0.2s ease;">
+              <span id="authNomCompletIcon">💡</span>
+              <span id="authNomCompletText">Saisissez au moins un prénom et un nom séparés par un espace (ex: Jean Dupont).</span>
             </div>
             <input type="hidden" id="authRegisterNom">
             <input type="hidden" id="authRegisterPrenom">

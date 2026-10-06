@@ -524,6 +524,82 @@ button, input, select, textarea {
   line-height: 1.4;
 }
 
+/* Bouton de fermeture de bandeau d'information */
+.banner-close-btn {
+  background: transparent;
+  border: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.banner-close-btn:hover {
+  transform: scale(1.1);
+  filter: brightness(0.9);
+}
+
+/* Animation de bordure douce et transition au focus pour le champ Nom complet */
+#authRegisterNomComplet {
+  transition: border-color 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+              background-color 0.25s ease,
+              transform 0.15s ease;
+}
+
+#authRegisterNomComplet:hover {
+  border-color: #94a3b8;
+  background-color: #ffffff;
+}
+
+#authRegisterNomComplet:focus {
+  outline: none;
+  border-color: #082b70;
+  background-color: #ffffff;
+  box-shadow: 0 0 0 4.5px rgba(8, 43, 112, 0.18), 0 2px 10px rgba(8, 43, 112, 0.08);
+  animation: pulse-soft-border 2.2s cubic-bezier(0.4, 0, 0.2, 1) infinite alternate;
+}
+
+@keyframes pulse-soft-border {
+  0% {
+    border-color: #1e3a8a;
+    box-shadow: 0 0 0 3.5px rgba(30, 58, 138, 0.14), 0 1px 4px rgba(30, 58, 138, 0.05);
+  }
+  100% {
+    border-color: #082b70;
+    box-shadow: 0 0 0 5.5px rgba(8, 43, 112, 0.24), 0 3px 12px rgba(8, 43, 112, 0.12);
+  }
+}
+
+/* Validation temps réel du Nom complet */
+#authRegisterNomComplet.is-valid {
+  border-color: #10b981 !important;
+  background-color: #f0fdf4 !important;
+  box-shadow: 0 0 0 3.5px rgba(16, 185, 129, 0.2) !important;
+  animation: none !important;
+}
+
+#authRegisterNomComplet.is-invalid {
+  border-color: #f59e0b !important;
+  background-color: #fffbeb !important;
+  box-shadow: 0 0 0 3.5px rgba(245, 158, 11, 0.2) !important;
+  animation: none !important;
+}
+
+#authRegisterNomComplet.is-invalid-error {
+  border-color: #ef4444 !important;
+  background-color: #fef2f2 !important;
+  box-shadow: 0 0 0 3.5px rgba(239, 68, 68, 0.2) !important;
+  animation: none !important;
+}
+
 /* Bloc Express Inscription masqué */
 .auth-express-card,
 #authViewRegister > div.auth-express-card,

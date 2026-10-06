@@ -2471,6 +2471,93 @@ function initAuthUI(initialMode = "login") {
     input?.addEventListener("keyup", updatePasswordChecklist);
   });
 
+  // Validation en temps réel du champ "Nom complet" (au moins un prénom et un nom séparés par un espace)
+  function updateNomCompletValidation() {
+    if (!registerNomComplet) return false;
+    const raw = registerNomComplet.value;
+    const trimmed = raw.trim();
+    const badge = document.getElementById("authNomCompletStatusBadge");
+    const hintText = document.getElementById("authNomCompletText");
+    const hintIcon = document.getElementById("authNomCompletIcon");
+    const hintWrap = document.getElementById("authNomCompletHint");
+
+    const words = trimmed.split(/\s+/).filter(w => w.length > 0);
+    const isValid = words.length >= 2 && words[0].length >= 2 && words[1].length >= 2;
+
+    if (!trimmed) {
+      registerNomComplet.classList.remove("is-valid", "is-invalid", "is-invalid-error");
+      if (badge) { badge.style.display = "none"; }
+      if (hintIcon) hintIcon.textContent = "💡";
+      if (hintText) hintText.textContent = "Saisissez au moins un prénom et un nom séparés par un espace (ex: Jean Dupont).";
+      if (hintWrap) { hintWrap.style.color = "#64748b"; }
+      return false;
+    }
+
+    if (isValid) {
+      registerNomComplet.classList.remove("is-invalid", "is-invalid-error");
+      registerNomComplet.classList.add("is-valid");
+      if (badge) {
+        badge.style.display = "inline-block";
+        badge.style.background = "#ecfdf5";
+        badge.style.color = "#065f46";
+        badge.style.borderColor = "#a7f3d0";
+        badge.textContent = "✓ Conforme";
+      }
+      if (hintIcon) hintIcon.textContent = "✅";
+      if (hintText) {
+        hintText.innerHTML = `Prénom : <strong>${esc(words[0])}</strong> &nbsp;|&nbsp; Nom : <strong>${esc(words.slice(1).join(" "))}</strong>`;
+      }
+      if (hintWrap) { hintWrap.style.color = "#059669"; }
+
+      if (registerPrenom) registerPrenom.value = words[0];
+      if (registerNom) registerNom.value = words.slice(1).join(" ");
+      return true;
+    } else {
+      registerNomComplet.classList.remove("is-valid");
+      registerNomComplet.classList.add("is-invalid");
+      if (badge) {
+        badge.style.display = "inline-block";
+        badge.style.background = "#fef3c7";
+        badge.style.color = "#92400e";
+        badge.style.borderColor = "#fcd34d";
+        badge.textContent = "Espace requis";
+      }
+      if (hintIcon) hintIcon.textContent = "⚠️";
+      if (hintText) {
+        if (words.length === 1) {
+          hintText.textContent = `Ajoutez un espace et votre nom de famille après "${words[0]}" (ex: ${words[0]} Dupont).`;
+        } else {
+          hintText.textContent = "Le prénom et le nom doivent comporter chacun au moins 2 lettres.";
+        }
+      }
+      if (hintWrap) { hintWrap.style.color = "#d97706"; }
+      return false;
+    }
+  }
+
+  if (registerNomComplet) {
+    registerNomComplet.addEventListener("input", updateNomCompletValidation);
+    registerNomComplet.addEventListener("keyup", updateNomCompletValidation);
+    registerNomComplet.addEventListener("change", updateNomCompletValidation);
+    registerNomComplet.addEventListener("blur", () => {
+      const trimmed = registerNomComplet.value.trim();
+      const words = trimmed.split(/\s+/).filter(w => w.length > 0);
+      if (trimmed && (words.length < 2 || words[0].length < 2 || words[1].length < 2)) {
+        registerNomComplet.classList.remove("is-invalid");
+        registerNomComplet.classList.add("is-invalid-error");
+        const hintWrap = document.getElementById("authNomCompletHint");
+        if (hintWrap) hintWrap.style.color = "#dc2626";
+        const badge = document.getElementById("authNomCompletStatusBadge");
+        if (badge) {
+          badge.style.background = "#fee2e2";
+          badge.style.color = "#991b1b";
+          badge.style.borderColor = "#fca5a5";
+          badge.textContent = "Incomplet";
+        }
+      }
+    });
+  }
+
   // Affichage / Masquage du mot de passe
   function setupPasswordToggle(button, input) {
     if (!button || !input) return;
@@ -2591,22 +2678,23 @@ function initAuthUI(initialMode = "login") {
     btnRegister.onclick = async () => {
       if (isAuthProcessing) return;
       const nomCompletRaw = registerNomComplet ? registerNomComplet.value.trim() : "";
-      let nom = registerNom ? registerNom.value.trim() : "";
-      let prenom = registerPrenom ? registerPrenom.value.trim() : "";
+      const words = nomCompletRaw.split(/\s+/).filter(w => w.length > 0);
 
-      if (nomCompletRaw) {
-        const parts = nomCompletRaw.split(/\s+/);
-        nom = parts[0] || nomCompletRaw;
-        prenom = parts.slice(1).join(" ") || parts[0];
-        if (registerNom) registerNom.value = nom;
-        if (registerPrenom) registerPrenom.value = prenom;
-      }
-
-      if (!nomCompletRaw && (!nom || !prenom)) {
-        setAuthMessage("error", "Veuillez renseigner votre nom complet (obligatoire pour les documents administratifs).");
-        registerNomComplet ? registerNomComplet.focus() : registerNom?.focus();
+      if (!nomCompletRaw || words.length < 2 || words[0].length < 2 || words[1].length < 2) {
+        setAuthMessage("error", "Veuillez saisir votre prénom et votre nom séparés par un espace dans le champ 'Nom complet' (ex: Jean Dupont).");
+        if (registerNomComplet) {
+          registerNomComplet.classList.remove("is-valid");
+          registerNomComplet.classList.add("is-invalid-error");
+          registerNomComplet.focus();
+        }
+        updateNomCompletValidation();
         return;
       }
+
+      const prenom = words[0];
+      const nom = words.slice(1).join(" ");
+      if (registerNom) registerNom.value = nom;
+      if (registerPrenom) registerPrenom.value = prenom;
       const rawPhone = registerPhone ? registerPhone.value.trim() : "";
       const email = registerEmail ? registerEmail.value.trim().toLowerCase() : "";
       const usernameInput = document.getElementById("authRegisterUsername");
@@ -8669,6 +8757,51 @@ async function handleConfirmClientReservation() {
 }
 window.handleConfirmClientReservation = handleConfirmClientReservation;
 
+// Fonctions de fermeture et masquage définitif des bandeaux d'information (apparaissent une seule fois)
+window.dismissAdminProfileBanner = function() {
+  try {
+    localStorage.setItem("LAPERLE_BANNER_ADMIN_DISMISSED", "true");
+  } catch (e) {}
+  const banner = document.getElementById("adminProfileNoticeBanner");
+  if (banner) {
+    banner.style.transition = "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)";
+    banner.style.opacity = "0";
+    banner.style.transform = "translateY(-8px)";
+    banner.style.maxHeight = banner.scrollHeight + "px";
+    setTimeout(() => {
+      banner.style.maxHeight = "0";
+      banner.style.paddingTop = "0";
+      banner.style.paddingBottom = "0";
+      banner.style.marginTop = "0";
+      banner.style.marginBottom = "0";
+      banner.style.overflow = "hidden";
+      setTimeout(() => banner.remove(), 260);
+    }, 10);
+  }
+};
+
+window.dismissProspectProfileBanner = function() {
+  try {
+    localStorage.setItem("LAPERLE_BANNER_PROSPECT_DISMISSED", "true");
+  } catch (e) {}
+  const banner = document.getElementById("prospectProfileNoticeBanner");
+  if (banner) {
+    banner.style.transition = "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)";
+    banner.style.opacity = "0";
+    banner.style.transform = "translateY(-8px)";
+    banner.style.maxHeight = banner.scrollHeight + "px";
+    setTimeout(() => {
+      banner.style.maxHeight = "0";
+      banner.style.paddingTop = "0";
+      banner.style.paddingBottom = "0";
+      banner.style.marginTop = "0";
+      banner.style.marginBottom = "0";
+      banner.style.overflow = "hidden";
+      setTimeout(() => banner.remove(), 260);
+    }, 10);
+  }
+};
+
 function renderAdminOrStaffProfilePage() {
   const user = currentUser;
   const profile = currentUserProfile || {};
@@ -8679,6 +8812,7 @@ function renderAdminOrStaffProfilePage() {
   const photo = profile.photoURL || user?.photoURL || "";
   const statutCompte = profile.statutCompte || profile.status || "actif";
   const rolesList = normalizeRoles(currentUserRoles.length ? currentUserRoles : (profile.roles || [ROLES.ADMIN]));
+  const isBannerDismissed = localStorage.getItem("LAPERLE_BANNER_ADMIN_DISMISSED") === "true";
 
   const page = document.getElementById("page");
   if (!page) return;
@@ -8714,9 +8848,10 @@ function renderAdminOrStaffProfilePage() {
         </div>
       </div>
 
-      <!-- Bandeau Accès Direction / Tableau de Bord -->
-      <div style="background: #eff6ff; border-left: 4px solid #082b70; border-radius: 10px; padding: 18px 20px; margin-bottom: 22px; box-shadow: 0 2px 6px rgba(8,43,112,0.06); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
-        <div style="flex: 1; min-width: 250px;">
+      <!-- Bandeau Accès Direction / Tableau de Bord (apparaît une seule fois et dispose d'une croix de fermeture) -->
+      ${!isBannerDismissed ? `
+      <div id="adminProfileNoticeBanner" style="background: #eff6ff; border-left: 4px solid #082b70; border-radius: 10px; padding: 16px 20px; margin-bottom: 22px; box-shadow: 0 2px 6px rgba(8,43,112,0.06); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; position: relative; transition: all 0.25s ease;">
+        <div style="flex: 1; min-width: 250px; padding-right: 18px;">
           <div style="font-weight: 800; color: #082b70; font-size: 15px; margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
             <span>👑</span> Espace d'Administration Générale LAPERLE TOUR HT
           </div>
@@ -8724,10 +8859,16 @@ function renderAdminOrStaffProfilePage() {
             Vous disposez d'un accès intégral et sans restriction à tous les modules opérationnels, financiers et de contrôle de la flotte.
           </div>
         </div>
-        <button onclick="go('dashboard')" style="background: #082b70; color: #ffffff; border: none; padding: 11px 20px; border-radius: 8px; font-weight: 800; font-size: 13.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(8,43,112,0.25); transition: transform 0.15s ease;">
-          <span>📊</span> <span>Accéder au Tableau de Bord</span>
-        </button>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <button onclick="go('dashboard')" style="background: #082b70; color: #ffffff; border: none; padding: 10px 18px; border-radius: 8px; font-weight: 800; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(8,43,112,0.25); transition: transform 0.15s ease;">
+            <span>📊</span> <span>Accéder au Tableau de Bord</span>
+          </button>
+          <button type="button" class="banner-close-btn" onclick="dismissAdminProfileBanner()" title="Fermer ce message" aria-label="Fermer ce message" style="color: #082b70; background: rgba(8,43,112,0.08);">
+            ✕
+          </button>
+        </div>
       </div>
+      ` : ''}
 
       <!-- Détails du Compte -->
       <div class="panel" style="margin-bottom: 22px; border-radius: 12px; padding: 22px; background: #ffffff; border: 1px solid #e2e8f0;">
