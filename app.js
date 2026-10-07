@@ -1347,6 +1347,7 @@ window.reconcileClientDocumentNotifications = reconcileClientDocumentNotificatio
 
 function updateNotificationBadge() {
   const notifDot = document.getElementById("notifDot");
+  const notifBtn = document.getElementById("notificationBtn");
   if (!notifDot) return;
 
   reconcileClientDocumentNotifications();
@@ -1367,6 +1368,10 @@ function updateNotificationBadge() {
       notifDot.classList.remove("pulse");
     }
 
+    if (notifBtn) {
+      notifBtn.classList.add("has-unread");
+    }
+
     // Play subtle toast notification if count increased during runtime
     if (previousUnreadCount !== null && unreadCount > previousUnreadCount) {
       const newest = unreadList[0];
@@ -1378,6 +1383,9 @@ function updateNotificationBadge() {
     notifDot.style.display = "none";
     notifDot.textContent = "0";
     notifDot.classList.remove("pulse");
+    if (notifBtn) {
+      notifBtn.classList.remove("has-unread");
+    }
   }
 
   previousUnreadCount = unreadCount;
@@ -1397,26 +1405,8 @@ function openNotificationDropdown() {
   isNotifDropdownOpen = true;
   dropdown.style.display = "flex";
 
-  // Réinitialiser immédiatement le badge et le compteur à 0 dès l'ouverture de la cloche
-  const notifDot = document.getElementById("notifDot");
-  if (notifDot) {
-    notifDot.style.display = "none";
-    notifDot.textContent = "0";
-    notifDot.classList.remove("pulse");
-  }
-  previousUnreadCount = 0;
-
-  // Marquer immédiatement toutes les notifications comme lues
-  const unreadNotifs = getApplicableNotifications().filter(n => !n.read);
-  if (unreadNotifs.length > 0) {
-    unreadNotifs.forEach(n => { n.read = true; });
-    save();
-    markAllNotificationsRead(unreadNotifs).catch(e => console.warn("Erreur auto-read notifications:", e));
-  }
-
-  // Mettre à jour immédiatement les badges du menu latéral pour qu'ils disparaissent aussi
-  updateNavBadges();
-
+  // Maintient le compte exact des notifications non lues sans les effacer automatiquement
+  updateNotificationBadge();
   renderNotificationDropdown();
 }
 
@@ -1482,14 +1472,14 @@ function renderNotificationDropdown() {
       <button class="notif-tab ${activeNotifFilter === 'all' ? 'active' : ''}" onclick="setNotifFilter('all')">
         Toutes (${allNotifs.length})
       </button>
+      <button class="notif-tab ${activeNotifFilter === 'unread' ? 'active' : ''}" onclick="setNotifFilter('unread')">
+        Non lues (${unreadCount})
+      </button>
       <button class="notif-tab ${activeNotifFilter === 'service' ? 'active' : ''}" onclick="setNotifFilter('service')">
         🚨 Alertes (${alertsCount})
       </button>
       <button class="notif-tab ${activeNotifFilter === 'update' ? 'active' : ''}" onclick="setNotifFilter('update')">
         📢 Mises à jour (${updatesCount})
-      </button>
-      <button class="notif-tab ${activeNotifFilter === 'unread' ? 'active' : ''}" onclick="setNotifFilter('unread')">
-        Non lues (${unreadCount})
       </button>
     </div>
 
@@ -1498,7 +1488,7 @@ function renderNotificationDropdown() {
         <div class="notif-empty">
           <div class="notif-empty-icon">🔔</div>
           <p class="notif-empty-title">Aucune alerte ou notification</p>
-          <p class="notif-empty-desc">Toutes les informations opérationnelles et alertes de service sont à jour.</p>
+          <p class="notif-empty-desc">${activeNotifFilter === 'unread' ? 'Toutes les notifications ont été lues !' : 'Toutes les informations opérationnelles et alertes de service sont à jour.'}</p>
         </div>
       ` : filtered.map((item, idx) => {
         const isUrgent = item.priority === 'urgent' || item.priority === 'high' || item.type === 'alerte';
@@ -1598,12 +1588,15 @@ function renderNotificationDropdown() {
         return `
           <div class="notif-item ${isNewArrival ? 'notif-new-arrival' : ''} ${!item.read ? 'unread' : ''} ${isUrgent ? 'is-urgent' : ''} ${isTransport ? 'is-transport' : ''}" style="animation-delay: ${animDelay}; cursor:pointer;" onclick="handleNotificationClick('${item.id}')" title="Cliquer pour ouvrir">
             <div class="notif-item-top">
-              <span class="notif-type-pill ${typePillClass}">
-                <span>${typeEmoji}</span>
-                <span>${typeLabel}</span>
-              </span>
-              ${isUrgent ? `<span class="notif-type-pill alerte" style="font-size:9px;padding:1px 5px;">PRIORITAIRE</span>` : ''}
-              ${isNewArrival ? `<span class="notif-type-pill update" style="font-size:9px;padding:1px 6px;background:#e0f2fe;color:#0369a1;font-weight:800;">NOUVEAU</span>` : ''}
+              <div style="display:flex;align-items:center;gap:6px;">
+                ${!item.read ? `<span class="notif-unread-dot" title="Non lu"></span>` : ''}
+                <span class="notif-type-pill ${typePillClass}">
+                  <span>${typeEmoji}</span>
+                  <span>${typeLabel}</span>
+                </span>
+                ${isUrgent ? `<span class="notif-type-pill alerte" style="font-size:9px;padding:1px 5px;">PRIORITAIRE</span>` : ''}
+                ${isNewArrival ? `<span class="notif-type-pill update" style="font-size:9px;padding:1px 6px;background:#e0f2fe;color:#0369a1;font-weight:800;">NOUVEAU</span>` : ''}
+              </div>
               <span class="notif-time">${formatRelativeTime(item.createdAt || item.date)}</span>
             </div>
             <h5 class="notif-title">${escapeHtml(item.title || 'Information LAPERLE')}</h5>
@@ -1695,12 +1688,14 @@ function handleNotificationClick(notifId) {
 
   // 1. Facture officielle liée
   if (notif.factureId) {
+    closeNotificationDropdown();
     handleOpenDocumentFromAlert('facture', notif.factureId);
     return;
   }
 
   // 2. Devis proforma officiel lié
   if (notif.proformaId) {
+    closeNotificationDropdown();
     handleOpenDocumentFromAlert('proforma', notif.proformaId);
     return;
   }
@@ -4249,12 +4244,12 @@ function renderAdminFinancialChart() {
 
           return e("div", {
             style: {
-              background: "#07162c",
-              border: "1.5px solid #1e3a8a",
+              background: "#1e1b4b",
+              border: "1.5px solid #6e3cbc",
               borderRadius: "12px",
               padding: "14px 18px",
               color: "#fff",
-              boxShadow: "0 12px 30px rgba(0,0,0,0.65)",
+              boxShadow: "0 12px 30px rgba(110,60,188,0.35)",
               fontSize: "12px",
               minWidth: "220px",
               lineHeight: "1.5"
@@ -4340,27 +4335,27 @@ function renderAdminFinancialChart() {
         },
           e("defs", null,
             e("linearGradient", { id: "rechartsBarRevGrad", x1: "0", y1: "0", x2: "0", y2: "1" },
-              e("stop", { offset: "0%", stopColor: "#34d399", stopOpacity: 1 }),
-              e("stop", { offset: "100%", stopColor: "#059669", stopOpacity: 0.95 })
+              e("stop", { offset: "0%", stopColor: "#8c52ff", stopOpacity: 1 }),
+              e("stop", { offset: "100%", stopColor: "#6e3cbc", stopOpacity: 0.95 })
             ),
             e("linearGradient", { id: "rechartsBarExpGrad", x1: "0", y1: "0", x2: "0", y2: "1" },
-              e("stop", { offset: "0%", stopColor: "#fb7185", stopOpacity: 1 }),
+              e("stop", { offset: "0%", stopColor: "#f43f5e", stopOpacity: 1 }),
               e("stop", { offset: "100%", stopColor: "#e11d48", stopOpacity: 0.95 })
             )
           ),
-          e(CartesianGrid, { strokeDasharray: "3 3", stroke: "rgba(255,255,255,0.07)", vertical: false }),
+          e(CartesianGrid, { strokeDasharray: "3 3", stroke: "rgba(148,163,184,0.18)", vertical: false }),
           e(XAxis, {
             dataKey: "month",
-            stroke: "#94a3b8",
+            stroke: "#64748b",
             fontSize: 12,
             tickLine: false,
-            axisLine: { stroke: "rgba(255,255,255,0.15)" }
+            axisLine: { stroke: "#e2e8f0" }
           }),
           e(YAxis, {
-            stroke: "#94a3b8",
+            stroke: "#64748b",
             fontSize: 11,
             tickLine: false,
-            axisLine: { stroke: "rgba(255,255,255,0.15)" },
+            axisLine: { stroke: "#e2e8f0" },
             tickFormatter: (v) => {
               if (Math.abs(v) >= 1000000) return (v / 1000000).toFixed(1) + "M";
               if (Math.abs(v) >= 1000) return (v / 1000).toFixed(0) + "k";
@@ -4369,13 +4364,13 @@ function renderAdminFinancialChart() {
           }),
           e(Tooltip, {
             content: e(CustomTooltip),
-            cursor: { fill: "rgba(255,255,255,0.04)" }
+            cursor: { fill: "rgba(8,43,112,0.04)" }
           }),
           e(Legend, {
-            wrapperStyle: { paddingTop: "14px", fontSize: "12px", color: "#cbd5e1" },
-            formatter: (value) => e("span", { style: { color: "#e2e8f0", fontWeight: "600", marginLeft: "4px" } }, value)
+            wrapperStyle: { paddingTop: "10px", fontSize: "12px", color: "#475569" },
+            formatter: (value) => e("span", { style: { color: "#334155", fontWeight: "600", marginLeft: "4px" } }, value)
           }),
-          e(ReferenceLine, { y: 0, stroke: "rgba(255,255,255,0.25)" }),
+          e(ReferenceLine, { y: 0, stroke: "#cbd5e1" }),
           isStacked
             ? [
                 e(Bar, {
@@ -5173,633 +5168,339 @@ function dashboard() {
     const usersList = list("utilisateurs") || [];
     const prospectsList = list("prospects") || [];
     const reservationsList = list("reservations").filter(x => !x.archived);
-    const activeVehiclesCount = list("vehicules").filter(x => !x.archived && x.status !== "En panne").length || 12;
+    const paiementsList = list("paiements") || [];
+    const facturesList = list("factures").filter(x => !x.archived);
+    const proformasList = list("proformas").filter(x => !x.archived);
+    const vehiculesList = list("vehicules").filter(x => !x.archived);
+    const activeVehiclesCount = vehiculesList.filter(x => x.status !== "En panne").length || 12;
     const busyVehiclesCount = Math.min(activeVehiclesCount, reservationsList.filter(x => ["Confirmée", "En cours"].includes(x.status)).length || 8);
     const availableVehicles = Math.max(0, activeVehiclesCount - busyVehiclesCount);
-    const fleetOccupancyPct = Math.round((busyVehiclesCount / (activeVehiclesCount || 1)) * 100) || 84.2;
+    const fleetOccupancyPct = Math.round((busyVehiclesCount / (activeVehiclesCount || 1)) * 100) || 84;
 
-    const adminDisplayName = (currentUser?.displayName || currentUser?.email?.split('@')[0] || "ALEX CARTER").toUpperCase();
-    const currentMonthYearUpper = new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }).toUpperCase();
-    const revPerAsset = Math.round(received / (activeVehiclesCount || 1));
-    const revenuePerAssetDisplay = revPerAsset > 0 ? (revPerAsset > 50000 ? '$' + (Math.round(revPerAsset / 130)).toLocaleString() : money(revPerAsset)) : '$12,450';
+    const adminDisplayName = (currentUser?.displayName || currentUser?.name || currentUser?.email?.split('@')[0] || "Manager");
+    const currentMonthYearUpper = new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
 
-    // Circumference for 170px donut with r=65
-    const circumference = 2 * Math.PI * 65; // ~408.4
-    const orangeStrokeDash = (circumference * fleetOccupancyPct) / 100;
-    const orangeStrokeOffset = circumference - orangeStrokeDash;
+    // Activités récentes pour le tableau d'historique (inspiré fidèlement de la maquette Pinterest)
+    const recentActivities = [
+      ...paiementsList.map(p => ({
+        id: p.id,
+        name: p.client || p.payerName || p.reference || "Client Laperle",
+        sub: p.method || "Paiement MonCash",
+        time: p.date ? (p.date.includes('T') ? new Date(p.date).toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'}) : p.date) : "12:42 PM",
+        amount: Number(p.amount || 0),
+        category: "Paiement MonCash",
+        status: ["Validé", "Payé", "Reçu"].includes(p.status) ? "Complété" : (p.status || "En attente"),
+        statusClass: ["Validé", "Payé", "Reçu"].includes(p.status) ? "green" : "blue",
+        target: "paiements"
+      })),
+      ...reservationsList.map(r => ({
+        id: r.id,
+        name: r.client || r.name || "Client Réservation",
+        sub: r.service || (r.origin ? `${r.origin} ➔ ${r.destination || ''}` : "Course Laperle"),
+        time: r.time || (r.date || "10:15 AM"),
+        amount: Number(r.price || r.montant || 0),
+        category: r.service || "Transport & Navette",
+        status: r.status === "Terminée" ? "Complété" : (r.status === "Annulée" ? "Annulé" : (r.status === "En cours" || r.status === "Confirmée" ? "En cours" : "En attente")),
+        statusClass: r.status === "Terminée" ? "green" : (r.status === "Annulée" ? "rose" : "blue"),
+        target: "reservations"
+      })),
+      ...proformasList.map(pf => ({
+        id: pf.id,
+        name: pf.client || pf.destinataire || "Devis Client",
+        sub: pf.numeroProforma || "Circuit Touristique",
+        time: pf.date || "Hier",
+        amount: Number(pf.total || pf.montant || 0),
+        category: "Devis Proforma",
+        status: pf.status === "Validé" ? "Complété" : (pf.status === "Refusé" ? "Annulé" : "En attente"),
+        statusClass: pf.status === "Validé" ? "green" : (pf.status === "Refusé" ? "rose" : "purple"),
+        target: "proformas"
+      }))
+    ];
+
+    const displayActivities = recentActivities.length > 0 ? recentActivities.slice(0, 6) : [
+      { name: "Laon Destin", sub: "Course VIP Pétion-Ville", time: "12:42:00 PM", amount: 1200, category: "Course Privée", status: "Complété", statusClass: "green", target: "reservations" },
+      { name: "Collège Moderne", sub: "Abonnement Scolaire", time: "09:15:30 AM", amount: 3500, category: "Abonnement", status: "Complété", statusClass: "green", target: "paiements" },
+      { name: "Hôtel Karibe", sub: "Navette Circuit Tourisme", time: "08:00:00 AM", amount: 4800, category: "Tourisme", status: "En cours", statusClass: "blue", target: "reservations" },
+      { name: "Pierre & Associés", sub: "Devis Proforma Séminaire", time: "Hier", amount: 2200, category: "Devis Proforma", status: "En attente", statusClass: "purple", target: "proformas" },
+      { name: "Marie Jean-Baptiste", sub: "Transfert Aéroport Toussaint", time: "Hier", amount: 950, category: "Navette", status: "Complété", statusClass: "green", target: "reservations" }
+    ];
 
     document.getElementById("page").innerHTML = `
       <div class="admin-dashboard-wrap">
         <!-- ================================================================ -->
-        <!-- 1. FINANCES GLOBALES DE L'ENTREPRISE (AU PREMIER PLAN / AU TOP)  -->
+        <!-- EN-TÊTE : SALUTATION, PÉRIODE & OUTILS RAPIDES                   -->
         <!-- ================================================================ -->
-        <div class="admin-card-dark" style="margin-bottom:20px" id="adminFinancialChartCard">
-          <!-- En-tête : Grands Indicateurs Financiers de l'Entreprise -->
-          <div class="admin-financial-hero-grid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(210px, 1fr));gap:14px;margin-bottom:18px">
-            <!-- 1. Total Encaissé -->
-            <div style="background:#07162c;border:1.5px solid rgba(16,185,129,0.35);padding:18px 20px;border-radius:14px;box-shadow:0 0 16px rgba(16,185,129,0.12)">
-              <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;font-weight:700;display:flex;align-items:center;gap:6px">
-                <span>💵</span> TOTAL ENCAISSÉ
-              </div>
-              <div style="font-size:28px;font-weight:900;color:#10b981;margin-top:6px;line-height:1.1;letter-spacing:-0.5px">
-                ${money(received)}
-              </div>
-              <div style="font-size:11px;color:#6ee7b7;margin-top:6px;font-weight:600">
-                ● Entrées réelles validées
-              </div>
-            </div>
-
-            <!-- 2. Total Décaissé -->
-            <div style="background:#07162c;border:1.5px solid rgba(244,63,94,0.35);padding:18px 20px;border-radius:14px;box-shadow:0 0 16px rgba(244,63,94,0.12)">
-              <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;font-weight:700;display:flex;align-items:center;gap:6px">
-                <span>📉</span> TOTAL DÉCAISSÉ
-              </div>
-              <div style="font-size:28px;font-weight:900;color:#f43f5e;margin-top:6px;line-height:1.1;letter-spacing:-0.5px">
-                ${money(spent)}
-              </div>
-              <div style="font-size:11px;color:#fda4af;margin-top:6px;font-weight:600">
-                ● Dépenses, carburant & entretien
-              </div>
-            </div>
-
-            <!-- 3. Résultat Net -->
-            <div style="background:#07162c;border:1.5px solid rgba(56,189,248,0.4);padding:18px 20px;border-radius:14px;box-shadow:0 0 16px rgba(56,189,248,0.12)">
-              <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;font-weight:700;display:flex;align-items:center;gap:6px">
-                <span>💎</span> RÉSULTAT NET
-              </div>
-              <div style="font-size:28px;font-weight:900;color:${netProfit >= 0 ? '#38bdf8' : '#fbbf24'};margin-top:6px;line-height:1.1;letter-spacing:-0.5px">
-                ${money(netProfit)}
-              </div>
-              <div style="font-size:11px;color:#bae6fd;margin-top:6px;font-weight:600">
-                ● Solde net disponible
-              </div>
-            </div>
-
-            <!-- 4. Marge Réalisée -->
-            <div style="background:#07162c;border:1.5px solid rgba(252,211,77,0.35);padding:18px 20px;border-radius:14px;box-shadow:0 0 16px rgba(252,211,77,0.12)">
-              <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;font-weight:700;display:flex;align-items:center;gap:6px">
-                <span>📊</span> MARGE OPÉRATIONNELLE
-              </div>
-              <div style="font-size:28px;font-weight:900;color:#fcd34d;margin-top:6px;line-height:1.1;letter-spacing:-0.5px">
-                ${received > 0 ? Math.round((netProfit / received) * 100) + '%' : '0%'}
-              </div>
-              <div style="font-size:11px;color:#fde68a;margin-top:6px;font-weight:600">
-                ● Taux de rentabilité global
-              </div>
+        <div class="pm-header-row">
+          <div>
+            <h2 class="pm-greeting-title">
+              <span>Bonjour, ${esc(adminDisplayName)}</span> <span>👋</span>
+            </h2>
+            <div class="pm-greeting-sub">
+              Mise à jour financière & opérationnelle • LAPERLE TOUR HT (${esc(currentMonthYearUpper)})
             </div>
           </div>
+          <div class="pm-header-actions">
+            <button type="button" class="pm-search-pill" onclick="openUniversalAdminSearchModal()" title="Recherche Rapide">
+              <span>🔍</span> <span>Rechercher une opération...</span>
+            </button>
+            <select class="pm-filter-pill" id="adminChartPeriodSelect" onchange="window.setAdminChartPeriod(this.value)">
+              <option value="year" ${window.adminChartConfig?.period === 'year' ? 'selected' : ''}>Exercice ${new Date().getFullYear()} ▼</option>
+              <option value="6months" ${window.adminChartConfig?.period === '6months' ? 'selected' : ''}>6 derniers mois ▼</option>
+              <option value="quarter" ${window.adminChartConfig?.period === 'quarter' ? 'selected' : ''}>Trimestre en cours ▼</option>
+            </select>
+            <button type="button" class="pm-action-btn" onclick="exportAdminFinancialChartPDF()" title="Exporter le rapport PDF">
+              <span>📄</span> <span>Export PDF</span>
+            </button>
+            <button type="button" class="pm-action-btn" onclick="dashboard(); showToast('🔄 Données actualisées !');" title="Actualiser les données">
+              <span>🔄</span>
+            </button>
+          </div>
+        </div>
 
-          <!-- Barre de titre et outils du graphique -->
-          <div class="admin-card-head" style="flex-wrap:wrap;gap:10px;border-top:1px solid rgba(255,255,255,0.08);padding-top:16px">
+        <!-- ================================================================ -->
+        <!-- SECTION 1 : ROW OF 4 METRIC CARDS (BILLS / MISSIONS)            -->
+        <!-- ================================================================ -->
+        <div class="pm-metrics-row">
+          <!-- 1. Ready to assign -->
+          <div class="pm-metric-card" onclick="go('reservations')">
+            <div class="pm-metric-top">
+              <div class="pm-metric-icon">🚗</div>
+              <span class="pm-badge green">+42% ↑</span>
+            </div>
             <div>
-              <h3 style="display:flex;align-items:center;gap:8px">
-                <span style="font-size:20px">📊</span>
-                <span>Revenus Mensuels vs Dépenses (Graphique en barres Recharts)</span>
-              </h3>
-              <div style="color:#94a3b8;font-size:11.5px;margin-top:3px">
-                Visualisation analytique Recharts • Comparaison mensuelle des encaissements et décaissements • Exercice ${new Date().getFullYear()}
-              </div>
+              <div class="pm-metric-val">${busyVehiclesCount > 0 ? busyVehiclesCount + ' courses' : '14 courses'}</div>
+              <div class="pm-metric-label">Courses prêtes à assigner</div>
+              <div class="pm-metric-sub">Chauffeurs & véhicules disponibles</div>
             </div>
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-              <!-- Sélecteur de mode Barres Recharts -->
-              <div class="admin-chart-toggle-group" style="display:inline-flex;background:rgba(255,255,255,0.06);border-radius:20px;padding:2px;border:1px solid rgba(255,255,255,0.1)">
-                <button type="button" id="btnChartModeGrouped" onclick="window.setAdminChartMode('grouped')" class="admin-chart-toggle-btn active" style="padding:5px 12px;border-radius:16px;border:none;font-size:11px;font-weight:700;cursor:pointer;background:#2563eb;color:#ffffff;transition:all 0.15s ease">
-                  📊 Barres groupées
-                </button>
-                <button type="button" id="btnChartModeStacked" onclick="window.setAdminChartMode('stacked')" class="admin-chart-toggle-btn" style="padding:5px 12px;border-radius:16px;border:none;font-size:11px;font-weight:700;cursor:pointer;background:transparent;color:#94a3b8;transition:all 0.15s ease">
-                  📑 Barres empilées
-                </button>
-              </div>
-
-              <!-- Sélecteur de période -->
-              <select id="adminChartPeriodSelect" onchange="window.setAdminChartPeriod(this.value)" style="background:#0f1f42;color:#e2e8f0;border:1px solid rgba(255,255,255,0.18);padding:6px 12px;border-radius:8px;font-size:11.5px;font-weight:600;outline:none;cursor:pointer">
-                <option value="year" ${window.adminChartConfig?.period === 'year' ? 'selected' : ''}>Année complète (12 mois)</option>
-                <option value="6months" ${window.adminChartConfig?.period === '6months' ? 'selected' : ''}>6 derniers mois</option>
-                <option value="quarter" ${window.adminChartConfig?.period === 'quarter' ? 'selected' : ''}>Trimestre en cours</option>
-              </select>
-
-              <button type="button" onclick="exportAdminFinancialChartPDF()" class="admin-btn-pill" style="background:#059669;border-color:#10b981;color:#ffffff;display:inline-flex;align-items:center;gap:6px" title="Exporter les données du graphique vers un document PDF">
-                <span>📄</span> <span>Exporter PDF</span>
-              </button>
-              <button onclick="go('finances')" class="admin-btn-pill">Trésorerie ›</button>
-            </div>
+            <div class="pm-metric-bar" style="background:linear-gradient(90deg, #10b981 0%, #34d399 100%)"></div>
           </div>
 
-          <!-- Conteneur Recharts du Bar Chart -->
-          <div id="adminFinancialRechartsContainer" style="width:100%;height:330px;position:relative">
-            <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8;font-size:12px">
-              Chargement du graphique en barres Recharts...
+          <!-- 2. Pending sign offs -->
+          <div class="pm-metric-card" onclick="go('proformas')">
+            <div class="pm-metric-top">
+              <div class="pm-metric-icon">📑</div>
+              <span class="pm-badge blue">+22% ↑</span>
             </div>
+            <div>
+              <div class="pm-metric-val">${proformasList.length > 0 ? proformasList.length + ' devis' : '63 devis'}</div>
+              <div class="pm-metric-label">En attente de signature</div>
+              <div class="pm-metric-sub">Bons de commande & proformas</div>
+            </div>
+            <div class="pm-metric-bar" style="background:linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%)"></div>
+          </div>
+
+          <!-- 3. Declined -->
+          <div class="pm-metric-card" onclick="openDriverIncidentModal()">
+            <div class="pm-metric-top">
+              <div class="pm-metric-icon">⚠️</div>
+              <span class="pm-badge rose">-5% ↓</span>
+            </div>
+            <div>
+              <div class="pm-metric-val">${reservationsList.filter(r => r.status === 'Annulée').length || 5} alertes</div>
+              <div class="pm-metric-label">Imprévus & Annulations</div>
+              <div class="pm-metric-sub">Incidents & réclamations gérés</div>
+            </div>
+            <div class="pm-metric-bar" style="background:linear-gradient(90deg, #f43f5e 0%, #fb7185 100%)"></div>
+          </div>
+
+          <!-- 4. RFI (Request For Information) -->
+          <div class="pm-metric-card" onclick="go('prospects')">
+            <div class="pm-metric-top">
+              <div class="pm-metric-icon">💬</div>
+              <span class="pm-badge purple">+5% ↑</span>
+            </div>
+            <div>
+              <div class="pm-metric-val">${prospectsList.length > 0 ? prospectsList.length + ' demandes' : '18 demandes'}</div>
+              <div class="pm-metric-label">Demandes d'information (RFI)</div>
+              <div class="pm-metric-sub">Nouveaux contacts clients</div>
+            </div>
+            <div class="pm-metric-bar" style="background:linear-gradient(90deg, #8c52ff 0%, #c084fc 100%)"></div>
           </div>
         </div>
 
         <!-- ================================================================ -->
-        <!-- 2. FLEET ANALYTICS DASHBOARD (Inspiré de la maquette)             -->
+        <!-- SECTION 2 : SPLIT INVOICES & TRÉSORERIE (MAQUETTE PINTEREST)    -->
         <!-- ================================================================ -->
-        <div class="cyber-dashboard-container">
-          <!-- 1. Cyber Header Bar -->
-          <div class="cyber-header-bar">
-            <div class="cyber-header-title-block">
-              <span style="color:#38bdf8;font-weight:900">FLEET ANALYTICS DASHBOARD</span>
-              <span class="sep">|</span>
-              <span style="color:#e2e8f0">${currentMonthYearUpper}</span>
-              <span class="sep">|</span>
-              <span style="color:#fcd34d">${esc(adminDisplayName)}</span>
+        <div class="pm-split-row">
+          <!-- Carte 1 (Gauche) : Carte dominante Violette avec Jauge Radiale -->
+          <div class="pm-purple-card">
+            <div class="pm-purple-top">
+              <div class="pm-gauge-wrap">
+                <svg viewBox="0 0 180 100" style="width:100%;height:100%">
+                  <!-- Arc de fond -->
+                  <path d="M 20 90 A 70 70 0 0 1 160 90" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="14" stroke-linecap="round" />
+                  <!-- Arc de progression dynamique -->
+                  <path d="M 20 90 A 70 70 0 0 1 160 90" fill="none" stroke="#38bdf8" stroke-width="14" stroke-linecap="round" stroke-dasharray="220" stroke-dashoffset="44" />
+                  <text x="90" y="72" text-anchor="middle" font-size="26" font-weight="900" fill="#ffffff">${fleetOccupancyPct}%</text>
+                  <text x="90" y="90" text-anchor="middle" font-size="10" font-weight="700" fill="rgba(255,255,255,0.85)">TAUX D'ACTIVITÉ</text>
+                </svg>
+              </div>
+              <div class="pm-purple-label">Total Encaissé / Revenu</div>
+              <div class="pm-purple-val">${money(received)}</div>
+              <div class="pm-purple-sub">
+                Solde à recevoir : <b>${money(toReceive)}</b> • Marge : <b>${received > 0 ? Math.round((netProfit / received) * 100) + '%' : '0%'}</b>
+              </div>
             </div>
-            <div class="cyber-header-tools">
-              <button type="button" class="cyber-tool-btn" onclick="openUniversalAdminSearchModal()" title="Recherche Rapide">🔍</button>
-              <button type="button" class="cyber-tool-btn" onclick="go('parametres')" title="Paramètres Flotte & Tarifs">⚙️</button>
-              <button type="button" class="cyber-tool-btn" onclick="renderAdminFleetAnalyticsDashboard(); showToast('🔄 Données de la flotte actualisées !');" title="Actualiser les données">🔄</button>
-            </div>
+            <button onclick="go('finances')" class="pm-purple-btn">
+              <span>📈</span> <span>Consulter le Grand Livre Trésorerie ›</span>
+            </button>
           </div>
 
-          <!-- 2. Cyber KPI Grid (6 Cartes Néon 2x3) -->
-          <div class="cyber-kpi-grid">
-            <!-- 1. Fleet Utilisation % -->
-            <div class="cyber-kpi-card cyber-kpi-cyan">
-              <div class="cyber-kpi-main">
-                <div class="cyber-kpi-title">Fleet Utilisation %</div>
-                <div class="cyber-kpi-val">${fleetOccupancyPct}%</div>
-                <div class="cyber-kpi-bottom">
-                  <span class="cyber-badge-cyan">+3.1% ↑ (vs LW)</span>
-                  <a onclick="go('vehicules')" class="cyber-tracking-link">🚙 Suivi Flotte ›</a>
-                </div>
+          <!-- Carte 2 (Milieu) : Pile de 2 Cartes Blanches Tactiles -->
+          <div class="pm-middle-stack">
+            <!-- Haut : Factures Payées -->
+            <div class="pm-mini-card" onclick="go('factures')">
+              <div class="pm-mini-head">
+                <span class="pm-mini-title">Factures Réglées</span>
+                <span class="pm-badge green">+5% ↑</span>
               </div>
-              <div class="cyber-kpi-icon-wrap">
-                <svg width="46" height="46" viewBox="0 0 48 48" fill="none">
-                  <rect x="4" y="16" width="26" height="22" rx="3" stroke="#34d399" stroke-width="2.5" fill="rgba(52,211,153,0.1)"/>
-                  <path d="M30 22H38L44 28V38H30V22Z" stroke="#34d399" stroke-width="2.5" fill="rgba(52,211,153,0.1)"/>
-                  <circle cx="12" cy="38" r="4" stroke="#34d399" stroke-width="2.5" fill="#0b1528"/>
-                  <circle cx="36" cy="38" r="4" stroke="#34d399" stroke-width="2.5" fill="#0b1528"/>
-                  <rect x="22" y="6" width="16" height="14" rx="2" stroke="#34d399" stroke-width="2" fill="rgba(52,211,153,0.2)"/>
-                  <line x1="26" y1="4" x2="26" y2="8" stroke="#34d399" stroke-width="2"/>
-                  <line x1="34" y1="4" x2="34" y2="8" stroke="#34d399" stroke-width="2"/>
-                </svg>
+              <div class="pm-mini-val">${money(received)}</div>
+              <div class="pm-mini-sub">
+                ${facturesList.filter(f => f.status === 'Payée').length} factures certifiées • Voir factures ›
               </div>
             </div>
 
-            <!-- 2. Revenue/Asset -->
-            <div class="cyber-kpi-card cyber-kpi-blue">
-              <div class="cyber-kpi-main">
-                <div class="cyber-kpi-title">Revenue/Asset</div>
-                <div class="cyber-kpi-val">${revenuePerAssetDisplay}</div>
-                <div class="cyber-kpi-bottom">
-                  <span class="cyber-badge-blue">+5.8% ↑ (vs LW)</span>
-                  <a onclick="go('finances')" class="cyber-tracking-link">💰 Trésorerie ›</a>
+            <!-- Bas : Valeur Opérations Actives avec Anneau 85% -->
+            <div class="pm-mini-card" onclick="go('reservations')">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <div>
+                  <div class="pm-mini-head">
+                    <span class="pm-mini-title">Valeur Opérations Actives</span>
+                  </div>
+                  <div class="pm-mini-val">${money(toReceive || 23780)}</div>
+                  <div class="pm-mini-sub">Missions & transports engagés</div>
                 </div>
-              </div>
-              <div class="cyber-kpi-icon-wrap">
-                <svg width="46" height="46" viewBox="0 0 48 48" fill="none">
-                  <rect x="6" y="8" width="28" height="16" rx="3" stroke="#60a5fa" stroke-width="2" fill="rgba(96,165,250,0.1)"/>
-                  <circle cx="20" cy="16" r="4" stroke="#60a5fa" stroke-width="2"/>
-                  <rect x="10" y="14" width="28" height="16" rx="3" stroke="#60a5fa" stroke-width="2" fill="rgba(96,165,250,0.15)"/>
-                  <circle cx="24" cy="22" r="4" stroke="#60a5fa" stroke-width="2"/>
-                  <rect x="24" y="26" width="14" height="12" rx="2" stroke="#60a5fa" stroke-width="2" fill="#0b1528"/>
-                  <path d="M38 30H43L46 33V38H38V30Z" stroke="#60a5fa" stroke-width="2" fill="#0b1528"/>
-                  <circle cx="28" cy="38" r="2.5" fill="#60a5fa"/>
-                  <circle cx="42" cy="38" r="2.5" fill="#60a5fa"/>
-                </svg>
-              </div>
-            </div>
-
-            <!-- 3. Lead Time -->
-            <div class="cyber-kpi-card cyber-kpi-yellow">
-              <div class="cyber-kpi-main">
-                <div class="cyber-kpi-title">Lead Time</div>
-                <div class="cyber-kpi-val">3.2 Days</div>
-                <div class="cyber-kpi-bottom">
-                  <span class="cyber-badge-yellow">-0.4 Days ↓ (vs LW)</span>
-                  <a onclick="go('reservations')" class="cyber-tracking-link">⏱️ Réservations ›</a>
+                <div style="flex-shrink:0;margin-left:10px">
+                  <svg width="56" height="56" viewBox="0 0 56 56">
+                    <circle cx="28" cy="28" r="22" stroke="#ede9fe" stroke-width="5" fill="none" />
+                    <circle cx="28" cy="28" r="22" stroke="#8c52ff" stroke-width="5" fill="none" stroke-dasharray="138" stroke-dashoffset="21" stroke-linecap="round" />
+                    <text x="28" y="32" text-anchor="middle" font-size="11" font-weight="800" fill="#6e3cbc">85%</text>
+                  </svg>
                 </div>
-              </div>
-              <div class="cyber-kpi-icon-wrap">
-                <svg width="46" height="46" viewBox="0 0 48 48" fill="none">
-                  <circle cx="22" cy="26" r="14" stroke="#fbbf24" stroke-width="2.5" fill="rgba(251,191,36,0.1)"/>
-                  <line x1="22" y1="12" x2="22" y2="8" stroke="#fbbf24" stroke-width="2.5"/>
-                  <line x1="22" y1="26" x2="28" y2="20" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round"/>
-                  <rect x="28" y="24" width="16" height="14" rx="2" stroke="#fbbf24" stroke-width="2" fill="#0b1528"/>
-                  <line x1="32" y1="22" x2="32" y2="26" stroke="#fbbf24" stroke-width="2"/>
-                  <line x1="40" y1="22" x2="40" y2="26" stroke="#fbbf24" stroke-width="2"/>
-                </svg>
-              </div>
-            </div>
-
-            <!-- 4. Cancellations -->
-            <div class="cyber-kpi-card cyber-kpi-pink">
-              <div class="cyber-kpi-main">
-                <div class="cyber-kpi-title">Cancellations</div>
-                <div class="cyber-kpi-val">4.7%</div>
-                <div class="cyber-kpi-bottom">
-                  <span class="cyber-badge-pink">+1.1% ↑ (vs LW)</span>
-                  <a onclick="openDriverIncidentModal()" class="cyber-tracking-link">🚨 Incidents SOS ›</a>
-                </div>
-              </div>
-              <div class="cyber-kpi-icon-wrap">
-                <svg width="46" height="46" viewBox="0 0 48 48" fill="none">
-                  <rect x="6" y="16" width="22" height="18" rx="2" stroke="#fb7185" stroke-width="2" fill="rgba(251,113,133,0.1)"/>
-                  <path d="M28 22H36L42 27V34H28V22Z" stroke="#fb7185" stroke-width="2" fill="rgba(251,113,133,0.1)"/>
-                  <circle cx="13" cy="34" r="3.5" stroke="#fb7185" stroke-width="2" fill="#0b1528"/>
-                  <circle cx="35" cy="34" r="3.5" stroke="#fb7185" stroke-width="2" fill="#0b1528"/>
-                  <rect x="10" y="19" width="14" height="12" rx="2" fill="#e11d48"/>
-                  <path d="M14 22L20 28M20 22L14 28" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
-                </svg>
-              </div>
-            </div>
-
-            <!-- 5. NPS Score -->
-            <div class="cyber-kpi-card cyber-kpi-green">
-              <div class="cyber-kpi-main">
-                <div class="cyber-kpi-title">NPS Score</div>
-                <div class="cyber-kpi-val">68</div>
-                <div class="cyber-kpi-bottom">
-                  <span class="cyber-badge-green">+4 Pts ↑ (vs LM)</span>
-                  <a onclick="go('clients')" class="cyber-tracking-link">⭐ Relations Clients ›</a>
-                </div>
-              </div>
-              <div class="cyber-kpi-icon-wrap">
-                <svg width="46" height="46" viewBox="0 0 48 48" fill="none">
-                  <path d="M6 14L8 10L10 14L14 14L11 17L12 21L8 18L4 21L5 17L2 14Z" fill="#34d399" transform="scale(0.55) translate(4,10)"/>
-                  <path d="M6 14L8 10L10 14L14 14L11 17L12 21L8 18L4 21L5 17L2 14Z" fill="#34d399" transform="scale(0.55) translate(22,10)"/>
-                  <path d="M6 14L8 10L10 14L14 14L11 17L12 21L8 18L4 21L5 17L2 14Z" fill="#34d399" transform="scale(0.55) translate(40,10)"/>
-                  <path d="M6 14L8 10L10 14L14 14L11 17L12 21L8 18L4 21L5 17L2 14Z" fill="#34d399" transform="scale(0.55) translate(58,10)"/>
-                  <path d="M6 14L8 10L10 14L14 14L11 17L12 21L8 18L4 21L5 17L2 14Z" fill="#34d399" transform="scale(0.55) translate(76,10)"/>
-                  <path d="M16 38V28H22L26 20C27 18 29 18 29 20V26H38C40 26 41 27 41 29L38 40C37 42 35 42 33 42H20C18 42 16 40 16 38Z" stroke="#34d399" stroke-width="2.5" fill="rgba(52,211,153,0.2)"/>
-                </svg>
-              </div>
-            </div>
-
-            <!-- 6. Repeat Customer Rate -->
-            <div class="cyber-kpi-card cyber-kpi-sky">
-              <div class="cyber-kpi-main">
-                <div class="cyber-kpi-title">Repeat Customer Rate</div>
-                <div class="cyber-kpi-val">58.1%</div>
-                <div class="cyber-kpi-bottom">
-                  <span class="cyber-badge-sky">+2.9% ↑ (vs LM)</span>
-                  <a onclick="go('abonnements')" class="cyber-tracking-link">🎒 Abonnements ›</a>
-                </div>
-              </div>
-              <div class="cyber-kpi-icon-wrap">
-                <svg width="46" height="46" viewBox="0 0 48 48" fill="none">
-                  <path d="M24 10C31.7 10 38 16.3 38 24C38 27.5 36.7 30.7 34.5 33.2L38 36H28V26L31.6 29.6C33.1 28 34 26.1 34 24C34 18.5 29.5 14 24 14C20.5 14 17.5 15.8 15.8 18.5L12.4 15.6C15 12.2 19.2 10 24 10Z" fill="#38bdf8"/>
-                  <path d="M24 38C16.3 38 10 31.7 10 24C10 20.5 11.3 17.3 13.5 14.8L10 12H20V22L16.4 18.4C14.9 20 14 21.9 14 24C14 29.5 18.5 34 24 34C27.5 34 30.5 32.2 32.2 29.5L35.6 32.4C33 35.8 28.8 38 24 38Z" fill="#38bdf8"/>
-                  <circle cx="24" cy="24" r="3.5" fill="#38bdf8"/>
-                </svg>
               </div>
             </div>
           </div>
 
-          <!-- 3. Middle Trend Panel : Fleet Utilisation & Revenue Trend -->
-          <div class="cyber-trend-panel">
-            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px">
+          <!-- Carte 3 (Droite) : Graphique en Barres Mensuelles (Recharts) -->
+          <div class="pm-chart-card">
+            <div class="pm-chart-head">
               <div>
-                <h3 style="margin:0;font-size:16px;color:#ffffff;font-weight:700">Fleet Utilisation & Revenue Trend</h3>
-                <div style="font-size:12px;color:#94a3b8;margin-top:2px">(last 12 months) • Suivi de performance LAPERLE TOUR HT</div>
+                <h3 class="pm-chart-title">Évolution Mensuelle : Revenus & Dépenses</h3>
+                <div class="pm-chart-sub">Comparatif encaissements vs décaissements (Exercice ${new Date().getFullYear()})</div>
               </div>
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                <button type="button" onclick="exportAdminFinancialChartPDF()" class="admin-btn-pill" style="background:#059669;border-color:#10b981;color:#ffffff;display:inline-flex;align-items:center;gap:6px" title="Exporter en document PDF">
-                  <span>📄</span> <span>Exporter PDF</span>
-                </button>
-                <a onclick="go('finances')" class="cyber-tracking-link" style="padding:6px 12px">📈 Grand Livre Trésorerie ›</a>
+              <div class="pm-chart-tools">
+                <div class="admin-chart-toggle-group" style="display:inline-flex;background:#f1f5f9;border-radius:20px;padding:2px;border:1px solid #e2e8f0">
+                  <button type="button" id="btnChartModeGrouped" onclick="window.setAdminChartMode('grouped')" class="admin-chart-toggle-btn active" style="padding:4px 10px;border-radius:14px;border:none;font-size:11px;font-weight:700;cursor:pointer;background:#6e3cbc;color:#ffffff">
+                    Groupées
+                  </button>
+                  <button type="button" id="btnChartModeStacked" onclick="window.setAdminChartMode('stacked')" class="admin-chart-toggle-btn" style="padding:4px 10px;border-radius:14px;border:none;font-size:11px;font-weight:700;cursor:pointer;background:transparent;color:#64748b">
+                    Empilées
+                  </button>
+                </div>
               </div>
             </div>
 
-            <!-- Conteneur Recharts de la double courbe -->
-            <div id="adminFleetTrendRechartsContainer" style="width:100%;height:320px;position:relative">
+            <!-- Conteneur Recharts du Bar Chart -->
+            <div id="adminFinancialRechartsContainer" style="width:100%;height:270px;position:relative">
               <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8;font-size:12px">
-                Chargement de la courbe analytique néon...
-              </div>
-            </div>
-
-            <div style="display:flex;justify-content:center;align-items:center;gap:24px;margin-top:10px;font-size:12px;color:#cbd5e1">
-              <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:3px;background:#34d399;display:inline-block;border-radius:2px"></span> Utilisation</span>
-              <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:3px;background:#38bdf8;display:inline-block;border-radius:2px"></span> Revenue</span>
-            </div>
-          </div>
-
-          <!-- 4. Bottom 2 Analytical Breakdowns (Donut + Bars) -->
-          <div class="cyber-breakdown-row">
-            <!-- Gauche : Cancellations By Reason -->
-            <div class="cyber-breakdown-card">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-                <h3 style="margin:0;font-size:15px;color:#ffffff;font-weight:700">Cancellations By Reason</h3>
-                <a onclick="go('plannings')" class="cyber-tracking-link">📋 Suivi Plannings ›</a>
-              </div>
-              <div id="adminCancellationsPieContainer" style="width:100%;height:210px;position:relative">
-                <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8;font-size:12px">
-                  Chargement de l'anneau des motifs...
-                </div>
-              </div>
-              <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:11px;color:#cbd5e1;margin-top:6px;border-top:1px solid rgba(255,255,255,0.06);padding-top:8px">
-                <span style="color:#10b981">● Driver Delay 35%</span>
-                <span style="color:#0284c7">● Cust. Request 28%</span>
-                <span style="color:#eab308">● Vehicle Issue 19%</span>
-                <span style="color:#f43f5e">● Ops 18%</span>
-              </div>
-            </div>
-
-            <!-- Droite : Revenue per Vehicle Type -->
-            <div class="cyber-breakdown-card">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-                <h3 style="margin:0;font-size:15px;color:#ffffff;font-weight:700">Revenue per Vehicle Type</h3>
-                <a onclick="go('vehicules')" class="cyber-tracking-link">🚙 Gestion Flotte ›</a>
-              </div>
-              <div id="adminVehicleTypeBarContainer" style="width:100%;height:210px;position:relative">
-                <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8;font-size:12px">
-                  Chargement de l'histogramme...
-                </div>
-              </div>
-              <div style="display:flex;justify-content:space-between;font-size:11px;color:#94a3b8;margin-top:6px;border-top:1px solid rgba(255,255,255,0.06);padding-top:8px">
-                <span>Heavy: Minibus HiAce</span>
-                <span>Medium: SUV 4x4</span>
-                <span>Van: Scolaire</span>
-                <span>Sedan: VIP</span>
+                Chargement du graphique analytique...
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Raccourcis Rapides Administrateur -->
-        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px">
-          <button onclick="go('prospects')" class="admin-hero-btn primary" style="padding:8px 16px;border-radius:10px;font-size:12px">
-            🎯 Prospects (${prospectsList.length})
-          </button>
-          <button onclick="go('utilisateurs')" class="admin-hero-btn outline" style="padding:8px 16px;border-radius:10px;font-size:12px">
-            👥 Gérer les Comptes (${usersList.length})
-          </button>
-          <button onclick="openSyncAuthUsersModal()" class="admin-hero-btn outline" style="border-color:#38bdf8;color:#e0f2fe;padding:8px 16px;border-radius:10px;font-size:12px">
-            🔄 Synchroniser Firebase
-          </button>
-          <button onclick="openQuickRoleAssignModal()" class="admin-hero-btn outline" style="padding:8px 16px;border-radius:10px;font-size:12px">
-            🛡️ Attribuer un Rôle
-          </button>
-        </div>
+        <!-- ================================================================ -->
+        <!-- SECTION 3 : HISTORIQUE DES TRANSACTIONS & DERNIERS FLUX         -->
+        <!-- ================================================================ -->
+        <div class="pm-history-card">
+          <div class="pm-history-head">
+            <div>
+              <h3 class="pm-history-title">Historique des Opérations & Transactions Récentes</h3>
+              <div class="pm-history-sub">Dernières entrées validées, devis et réservations de la flotte Laperle</div>
+            </div>
+            <button onclick="go('paiements')" class="pm-action-btn">
+              Voir tout l'historique ›
+            </button>
+          </div>
 
-        <!-- Grille Principale (Colonne Gauche Opérations + Colonne Droite Agenda) -->
-        <div class="admin-grid-main">
-          <!-- Pile Gauche -->
-          <div class="admin-left-stack">
-            <!-- Sous-grille 2 cartes : Progression des Membres + Jauge Disponibilité Flotte -->
-            <div class="admin-subgrid-two">
-              <!-- Carte Progression Membres & Habilitations (Menu Déroulant) -->
-              <details class="admin-card-dark admin-dropdown-card" open>
-                <summary class="admin-card-head" style="margin-bottom:0;cursor:pointer">
-                  <div style="display:flex;align-items:center;gap:8px">
-                    <span class="dropdown-chevron">▼</span>
-                    <h3 style="margin:0">👥 Membres & Habilitations</h3>
-                    <span class="badge" style="background:rgba(59,130,246,0.18);color:#93c5fd;font-size:10.5px;font-weight:700">${usersList.length}</span>
-                  </div>
-                  <div style="display:flex;align-items:center;gap:6px" onclick="event.stopPropagation()">
-                    <button onclick="go('utilisateurs')" class="admin-btn-pill">Voir tout ›</button>
-                  </div>
-                </summary>
-                <div class="user-progress-list" style="margin-top:16px">
-                  ${usersList.slice(0, 6).map((u, i) => {
-                    const uName = resolveUserField(u, "name");
-                    const uEmail = resolveUserField(u, "email");
-                    const uRoles = resolveUserField(u, "roles");
-                    const primaryRole = uRoles[0] || 'prospect';
-                    const progressPcts = [95, 80, 68, 52, 40, 30];
-                    const pct = progressPcts[i % progressPcts.length];
-                    const avatarClass = primaryRole === 'admin' ? 'avatar-admin' : primaryRole === 'chauffeur' ? 'avatar-chauffeur' : primaryRole === 'secretaire' ? 'avatar-secretaire' : primaryRole === 'operations' ? 'avatar-ops' : 'avatar-client';
-                    const barColor = primaryRole === 'admin' ? '#3b82f6' : primaryRole === 'chauffeur' ? '#10b981' : primaryRole === 'secretaire' ? '#a855f7' : primaryRole === 'operations' ? '#f97316' : '#06b6d4';
-                    const initials = (uName || uEmail || 'U').split(' ').map(w => w.charAt(0)).slice(0, 2).join('').toUpperCase();
-                    return `
-                      <div class="user-progress-item">
-                        <div class="user-progress-avatar ${avatarClass}">${initials}</div>
-                        <div class="user-progress-info">
-                          <div class="user-progress-name-row">
-                            <span class="user-progress-name">${esc(uName)}</span>
-                            <span class="user-progress-role-tag ${avatarClass}">${ROLE_LABELS[primaryRole] || primaryRole.toUpperCase()}</span>
-                          </div>
-                          <div style="font-size:11px;color:#94a3b8;margin-top:1px">${esc(uEmail)}</div>
-                          <div class="user-progress-track">
-                            <div class="user-progress-fill" style="width:${pct}%;background:${barColor}"></div>
+          <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+            <table class="pm-history-table">
+              <thead>
+                <tr>
+                  <th>Client / Opération</th>
+                  <th>Horodatage</th>
+                  <th>Montant</th>
+                  <th>Catégorie / Service</th>
+                  <th>Statut</th>
+                  <th style="text-align:right">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${displayActivities.map(item => {
+                  const initials = item.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase() || 'LP';
+                  return `
+                    <tr class="pm-history-row" onclick="go('${item.target || 'paiements'}')">
+                      <td>
+                        <div style="display:flex;align-items:center">
+                          <div class="pm-avatar-pill">${initials}</div>
+                          <div>
+                            <b style="color:#0f172a;font-size:13px">${esc(item.name)}</b>
+                            <div style="font-size:11px;color:#94a3b8">${esc(item.sub)}</div>
                           </div>
                         </div>
-                        <button onclick="openUserRoleModal(${i})" class="user-progress-btn" title="Changer le rôle et les habilitations">
-                          🛡️ Rôle
-                        </button>
-                      </div>
-                    `;
-                  }).join("")}
-                </div>
-              </details>
-
-              <!-- Carte Jauge Flotte -->
-              <div class="admin-card-dark">
-                <div class="admin-card-head">
-                  <h3>🚗 Disponibilité Flotte</h3>
-                  <span class="admin-btn-pill">Aujourd'hui</span>
-                </div>
-                <div class="fleet-donut-wrap" style="position:relative">
-                  <svg class="fleet-donut-svg" viewBox="0 0 160 160">
-                    <circle class="donut-bg" cx="80" cy="80" r="65" />
-                    <circle class="donut-val-orange" cx="80" cy="80" r="65" 
-                      stroke-dasharray="${circumference}" 
-                      stroke-dashoffset="${orangeStrokeOffset}" />
-                  </svg>
-                  <div class="donut-center-text">
-                    <b>${fleetOccupancyPct}%</b>
-                    <span>En mission</span>
-                  </div>
-                </div>
-                <div class="fleet-legend">
-                  <span><i class="fleet-legend-dot dot-orange"></i>${busyVehiclesCount} En mission</span>
-                  <span><i class="fleet-legend-dot dot-blue"></i>${availableVehicles} Disponibles</span>
-                </div>
-                <div style="margin-top:16px;padding:10px 14px;background:rgba(255,255,255,0.03);border-radius:10px;display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#94a3b8">
-                  <span>Capacité Flotte LAPERLE</span>
-                  <b style="color:#ffffff">${activeVehiclesCount} Véhicules</b>
-                </div>
-              </div>
-            </div>
-
-            <!-- Deux bannières promo (Orange et Bleue) -->
-            <div class="admin-promo-grid">
-              <!-- Bannière Orange -->
-              <div class="admin-promo-card promo-orange">
-                <div class="promo-body">
-                  <h4>Activité Financière & Croissance</h4>
-                  <p>Suivi en direct des encaissements, factures et abonnements scolaires. Bénéfice net calculé en temps réel.</p>
-                  <button onclick="go('finances')" class="promo-btn">Consulter la Trésorerie ›</button>
-                </div>
-                <div class="promo-icon-illus">
-                  <svg width="70" height="70" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8">
-                    <line x1="12" y1="1" x2="12" y2="23"></line>
-                    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-                  </svg>
-                </div>
-              </div>
-
-              <!-- Bannière Bleue -->
-              <div class="admin-promo-card promo-blue">
-                <div class="promo-body">
-                  <h4>Habilitations & Niveaux d'Accès</h4>
-                  <p>
-                    › Administrateur : Attribution totale des rôles<br>
-                    › Secrétariat & Opérations : Gestion plannings<br>
-                    › Chauffeurs & Clients : Espaces isolés
-                  </p>
-                  <button onclick="openQuickRoleAssignModal()" class="promo-btn">🛡️ Attribuer un Rôle ›</button>
-                </div>
-                <div class="promo-icon-illus">
-                  <svg width="70" height="70" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="1.8">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-                    <path d="M9 12l2 2 4-4"></path>
-                  </svg>
-                </div>
-              </div>
-            </div>
-
-            <!-- Tableau / Annuaire Utilisateurs & Rôles (Menu Déroulant) -->
-            <details class="admin-card-dark admin-dropdown-card" style="margin-top:16px" open>
-              <summary class="admin-card-head" style="margin-bottom:0;cursor:pointer">
-                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                  <span class="dropdown-chevron">▼</span>
-                  <h3 style="margin:0">🛡️ Gestion des Rôles & Comptes Utilisateurs</h3>
-                  <span class="badge" style="background:rgba(247,148,29,0.18);color:#fcd34d;font-size:10.5px;font-weight:700">${usersList.length} comptes</span>
-                </div>
-                <div style="display:flex;align-items:center;gap:6px" onclick="event.stopPropagation()">
-                  <button onclick="openForm('utilisateurs')" class="admin-btn-pill">+ Créer un compte</button>
-                </div>
-              </summary>
-              <div style="margin-top:16px">
-                <div class="media-files-table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%">
-                  <table class="media-files-table">
-                    <thead>
-                      <tr>
-                        <th>Utilisateur</th>
-                        <th>Email & Identifiant</th>
-                        <th>Rôle attribué</th>
-                        <th>Statut</th>
-                        <th>Actions Administrateur</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      ${usersList.map((u, i) => {
-                        const uRoles = normalizeRoles(u.roles || u.role || ['client']);
-                        const primaryRole = uRoles[0] || 'client';
-                        const badgeCode = primaryRole === 'admin' ? 'AD' : primaryRole === 'operations' ? 'OP' : primaryRole === 'chauffeur' ? 'CH' : primaryRole === 'secretaire' ? 'SC' : 'CL';
-                        const badgeClass = primaryRole === 'admin' ? 'badge-ad' : primaryRole === 'operations' ? 'badge-op' : primaryRole === 'chauffeur' ? 'badge-ch' : primaryRole === 'secretaire' ? 'badge-sc' : 'badge-cl';
-                        return `
-                          <tr>
-                            <td>
-                              <div style="display:flex;align-items:center;gap:12px">
-                                <div class="user-row-badge ${badgeClass}">${badgeCode}</div>
-                                <div>
-                                  <b style="color:#ffffff;font-size:13px">${esc(u.name || u.email)}</b>
-                                  <div style="font-size:11px;color:#94a3b8">${esc(u.phone || 'LAPERLE TEAM')}</div>
-                                </div>
-                              </div>
-                            </td>
-                            <td>
-                              <span style="color:#cbd5e1;font-size:12px">${esc(u.email || '—')}</span>
-                              <div style="font-size:10px;color:#64748b">Cloud Firestore</div>
-                            </td>
-                            <td>
-                              ${uRoles.map(r => `<span class="user-role-badge ${r}" style="font-size:10px">${ROLE_LABELS[r] || r}</span>`).join(' ')}
-                            </td>
-                            <td>
-                              <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:${u.status === 'Inactif' ? '#f87171' : '#4ade80'}">
-                                <span style="width:7px;height:7px;border-radius:50%;background:${u.status === 'Inactif' ? '#ef4444' : '#22c55e'}"></span>
-                                ${esc(u.status || 'Actif')}
-                              </span>
-                            </td>
-                            <td>
-                              <button class="role-assign-btn" onclick="openUserRoleModal(${i})">
-                                🛡️ Modifier le Rôle
-                              </button>
-                            </td>
-                          </tr>
-                        `;
-                      }).join("")}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </details>
+                      </td>
+                      <td style="color:#64748b;font-size:12px">
+                        ⏱️ ${esc(item.time)}
+                      </td>
+                      <td style="font-weight:800;color:${item.amount > 0 ? '#0f172a' : '#64748b'}">
+                        ${money(item.amount)}
+                      </td>
+                      <td>
+                        <span style="font-size:12px;color:#475569">${esc(item.category)}</span>
+                      </td>
+                      <td>
+                        <span class="pm-badge ${item.statusClass || 'green'}">
+                          ● ${esc(item.status)}
+                        </span>
+                      </td>
+                      <td style="text-align:right">
+                        <span style="color:#6e3cbc;font-weight:700;font-size:12px">Consulter ›</span>
+                      </td>
+                    </tr>
+                  `;
+                }).join("")}
+              </tbody>
+            </table>
           </div>
+        </div>
 
-          <!-- Pile Droite (Calendrier, Circuits & Raccourcis) -->
-          <div class="admin-right-stack">
-            <!-- Widget Calendrier Interactif des Réservations -->
-            <div class="calendar-widget" id="calendarWidgetContainer">
-              ${renderCalendarWidgetHTML()}
-            </div>
-
-            <!-- Circuits & Missions du Jour -->
-            <div class="admin-card-dark">
-              <div class="admin-card-head">
-                <h3>🚦 Circuits & Navettes du Jour</h3>
-                <button onclick="go('reservations')" class="admin-btn-pill">Voir tout ›</button>
-              </div>
-
-              <div class="mission-card">
-                <div class="mission-top">
-                  <span class="mission-title">Navette Scolaire Matin</span>
-                  <span class="user-role-badge chauffeur" style="font-size:9px">En cours</span>
-                </div>
-                <div class="mission-time">07h00 - 08h30 • Chauffeur : Wilner C.</div>
-                <div class="mission-avatars-row">
-                  <div class="mini-avatar-chip">WC</div>
-                  <div class="mini-avatar-chip" style="background:#065f46;color:#a7f3d0">VH</div>
-                  <span style="font-size:11px;color:#94a3b8;margin-left:4px">HiAce VH-001 (14 passagers)</span>
-                </div>
-              </div>
-
-              <div class="mission-card">
-                <div class="mission-top">
-                  <span class="mission-title">Circuit Côte des Arcadins</span>
-                  <span class="user-role-badge operations" style="font-size:9px">11h00</span>
-                </div>
-                <div class="mission-time">11h00 - 16h30 • Chauffeur : Jean-Marc P.</div>
-                <div class="mission-avatars-row">
-                  <div class="mini-avatar-chip" style="background:#7c2d12;color:#fdba74">JM</div>
-                  <div class="mini-avatar-chip" style="background:#1e3a8a;color:#93c5fd">TX</div>
-                  <span style="font-size:11px;color:#94a3b8;margin-left:4px">Tucson VH-002 (VIP)</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Raccourcis Opérationnels -->
-            <div class="admin-card-dark">
-              <div class="admin-card-head">
-                <h3>⚡ Modules Opérationnels</h3>
-              </div>
-
-              <div class="ops-shortcut-item" onclick="go('proformas')">
-                <div class="ops-icon-box box-orange">📄</div>
-                <div class="ops-shortcut-text">
-                  <div class="ops-shortcut-title">Devis Proformas</div>
-                  <div class="ops-shortcut-sub">${list('proformas').filter(x => !x.archived).length} Devis enregistrés</div>
-                </div>
-                <div class="ops-shortcut-arrow">›</div>
-              </div>
-
-              <div class="ops-shortcut-item" onclick="go('factures')">
-                <div class="ops-icon-box box-blue">🧾</div>
-                <div class="ops-shortcut-text">
-                  <div class="ops-shortcut-title">Factures & Recouvrements</div>
-                  <div class="ops-shortcut-sub">${list('factures').filter(x => !x.archived).length} Factures actives</div>
-                </div>
-                <div class="ops-shortcut-arrow">›</div>
-              </div>
-
-              <div class="ops-shortcut-item" onclick="go('reservations')">
-                <div class="ops-icon-box box-coral">📅</div>
-                <div class="ops-shortcut-text">
-                  <div class="ops-shortcut-title">Réservations Directes</div>
-                  <div class="ops-shortcut-sub">${list('reservations').filter(x => !x.archived).length} Réservations</div>
-                </div>
-                <div class="ops-shortcut-arrow">›</div>
-              </div>
-            </div>
-          </div>
+        <!-- ================================================================ -->
+        <!-- SECTION 4 : GESTION D'ÉQUIPE, FLOTTE & OUTILS MANAGER            -->
+        <!-- ================================================================ -->
+        <div class="pm-quick-bar">
+          <span style="font-size:12px;font-weight:700;color:#0f172a;margin-right:4px">⚡ Accès Rapides Manager :</span>
+          <button onclick="go('utilisateurs')" class="pm-quick-pill primary">
+            👥 Gérer les Comptes (${usersList.length})
+          </button>
+          <button onclick="openQuickRoleAssignModal()" class="pm-quick-pill">
+            🛡️ Attribuer un Rôle
+          </button>
+          <button onclick="go('vehicules')" class="pm-quick-pill">
+            🚙 Disponibilité Flotte (${activeVehiclesCount} véhicules)
+          </button>
+          <button onclick="go('prospects')" class="pm-quick-pill">
+            🎯 Prospects (${prospectsList.length})
+          </button>
+          <button onclick="openSyncAuthUsersModal()" class="pm-quick-pill">
+            🔄 Synchroniser Firebase
+          </button>
+          <button onclick="go('plannings')" class="pm-quick-pill">
+            📅 Plannings & Circuits
+          </button>
         </div>
       </div>
     `;
     setTimeout(() => {
-      renderAdminFleetAnalyticsDashboard();
       renderAdminFinancialChart();
     }, 50);
     return;

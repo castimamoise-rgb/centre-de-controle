@@ -1192,17 +1192,786 @@ button, input, select, textarea {
 }
 
 /* ==========================================================
-   TABLEAU DE BORD ADMINISTRATEUR - DESIGN MODERNE INSPIRÉ 
-   DU DASHBOARD RÉFÉRENCE (EduAdmin) AVEC BRANDING LAPERLE
+   TABLEAU DE BORD MANAGER - STYLE INSPIRÉ DE LA MAQUETTE PINTEREST
+   Soft UI / Modern SaaS épuré, Carte Hero Bleu Nuit, Cartes KPI
+   ========================================================== */
+.manager-dashboard-container {
+  background: #f1f4f9;
+  border-radius: 24px;
+  padding: 24px;
+  box-shadow: 0 4px 20px rgba(8, 43, 112, 0.04);
+  color: #1e293b;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+  margin-top: 8px;
+}
+
+/* Header Manager */
+.manager-dash-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+.manager-dash-title h2 {
+  font-size: 24px;
+  font-weight: 800;
+  color: #082b70;
+  margin: 0 0 4px 0;
+  letter-spacing: -0.4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.manager-dash-title p {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0;
+  font-weight: 500;
+}
+.manager-dash-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* 4 Cartes KPI Supérieures (Soft UI) */
+.manager-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 22px;
+}
+@media (max-width: 1024px) {
+  .manager-kpi-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 600px) {
+  .manager-kpi-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.manager-kpi-card {
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 18px 20px;
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  box-shadow: 0 4px 16px rgba(8, 43, 112, 0.035);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.manager-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(8, 43, 112, 0.08);
+}
+.manager-kpi-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.manager-kpi-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  font-size: 19px;
+  background: #f8fafc;
+}
+.manager-kpi-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.manager-kpi-badge.positive {
+  background: #ecfdf5;
+  color: #059669;
+}
+.manager-kpi-badge.neutral {
+  background: #eff6ff;
+  color: #2563eb;
+}
+.manager-kpi-badge.warning {
+  background: #fff1f2;
+  color: #e11d48;
+}
+.manager-kpi-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+.manager-kpi-val {
+  font-size: 26px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.5px;
+  line-height: 1.1;
+  margin-bottom: 4px;
+}
+.manager-kpi-sub {
+  font-size: 11.5px;
+  color: #94a3b8;
+}
+
+/* Grille Centrale : 3 Blocs (Carte Signature, Cartes Empilées, Bar Chart) */
+.manager-mid-grid {
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr 1.6fr;
+  gap: 18px;
+  margin-bottom: 22px;
+}
+@media (max-width: 1200px) {
+  .manager-mid-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .manager-chart-card {
+    grid-column: span 2;
+  }
+}
+@media (max-width: 768px) {
+  .manager-mid-grid {
+    grid-template-columns: 1fr;
+  }
+  .manager-chart-card {
+    grid-column: span 1;
+  }
+}
+
+/* Carte Signature Hero Bleu Nuit */
+.manager-hero-card {
+  background: linear-gradient(145deg, #071f4e 0%, #082b70 65%, #0e3b96 100%);
+  border-radius: 22px;
+  padding: 24px;
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: 0 12px 30px rgba(8, 43, 112, 0.22);
+  position: relative;
+  overflow: hidden;
+}
+.manager-hero-card::after {
+  content: "";
+  position: absolute;
+  top: -40px;
+  right: -40px;
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.18) 0%, transparent 70%);
+  pointer-events: none;
+}
+.manager-radial-gauge-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 8px 0 16px;
+  position: relative;
+}
+
+/* Colonne Centrale : Deux cartes empilées */
+.manager-stacked-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.manager-subcard {
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 20px 22px;
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  box-shadow: 0 4px 16px rgba(8, 43, 112, 0.035);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex: 1;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.manager-subcard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(8, 43, 112, 0.08);
+}
+
+/* Colonne Droite : Bar Chart Moderne */
+.manager-chart-card {
+  background: #ffffff;
+  border-radius: 22px;
+  padding: 22px 24px;
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  box-shadow: 0 4px 16px rgba(8, 43, 112, 0.035);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Section Inférieure : Dernières Activités & Transactions */
+.manager-bottom-card {
+  background: #ffffff;
+  border-radius: 22px;
+  padding: 22px 24px;
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  box-shadow: 0 4px 16px rgba(8, 43, 112, 0.035);
+}
+.manager-tx-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+}
+.manager-tx-table th {
+  text-align: left;
+  font-size: 11.5px;
+  color: #64748b;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.manager-tx-table td {
+  padding: 13px 12px;
+  border-bottom: 1px solid #f8fafc;
+  font-size: 13px;
+  color: #1e293b;
+  vertical-align: middle;
+}
+.manager-tx-table tr:last-child td {
+  border-bottom: none;
+}
+.manager-tx-pill {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.manager-tx-pill.success {
+  background: #ecfdf5;
+  color: #059669;
+}
+.manager-tx-pill.pending {
+  background: #fffbeb;
+  color: #b45309;
+}
+.manager-tx-pill.info {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+/* ==========================================================
+   TABLEAU DE BORD MANAGER - DESIGN MODERNE SOFTS-UI NEUMORPHIC
+   Inspiré fidèlement de la maquette de référence Pinterest
    ========================================================== */
 .admin-dashboard-wrap {
-  background: #0b1528;
-  color: #f1f5f9;
-  border-radius: 20px;
-  padding: 24px;
-  box-shadow: 0 12px 35px rgba(2, 8, 20, 0.45);
+  background: #f0f2f8;
+  color: #1e293b;
+  border-radius: 24px;
+  padding: 26px 28px;
+  box-shadow: 0 10px 30px rgba(110, 60, 188, 0.05), 0 2px 8px rgba(0, 0, 0, 0.02);
   margin-top: 8px;
-  font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+/* En-tête Salutation & Outils */
+.pm-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+.pm-greeting-title {
+  font-size: 24px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0;
+  letter-spacing: -0.5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pm-greeting-sub {
+  font-size: 13px;
+  color: #64748b;
+  margin-top: 3px;
+  font-weight: 500;
+}
+.pm-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.pm-search-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  padding: 7px 16px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+  font-size: 12.5px;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.pm-search-pill:hover {
+  border-color: #8c52ff;
+  box-shadow: 0 4px 12px rgba(140, 82, 255, 0.12);
+  color: #1e293b;
+}
+.pm-filter-pill {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  padding: 7px 15px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+  transition: all 0.2s ease;
+}
+.pm-filter-pill:hover {
+  border-color: #8c52ff;
+  color: #6e3cbc;
+}
+.pm-action-btn {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  padding: 7px 15px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #6e3cbc;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+  transition: all 0.2s ease;
+}
+.pm-action-btn:hover {
+  background: #6e3cbc;
+  color: #ffffff;
+  border-color: #6e3cbc;
+  box-shadow: 0 4px 12px rgba(110, 60, 188, 0.25);
+}
+
+/* SECTION 1 : ROW OF 4 METRIC CARDS (BILLS) */
+.pm-metrics-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.pm-metric-card {
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 18px 20px;
+  box-shadow: 0 4px 16px rgba(110, 60, 188, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(226, 232, 240, 0.7);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+.pm-metric-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(110, 60, 188, 0.08);
+  border-color: #cbd5e1;
+}
+.pm-metric-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.pm-metric-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: #f8fafc;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+.pm-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.pm-badge.green {
+  background: #dcfce7;
+  color: #15803d;
+}
+.pm-badge.blue {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.pm-badge.rose {
+  background: #ffe4e6;
+  color: #e11d48;
+}
+.pm-badge.purple {
+  background: #f3e8ff;
+  color: #7e22ce;
+}
+.pm-metric-val {
+  font-size: 22px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+}
+.pm-metric-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+  margin-top: 4px;
+}
+.pm-metric-sub {
+  font-size: 11.5px;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+.pm-metric-bar {
+  height: 4px;
+  border-radius: 2px;
+  margin-top: 14px;
+  width: 100%;
+}
+
+/* SECTION 2 : SPLIT INVOICES & TRÉSORERIE */
+.pm-split-row {
+  display: grid;
+  grid-template-columns: minmax(300px, 1.2fr) minmax(240px, 0.95fr) minmax(380px, 1.65fr);
+  gap: 18px;
+  margin-bottom: 24px;
+}
+
+/* Carte Gauche Violette */
+.pm-purple-card {
+  background: linear-gradient(145deg, #6e3cbc 0%, #4a1d96 100%);
+  border-radius: 22px;
+  padding: 24px;
+  color: #ffffff;
+  box-shadow: 0 16px 36px rgba(110, 60, 188, 0.28);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  overflow: hidden;
+}
+.pm-purple-top {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 14px;
+}
+.pm-gauge-wrap {
+  width: 180px;
+  height: 105px;
+  margin: 0 auto;
+}
+.pm-purple-label {
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.8);
+  margin-top: 8px;
+}
+.pm-purple-val {
+  font-size: 30px;
+  font-weight: 900;
+  letter-spacing: -0.8px;
+  color: #ffffff;
+  margin: 4px 0 2px 0;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+.pm-purple-sub {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.85);
+  margin-top: 4px;
+}
+.pm-purple-btn {
+  margin-top: 16px;
+  width: 100%;
+  padding: 10px 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.pm-purple-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+/* Pile Milieu (2 Cartes Blanches) */
+.pm-middle-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.pm-mini-card {
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 20px;
+  box-shadow: 0 4px 16px rgba(110, 60, 188, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(226, 232, 240, 0.7);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex: 1;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.pm-mini-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(110, 60, 188, 0.08);
+}
+.pm-mini-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.pm-mini-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #475569;
+}
+.pm-mini-val {
+  font-size: 24px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.5px;
+  margin: 4px 0;
+}
+.pm-mini-sub {
+  font-size: 11.5px;
+  color: #94a3b8;
+}
+
+/* Carte Droite Graphique */
+.pm-chart-card {
+  background: #ffffff;
+  border-radius: 22px;
+  padding: 22px 24px;
+  box-shadow: 0 4px 16px rgba(110, 60, 188, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(226, 232, 240, 0.7);
+  display: flex;
+  flex-direction: column;
+}
+.pm-chart-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.pm-chart-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: #0f172a;
+}
+.pm-chart-sub {
+  font-size: 11.5px;
+  color: #64748b;
+  margin-top: 2px;
+}
+.pm-chart-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* SECTION 3 : HISTORIQUE TABLEAU (STYLE REFERENCE) */
+.pm-history-card {
+  background: #ffffff;
+  border-radius: 22px;
+  padding: 22px 24px;
+  box-shadow: 0 4px 16px rgba(110, 60, 188, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(226, 232, 240, 0.7);
+  margin-bottom: 22px;
+}
+.pm-history-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.pm-history-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: #0f172a;
+}
+.pm-history-sub {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 2px;
+}
+.pm-history-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 8px;
+}
+.pm-history-table th {
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  padding: 8px 14px;
+  text-align: left;
+  border: none;
+}
+.pm-history-row {
+  background: #f8fafc;
+  border-radius: 12px;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+.pm-history-row:hover {
+  background: #f1f5f9;
+  transform: translateY(-1px);
+}
+.pm-history-row td {
+  padding: 12px 14px;
+  font-size: 12.5px;
+  color: #334155;
+  border: none;
+}
+.pm-history-row td:first-child {
+  border-top-left-radius: 12px;
+  border-bottom-left-radius: 12px;
+}
+.pm-history-row td:last-child {
+  border-top-right-radius: 12px;
+  border-bottom-right-radius: 12px;
+}
+.pm-avatar-pill {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #ede9fe;
+  color: #6d28d9;
+  font-weight: 800;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 10px;
+}
+
+/* SECTION 4 : QUICK BAR */
+.pm-quick-bar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 14px 18px;
+  background: #ffffff;
+  border-radius: 18px;
+  border: 1px solid rgba(226, 232, 240, 0.7);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+}
+.pm-quick-pill {
+  padding: 8px 16px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #334155;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.pm-quick-pill:hover {
+  background: #6e3cbc;
+  color: #ffffff;
+  border-color: #6e3cbc;
+  box-shadow: 0 4px 12px rgba(110, 60, 188, 0.2);
+}
+.pm-quick-pill.primary {
+  background: #6e3cbc;
+  color: #ffffff;
+  border-color: #6e3cbc;
+}
+.pm-quick-pill.primary:hover {
+  background: #5825a0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+  .pm-metrics-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .pm-split-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .pm-chart-card {
+    grid-column: span 2;
+  }
+}
+@media (max-width: 768px) {
+  .pm-metrics-row {
+    grid-template-columns: 1fr;
+  }
+  .pm-split-row {
+    grid-template-columns: 1fr;
+  }
+  .pm-chart-card {
+    grid-column: span 1;
+  }
+  .admin-dashboard-wrap {
+    padding: 16px 12px;
+  }
 }
 
 /* Bannière Hero Bienvenue */
@@ -3377,6 +4146,34 @@ button, input, select, textarea, .nav-item, .tiny, .firebase-chip, .user-btn {
   0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
   70% { transform: scale(1.08); box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
   100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+/* Animation douce de la cloche lorsqu'il y a des alertes non lues */
+#notificationBtn.has-unread {
+  animation: bellGentleWiggle 3.2s ease-in-out infinite;
+}
+
+@keyframes bellGentleWiggle {
+  0%, 75%, 100% { transform: rotate(0deg); }
+  80% { transform: rotate(14deg); }
+  85% { transform: rotate(-14deg); }
+  90% { transform: rotate(8deg); }
+  95% { transform: rotate(-8deg); }
+}
+
+/* Pastille point bleu/rouge non lu */
+.notif-unread-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #2563eb;
+  display: inline-block;
+  box-shadow: 0 0 8px rgba(37, 99, 235, 0.65);
+  flex-shrink: 0;
+}
+.notif-item.is-urgent .notif-unread-dot {
+  background: #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.65);
 }
 
 .notif-dropdown {
