@@ -11903,6 +11903,11 @@ function renderChatModal() {
     modalContainer = document.createElement('div');
     modalContainer.id = 'chatModalContainer';
     modalContainer.className = 'chat-modal-backdrop';
+    modalContainer.onclick = (e) => {
+      if (e.target === modalContainer) {
+        closeChatModal();
+      }
+    };
     document.body.appendChild(modalContainer);
   }
   modalContainer.innerHTML = buildChatInterfaceHtml({ isModal: true });
@@ -12048,4 +12053,20 @@ window.handleSendChatMessage = handleSendChatMessage;
 window.sendQuickChatMessage = sendQuickChatMessage;
 window.openCourseChat = openCourseChat;
 window.renderMessagesPage = renderMessagesPage;
+
+// Bind header chat button
+const chatBtnEl = document.getElementById("chatToggleBtn");
+if (chatBtnEl) {
+  chatBtnEl.onclick = (e) => {
+    e.stopPropagation();
+    toggleChatModal();
+  };
+}
+
+// Close chat on Escape key
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && isChatModalOpen) {
+    closeChatModal();
+  }
+});
 
