@@ -662,8 +662,11 @@ const SCHEMAS = {
     ["date", "Date", "date"],
     ["route", "Trajet", "text"],
     ["service", "Service", "select:Transport scolaire|Abonnement travail|Taxi privé|Transport privé|Location|Tourisme"],
+    ["vehicleType", "Type de Véhicule", "text"],
+    ["passengers", "Nombre de passagers", "number"],
     ["amount", "Montant HTG", "number"],
     ["validity", "Validité", "text"],
+    ["paymentTerms", "Modalités de règlement", "text"],
     ["status", "Statut", "select:Brouillon|Envoyée|Acceptée|Refusée|Archivée"],
     ["ID_Reservation", "N° Réservation liée (ID_Reservation)", "text"],
     ["ID_Proforma", "N° Proforma (ID_Proforma)", "text"],
@@ -679,8 +682,11 @@ const SCHEMAS = {
     ["date", "Date", "date"],
     ["route", "Trajet", "text"],
     ["service", "Service", "select:Transport scolaire|Abonnement travail|Taxi privé|Transport privé|Location|Tourisme"],
+    ["vehicleType", "Type de Véhicule", "text"],
+    ["passengers", "Nombre de passagers", "number"],
     ["amount", "Montant HTG", "number"],
     ["validity", "Validité", "text"],
+    ["paymentTerms", "Modalités de règlement", "text"],
     ["status", "Statut", "select:Brouillon|Envoyée|Acceptée|Refusée"],
     ["ID_Reservation", "N° Réservation liée (ID_Reservation)", "text"],
     ["ID_Proforma", "N° Proforma (ID_Proforma)", "text"],
@@ -10108,6 +10114,15 @@ async function createProformaFromReservation(index) {
 
   const resId = r.id || r.code || "";
   const address = r.address || r.adresse || "";
+  const serviceType = r.service || r.type || "Transport Touristique & Privé";
+  const departDate = r.dateDepart || r.date || today();
+  const departTime = r.heureDepart || r.heure || r.time || "08:00";
+  const returnDate = r.dateRetour || r.returnDate || "";
+  const returnTime = r.heureRetour || r.returnTime || "";
+  const passengers = r.passagers || r.passengers || r.places || 1;
+  const vehicleType = r.vehiculeType || r.vehicule || r.vehicle || (Number(passengers) > 4 ? "Minivan Touristique Climatisé" : "Berline Confort Climatisée");
+  const driverName = r.chauffeur || r.driverName || r.driver || "Chauffeur professionnel certifié LAPERLE";
+
   const newQuote = {
     id: quoteNumber,
     number: quoteNumber,
@@ -10120,7 +10135,22 @@ async function createProformaFromReservation(index) {
     address: address,
     adresse: address,
     date: today(),
+    service: serviceType,
+    route: routeDesc,
+    origin: r.origin || r.depart || "",
+    destination: r.destination || r.arrivee || "",
+    departDate: departDate,
+    departTime: departTime,
+    returnDate: returnDate,
+    returnTime: returnTime,
+    passengers: passengers,
+    vehicleType: vehicleType,
+    driverName: driverName,
     amount: proformaAmount,
+    discount: 0,
+    advanceRequired: Math.round(proformaAmount * 0.5),
+    validity: "15 jours à compter de la date d'émission",
+    paymentTerms: "Acompte de 50% à la réservation, solde à la prise en charge (MonCash, Virement ou Chèque).",
     status: "Envoyée",
     validUntil: today(),
     archived: false,
@@ -10129,7 +10159,7 @@ async function createProformaFromReservation(index) {
     ID_Proforma: quoteNumber,
     ID_Facture: r.ID_Facture || r.factureGenerated || "",
     ID_Paiement: r.ID_Paiement || "",
-    notes: `Proforma générée automatiquement depuis la réservation #${r.code || r.id || ''}${routeDesc ? ` (${routeDesc})` : ''}`
+    notes: r.notes || `Proforma générée automatiquement depuis la réservation #${r.code || r.id || ''}${routeDesc ? ` (${routeDesc})` : ''}`
   };
 
   try {
@@ -11072,6 +11102,349 @@ async function handleQuickMarkPaid(index) {
 }
 window.handleQuickMarkPaid = handleQuickMarkPaid;
 
+function buildProformaDocumentData(o) {
+  const linkedResId = o.ID_Reservation || o.reservationId || "";
+  const linkedRes = linkedResId ? (list("reservations") || []).find(r => r.id === linkedResId || r.code === linkedResId) : null;
+
+  const client = list("clients").find(c => c.name === o.client || c.id === o.client || (o.clientId && (c.id === o.clientId || c.clientId === o.clientId))) || {};
+  const user = (state.utilisateurs || []).find(u => (o.clientId && (u.uid === o.clientId || u.id === o.clientId)) || (o.email && u.email && u.email.toLowerCase() === o.email.toLowerCase()) || (o.client && u.name && u.name.toLowerCase() === o.client.toLowerCase())) || {};
+
+  const clientName = o.client || client.name || user.name || "Client";
+  const clientPhone = o.phone || o.telephone || client.phone || client.telephone || user.telephone || user.phone || "Non renseigné";
+  const clientEmail = o.email || client.email || user.email || "Non renseigné";
+  const clientAddress = o.address || o.adresse || client.address || client.zone || user.adresse || user.address || "Port-au-Prince, Haïti";
+
+  const company = localStorage.getItem("LAPERLE_COMPANY") || "LAPERLE TOUR HT S.A.";
+  const phone = localStorage.getItem("LAPERLE_PHONE") || "+509 4440 8687";
+  const email = localStorage.getItem("LAPERLE_EMAIL") || "laperletourht@gmail.com";
+  const slogan = localStorage.getItem("LAPERLE_SLOGAN") || "Le Confort, la Sécurité et la Confiance au cœur d'Haïti";
+  const address = localStorage.getItem("LAPERLE_ADDRESS") || "Port-au-Prince, Haïti";
+  const moncash = localStorage.getItem("LAPERLE_MONCASH") || phone;
+
+  const service = o.service || linkedRes?.service || linkedRes?.type || "Transport Touristique & Privé";
+  const route = o.route || (o.origin && o.destination ? `${o.origin} ➔ ${o.destination}` : (linkedRes?.trajet || (linkedRes?.origin && linkedRes?.destination ? `${linkedRes.origin} ➔ ${linkedRes.destination}` : "Port-au-Prince & Environs")));
+  const origin = o.origin || linkedRes?.origin || linkedRes?.depart || clientAddress || "Port-au-Prince";
+  const destination = o.destination || linkedRes?.destination || linkedRes?.arrivee || o.route || "Destination convenue";
+  const departDate = o.departDate || linkedRes?.dateDepart || linkedRes?.date || o.date || today();
+  const departTime = o.departTime || linkedRes?.heureDepart || linkedRes?.heure || linkedRes?.time || "08:00";
+  const returnDate = o.returnDate || linkedRes?.dateRetour || linkedRes?.returnDate || "";
+  const returnTime = o.returnTime || linkedRes?.heureRetour || linkedRes?.returnTime || "";
+  const passengers = o.passengers || linkedRes?.passagers || linkedRes?.passengers || linkedRes?.places || 1;
+  const vehicleType = o.vehicleType || linkedRes?.vehiculeType || linkedRes?.vehicule || linkedRes?.vehicle || (Number(passengers) > 4 ? "Minivan Touristique Climatisé" : "Berline Confort Climatisée");
+  const driverName = o.driverName || linkedRes?.chauffeur || linkedRes?.driver || "Chauffeur professionnel certifié LAPERLE";
+  const validity = o.validity || o.validUntil || "15 jours à compter de la date d'émission";
+  const paymentTerms = o.paymentTerms || "Acompte de 50% à la réservation, solde à la prise en charge (MonCash, Virement ou Chèque).";
+  const notes = o.notes || linkedRes?.notes || "Prise en charge personnalisée avec chauffeur professionnel, carburant et assurance passagers inclus.";
+
+  const amount = Number(o.amount || 0);
+  const discount = Number(o.discount || 0);
+  const subtotal = amount + discount;
+  const advanceRequired = o.advanceRequired !== undefined ? Number(o.advanceRequired) : Math.round(amount * 0.5);
+  const balanceDue = Math.max(0, amount - advanceRequired);
+  const usdApprox = (amount / 132).toFixed(2);
+  const quoteNumber = o.number || o.id || o.code || 'PRO-0001';
+
+  return {
+    quoteNumber,
+    linkedResId,
+    clientName,
+    clientPhone,
+    clientEmail,
+    clientAddress,
+    company,
+    phone,
+    email,
+    slogan,
+    address,
+    moncash,
+    service,
+    route,
+    origin,
+    destination,
+    departDate,
+    departTime,
+    returnDate,
+    returnTime,
+    passengers,
+    vehicleType,
+    driverName,
+    validity,
+    paymentTerms,
+    notes,
+    amount,
+    discount,
+    subtotal,
+    advanceRequired,
+    balanceDue,
+    usdApprox,
+    date: o.date || today(),
+    status: o.status || "Envoyée"
+  };
+}
+
+function renderProformaDocumentBody(d) {
+  return `
+    <div style="font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif;color:#0f172a;line-height:1.45;background:#ffffff;">
+      <!-- EN-TÊTE OFFICIEL DE LA COMPAGNIE & BADGE DOCUMENT -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #082b70;padding-bottom:16px;gap:15px;flex-wrap:wrap;">
+        <div style="display:flex;gap:14px;align-items:center;">
+          <img src="logo-laperle.jpg" alt="LAPERLE TOUR HT" style="width:115px;height:75px;object-fit:contain;border-radius:8px;border:1px solid #e2e8f0;background:#fff;padding:2px;" onerror="this.style.display='none'">
+          <div>
+            <h1 style="margin:0;font-size:24px;font-weight:900;color:#082b70;letter-spacing:-0.5px;">LAPERLE <span style="color:#f7941d;">TOUR HT</span></h1>
+            <div style="font-size:12px;font-weight:700;color:#1e3a8a;">S.A. • Transport • Tourisme • Location VIP • Navettes</div>
+            <div style="font-size:11px;color:#64748b;margin-top:2px;">« ${esc(d.slogan)} » • Confort • Sécurité • Confiance</div>
+            <div style="font-size:11px;color:#475569;margin-top:3px;">📍 ${esc(d.address)} • 📞 ${esc(d.phone)} • ✉️ ${esc(d.email)}</div>
+          </div>
+        </div>
+        <div style="text-align:right;min-width:230px;">
+          <div style="display:inline-block;background:linear-gradient(135deg, #082b70 0%, #1e40af 100%);color:#ffffff;padding:6px 14px;border-radius:6px;font-weight:800;font-size:15px;letter-spacing:0.5px;box-shadow:0 2px 6px rgba(8,43,112,0.15);">
+            📄 DEVIS PROFORMA
+          </div>
+          <div style="margin-top:6px;font-size:17px;font-weight:900;color:#ea580c;">N° ${esc(d.quoteNumber)}</div>
+          <div style="font-size:11.5px;color:#475569;margin-top:2px;">Date d'émission : <b style="color:#0f172a;">${esc(d.date)}</b></div>
+          <div style="font-size:11.5px;color:#b45309;">Validité : <b>${esc(d.validity)}</b></div>
+          <div style="margin-top:5px;">
+            <span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:800;background:#fef3c7;color:#92400e;border:1px solid #fde68a;">
+              STATUT : ${esc(d.status.toUpperCase())}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- CARTOUCHE DOUBLE-BLOC ÉMETTEUR & CLIENT -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px;">
+        <div style="background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:8px;padding:12px;">
+          <div style="font-size:11px;font-weight:800;color:#082b70;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e2e8f0;padding-bottom:4px;margin-bottom:6px;display:flex;align-items:center;gap:5px;">
+            <span>🏢</span> <span>PRESTATAIRE ÉMETTEUR</span>
+          </div>
+          <b style="font-size:13px;color:#082b70;">${esc(d.company)}</b><br>
+          <span style="font-size:11.5px;color:#334155;">Direction Commerciale & Gestion de Flotte</span><br>
+          <span style="font-size:11px;color:#475569;">📞 Assistance & Dispatch : <b>${esc(d.phone)}</b></span><br>
+          <span style="font-size:11px;color:#475569;">✉️ Devis & Comptabilité : <b>${esc(d.email)}</b></span><br>
+          <span style="font-size:11px;color:#475569;">📍 Siège d'Exploitation : ${esc(d.address)}</span>
+        </div>
+
+        <div style="background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:8px;padding:12px;">
+          <div style="font-size:11px;font-weight:800;color:#082b70;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e2e8f0;padding-bottom:4px;margin-bottom:6px;display:flex;align-items:center;gap:5px;">
+            <span>👤</span> <span>CLIENT / DESTINATAIRE</span>
+          </div>
+          <b style="font-size:14px;color:#0f172a;">${esc(d.clientName)}</b><br>
+          <span style="font-size:12px;color:#334155;">📞 Téléphone : <b>${esc(d.clientPhone)}</b></span><br>
+          <span style="font-size:12px;color:#334155;">✉️ Email : <b>${esc(d.clientEmail)}</b></span><br>
+          <span style="font-size:11.5px;color:#475569;">📍 Prise en charge : ${esc(d.clientAddress)}</span>
+          ${d.linkedResId ? `<div style="margin-top:4px;font-size:11px;color:#0369a1;font-weight:700;">🔗 Réservation associée : #${esc(d.linkedResId)}</div>` : ''}
+        </div>
+      </div>
+
+      <!-- FICHE LOGISTIQUE & SPÉCIFICATIONS TECHNIQUES DE LA MISSION -->
+      <div style="margin-top:14px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:12px;">
+        <div style="font-size:11.5px;font-weight:800;color:#166534;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+          <span>🚐</span> <span>SPÉCIFICATIONS TECHNIQUES DE LA PRESTATION TRANSPORT</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(210px, 1fr));gap:10px;font-size:12px;color:#1e293b;">
+          <div><span style="color:#64748b;font-size:11px;">Service demandé :</span><br><b style="color:#082b70;">${esc(d.service)}</b></div>
+          <div><span style="color:#64748b;font-size:11px;">Itinéraire / Trajet :</span><br><b style="color:#082b70;">${esc(d.route)}</b></div>
+          <div><span style="color:#64748b;font-size:11px;">Prise en charge :</span><br>📅 <b>${esc(d.departDate)}</b> à <b>${esc(d.departTime)}</b></div>
+          ${d.returnDate ? `<div><span style="color:#64748b;font-size:11px;">Retour programmé :</span><br>📅 <b>${esc(d.returnDate)}</b> ${d.returnTime ? 'à <b>' + esc(d.returnTime) + '</b>' : ''}</div>` : ''}
+          <div><span style="color:#64748b;font-size:11px;">Véhicule assigné :</span><br>🚘 <b>${esc(d.vehicleType)}</b></div>
+          <div><span style="color:#64748b;font-size:11px;">Passagers & Chauffeur :</span><br>👥 <b>${esc(d.passengers)} passager(s)</b> • ${esc(d.driverName)}</div>
+        </div>
+        <div style="margin-top:8px;padding-top:7px;border-top:1px dashed #86efac;font-size:11px;color:#15803d;display:flex;flex-wrap:wrap;gap:12px;font-weight:600;">
+          <span>✓ Carburant inclus</span>
+          <span>✓ Chauffeur professionnel dédié</span>
+          <span>✓ Climatisation continue 100%</span>
+          <span>✓ Assurance passagers & Assistance 24/7</span>
+        </div>
+      </div>
+
+      <!-- TABLEAU DÉTAILLÉ DES PRESTATIONS & ARTICLES -->
+      <table style="width:100%;border-collapse:collapse;margin-top:14px;font-size:12px;">
+        <thead>
+          <tr style="background:#082b70;color:#ffffff;text-align:left;">
+            <th style="padding:10px;border-top-left-radius:6px;width:52%;">Désignation & Spécifications de la prestation</th>
+            <th style="padding:10px;text-align:center;width:15%;">Unité / Modalité</th>
+            <th style="padding:10px;text-align:center;width:8%;">Qté</th>
+            <th style="padding:10px;text-align:right;width:12%;">Prix Unit. HT</th>
+            <th style="padding:10px;text-align:right;border-top-right-radius:6px;width:13%;">Total HT</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom:1px solid #e2e8f0;background:#ffffff;">
+            <td style="padding:12px 10px;vertical-align:top;">
+              <div style="font-weight:700;color:#0f172a;font-size:13px;">${esc(d.service)} — ${esc(d.route)}</div>
+              <div style="color:#64748b;font-size:11px;margin-top:3px;line-height:1.4;">
+                Mise à disposition d'un véhicule type <b>${esc(d.vehicleType)}</b> avec chauffeur professionnel certifié pour <b>${esc(d.passengers)} passager(s)</b>.<br>
+                Départ : ${esc(d.origin)} ➔ Arrivée : ${esc(d.destination)}.<br>
+                Frais de carburant, chauffeur, climatisation et assurance inclus.
+              </div>
+            </td>
+            <td style="padding:12px 10px;text-align:center;color:#475569;vertical-align:top;">Forfait Mission</td>
+            <td style="padding:12px 10px;text-align:center;font-weight:700;color:#0f172a;vertical-align:top;">1</td>
+            <td style="padding:12px 10px;text-align:right;color:#334155;vertical-align:top;">${money(d.subtotal)}</td>
+            <td style="padding:12px 10px;text-align:right;font-weight:700;color:#082b70;vertical-align:top;">${money(d.subtotal)}</td>
+          </tr>
+          ${d.discount > 0 ? `
+            <tr style="border-bottom:1px solid #e2e8f0;background:#f8fafc;">
+              <td style="padding:8px 10px;color:#15803d;font-weight:600;">Remise commerciale accordée par la Direction</td>
+              <td style="padding:8px 10px;text-align:center;color:#15803d;">Remise</td>
+              <td style="padding:8px 10px;text-align:center;color:#15803d;font-weight:700;">1</td>
+              <td style="padding:8px 10px;text-align:right;color:#15803d;">-${money(d.discount)}</td>
+              <td style="padding:8px 10px;text-align:right;color:#15803d;font-weight:700;">-${money(d.discount)}</td>
+            </tr>
+          ` : ''}
+        </tbody>
+      </table>
+
+      <!-- BLOC TOTAUX & MODALITÉS FINANCIÈRES -->
+      <div style="display:flex;justify-content:space-between;margin-top:14px;gap:15px;align-items:flex-start;flex-wrap:wrap;">
+        <div style="flex:1;min-width:280px;background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:8px;padding:12px;font-size:11.5px;">
+          <b style="color:#082b70;text-transform:uppercase;">Modalités financières & Échéancier :</b>
+          <div style="margin-top:6px;color:#334155;line-height:1.5;">
+            • <b>Acompte exigé pour confirmation (50%) :</b> <span style="color:#b45309;font-weight:900;font-size:13px;">${money(d.advanceRequired)}</span><br>
+            • <b>Solde restant dû à la prise en charge :</b> <span style="font-weight:700;color:#0f172a;">${money(d.balanceDue)}</span><br>
+            • <b>Devise de facturation :</b> Gourdes Haïtiennes (HTG) • <i>Équivalent estimatif : ~ $ ${esc(d.usdApprox)} USD</i><br>
+            • <b>Moyens de règlement :</b> MonCash (<b>${esc(d.moncash)}</b>), Virement UNIBANK / SOGEBANK, Chèque de direction ou Espèces.
+          </div>
+        </div>
+
+        <div style="width:280px;background:#ffffff;border:2px solid #082b70;border-radius:8px;padding:12px;font-size:12px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;color:#475569;">
+            <span>Sous-total Brut HT :</span>
+            <span>${money(d.subtotal)}</span>
+          </div>
+          ${d.discount > 0 ? `
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px;color:#15803d;">
+              <span>Remise commerciale :</span>
+              <span>-${money(d.discount)}</span>
+            </div>
+          ` : ''}
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px;color:#475569;">
+            <span>Taxes & Droits (0%) :</span>
+            <span>0 HTG</span>
+          </div>
+          <div style="border-top:2px solid #082b70;padding-top:6px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:13.5px;font-weight:900;color:#082b70;">NET À PAYER :</span>
+            <span style="font-size:19px;font-weight:900;color:#ea580c;">${money(d.amount)}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- CONDITIONS GÉNÉRALES & CLAUSES JURIDIQUES -->
+      <div style="margin-top:14px;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;background:#ffffff;font-size:11px;color:#475569;line-height:1.45;">
+        <b style="color:#0f172a;">CONDITIONS DE L'OFFRE & ENGAGEMENT :</b><br>
+        1. <b>Validité de l'offre :</b> Le présent devis proforma est valable pendant <b>${esc(d.validity)}</b>. Les tarifs sont garantis sous réserve d'acceptation dans ce délai.<br>
+        2. <b>Confirmation de commande :</b> La réservation devient ferme et définitive dès réception du présent devis revêtu de la signature du client et du règlement de l'acompte de 50%.<br>
+        3. <b>Politique d'annulation :</b> Annulation sans frais jusqu'à 48 heures avant l'heure prévue. Moins de 48h avant le départ, l'acompte reste acquis pour immobilisation de véhicule et personnel.<br>
+        4. <b>Facture définitive :</b> Une facture commerciale officielle sera émise automatiquement dès validation du règlement.
+      </div>
+
+      <!-- DOUBLE BLOC DE SIGNATURES & CACHET OFFICIEL -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px;">
+        <!-- CACHET LAPERLE TOUR HT -->
+        <div style="border:1.5px dashed #082b70;border-radius:8px;padding:12px;background:#f8fafc;position:relative;min-height:130px;">
+          <div style="font-size:11px;font-weight:800;color:#082b70;">POUR LAPERLE TOUR HT S.A.</div>
+          <div style="font-size:10px;color:#64748b;">Direction Commerciale & Exploitation</div>
+          <div style="margin-top:10px;display:inline-block;border:2.5px dashed #082b70;border-radius:50%;width:115px;height:115px;padding:10px;text-align:center;box-sizing:border-box;color:#082b70;transform:rotate(-4deg);background:rgba(8,43,112,0.03);">
+            <div style="font-size:7.5px;font-weight:900;letter-spacing:0.5px;">★ LAPERLE TOUR HT ★</div>
+            <div style="font-size:9.5px;font-weight:900;color:#f7941d;margin-top:16px;">DIRECTION COMMERCIALE</div>
+            <div style="font-size:8px;font-weight:800;margin-top:4px;">VALIDÉ OFFICIEL</div>
+            <div style="font-size:7px;color:#64748b;margin-top:4px;">PORT-AU-PRINCE</div>
+          </div>
+          <div style="position:absolute;bottom:10px;right:15px;font-size:10px;color:#475569;font-style:italic;">
+            Le Responsable d'Exploitation
+          </div>
+        </div>
+
+        <!-- CADRE BON POUR ACCORD CLIENT -->
+        <div style="border:1.5px dashed #64748b;border-radius:8px;padding:12px;background:#ffffff;min-height:130px;display:flex;flex-direction:column;justify-content:space-between;">
+          <div>
+            <div style="font-size:11px;font-weight:800;color:#0f172a;">LE CLIENT / DONNEUR D'ORDRE</div>
+            <div style="font-size:10.5px;color:#64748b;margin-top:2px;">Mention manuscrite obligatoire : <i>« Bon pour accord et confirmation »</i></div>
+          </div>
+          <div style="font-size:11px;color:#475569;margin-top:25px;">
+            Date : _____ / _____ / 2026<br><br>
+            Nom et Signature du signataire autorisé :
+          </div>
+        </div>
+      </div>
+
+      <!-- PIED DE PAGE OFFICIEL -->
+      <div style="margin-top:20px;border-top:2px solid #e2e8f0;padding-top:10px;text-align:center;font-size:10.5px;color:#64748b;line-height:1.4;">
+        ${esc(d.company)} • Société Anonyme • ${esc(d.address)}<br>
+        Transport Touristique • Location Véhicules VIP • Navettes Scolaires & Entreprises • Taxi Privé<br>
+        MonCash : <b>${esc(d.moncash)}</b> • Contact : <b>${esc(d.phone)}</b> • Email : <b>${esc(d.email)}</b> • Confort • Sécurité • Confiance
+      </div>
+    </div>
+  `;
+}
+
+function buildFullProformaPrintDoc(d) {
+  const bodyContent = renderProformaDocumentBody(d);
+  return `<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>DEVIS PROFORMA ${esc(d.quoteNumber)} - LAPERLE TOUR HT</title>
+  <style>
+    body { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif; margin: 0; color: #0f172a; background: #fff; }
+    .doc { max-width: 820px; margin: auto; padding: 30px; }
+    @media print {
+      body { font-size: 11pt; }
+      .doc { padding: 0; max-width: 100%; }
+      button { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="doc">
+    ${bodyContent}
+    <script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script>
+  </div>
+</body>
+</html>`;
+}
+
+function printProformaDoc(index) {
+  const o = list("proformas")[index];
+  if (!o) return;
+  const d = buildProformaDocumentData(o);
+  const printHtml = buildFullProformaPrintDoc(d);
+
+  let pWin = null;
+  try {
+    pWin = window.open("", "_blank", "width=920,height=1000");
+  } catch (e) {
+    pWin = null;
+  }
+
+  if (pWin) {
+    pWin.document.write(printHtml);
+    pWin.document.close();
+  } else {
+    let iframe = document.getElementById("printFrame");
+    if (!iframe) {
+      iframe = document.createElement("iframe");
+      iframe.id = "printFrame";
+      iframe.style.position = "fixed";
+      iframe.style.right = "-9999px";
+      iframe.style.bottom = "-9999px";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "none";
+      document.body.appendChild(iframe);
+    }
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(printHtml);
+    doc.close();
+    setTimeout(() => {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    }, 400);
+  }
+}
+window.printProformaDoc = printProformaDoc;
+
 function printDocument(type, index) {
   const isQuote = type === "proforma" || type === "quote";
   const isInvoice = type === "facture" || type === "invoice";
@@ -11086,9 +11459,67 @@ function printDocument(type, index) {
   const o = list(key)[index];
   if (!o) return;
 
+  // Si c'est un Devis Proforma, on utilise le moteur proforma enrichi
+  if (isQuote) {
+    const d = buildProformaDocumentData(o);
+    const fullPrintHtml = buildFullProformaPrintDoc(d);
+    const previewBody = renderProformaDocumentBody(d);
+
+    let w = null;
+    try {
+      w = window.open("", "_blank", "width=920,height=1000");
+    } catch (e) {
+      w = null;
+    }
+
+    if (w) {
+      w.document.write(fullPrintHtml);
+      w.document.close();
+    } else {
+      document.getElementById("modal").innerHTML = `
+        <div class="modal-head">
+          <div>
+            <h2 style="color:#082b70">📄 DEVIS PROFORMA ${esc(d.quoteNumber)}</h2>
+            <small>Aperçu officiel de l'offre commerciale LAPERLE TOUR HT</small>
+          </div>
+          <button class="close" onclick="closeModal()">×</button>
+        </div>
+        <div id="proformaPreviewContainer" style="background:#fff;border:1.5px solid #cbd5e1;border-radius:10px;padding:20px;max-height:72vh;overflow-y:auto;margin-bottom:15px;box-shadow:0 4px 15px rgba(0,0,0,0.04)">
+          ${previewBody}
+        </div>
+        <div class="form-actions" style="flex-wrap:wrap">
+          <button class="secondary" onclick="closeModal()">Fermer</button>
+          <button class="primary" style="background:#082b70;border-color:#082b70" onclick="printProformaDoc(${index})">🖨️ Imprimer / Télécharger PDF</button>
+          ${(() => {
+            const roles = normalizeRoles(currentUserRoles);
+            const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
+            if (isStaff) {
+              return `
+                <button class="primary" style="background:#0284c7;border-color:#0284c7" onclick="closeModal();sendProformaToClient(${index})">✉️ Transmettre au Client</button>
+                ${o.factureGenerated
+                  ? `<button class="primary" style="background:#15803d;border-color:#15803d" onclick="closeModal();handleOpenDocumentFromAlert('facture', '${esc(o.factureGenerated)}')">🧾 Voir Facture (${esc(o.factureGenerated)})</button>`
+                  : `<button class="primary" style="background:#ea580c;border-color:#ea580c;font-weight:700" onclick="closeModal();createInvoiceFromQuote(${index})">⚡ Émettre Facture ${o.demandeFacture ? '(' + esc(o.moyenPaiement || '') + ')' : ''}</button>`}
+              `;
+            } else {
+              if (o.factureGenerated) {
+                return `<button class="primary" style="background:#15803d;border-color:#15803d;font-weight:700" onclick="closeModal();handleOpenDocumentFromAlert('facture', '${esc(o.factureGenerated)}')">🧾 Voir ma Facture Officielle</button>`;
+              } else if (o.demandeFacture) {
+                return `<span class="badge" style="background:#e0f2fe;color:#0369a1;padding:8px 14px;font-size:12px;font-weight:700">⏳ Facture demandée via ${esc(o.moyenPaiement || 'paiement')}</span>`;
+              } else {
+                return `<button class="primary" style="background:#16a34a;border-color:#16a34a;font-weight:700" onclick="closeModal();openRequestInvoiceFromQuoteModal(${index})">💳 DEMANDER FACTURE ET MOYEN DE PAIEMENT</button>`;
+              }
+            }
+          })()}
+        </div>
+      `;
+      document.getElementById("modalBackdrop").classList.add("open");
+    }
+    return;
+  }
+
+  // Autres types de documents (Facture, Réservation, Reçu)
   let title = "FACTURE OFFICIELLE";
-  if (isQuote) title = "DEVIS PROFORMA";
-  else if (isReservation) title = "BON DE RÉSERVATION";
+  if (isReservation) title = "BON DE RÉSERVATION";
   else if (isPayment) title = "REÇU OFFICIEL DE RÈGLEMENT";
 
   const client = list("clients").find(c => c.name === o.client || c.id === o.client || (o.clientId && (c.id === o.clientId || c.clientId === o.clientId))) || {};
@@ -11190,23 +11621,6 @@ function printDocument(type, index) {
       <div class="form-actions">
         <button class="secondary" onclick="closeModal()">Fermer</button>
         <button class="primary" onclick="window.print()">🖨️ Imprimer / PDF</button>
-        ${isQuote ? (() => {
-          const roles = normalizeRoles(currentUserRoles);
-          const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
-          if (isStaff) {
-            return o.factureGenerated
-              ? `<button class="primary" style="background:#15803d;border-color:#15803d" onclick="closeModal();handleOpenDocumentFromAlert('facture', '${esc(o.factureGenerated)}')">🧾 Voir Facture (${esc(o.factureGenerated)})</button>`
-              : `<button class="primary" style="background:#ea580c;border-color:#ea580c;font-weight:700" onclick="closeModal();createInvoiceFromQuote(${index})">⚡ Émettre Facture ${o.demandeFacture ? '(' + esc(o.moyenPaiement || '') + ')' : ''}</button>`;
-          } else {
-            if (o.factureGenerated) {
-              return `<button class="primary" style="background:#15803d;border-color:#15803d;font-weight:700" onclick="closeModal();handleOpenDocumentFromAlert('facture', '${esc(o.factureGenerated)}')">🧾 Voir ma Facture Officielle</button>`;
-            } else if (o.demandeFacture) {
-              return `<span class="badge" style="background:#e0f2fe;color:#0369a1;padding:8px 14px;font-size:12px;font-weight:700">⏳ Facture demandée via ${esc(o.moyenPaiement || 'paiement')}</span>`;
-            } else {
-              return `<button class="primary" style="background:#16a34a;border-color:#16a34a;font-weight:700" onclick="closeModal();openRequestInvoiceFromQuoteModal(${index})">💳 DEMANDER FACTURE ET MOYEN DE PAIEMENT</button>`;
-            }
-          }
-        })() : ""}
         ${!isQuote ? (() => {
           const roles = normalizeRoles(currentUserRoles);
           const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
