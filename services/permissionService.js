@@ -157,6 +157,10 @@ export function hasBusinessRole(rolesOrUser) {
 function roleCanAccessModule(normRole, m) {
   if (normRole === ROLES.ADMIN) return true;
 
+  if (m === 'messages' || m === 'messagerie') {
+    return normRole !== ROLES.LECTURE_SEULE;
+  }
+
   if (normRole === ROLES.DIRECTION) {
     return m !== 'utilisateurs';
   }

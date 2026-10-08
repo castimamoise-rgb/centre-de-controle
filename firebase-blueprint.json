@@ -320,9 +320,53 @@
         "ownerId": { "type": "string", "maxLength": 128 }
       },
       "required": ["company"]
+    },
+    "conversation": {
+      "title": "Conversation",
+      "description": "Salon de messagerie et de dispatch LAPERLE (courses, chauffeurs, dispatch, direction)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "type": { "type": "string", "maxLength": 50 },
+        "title": { "type": "string", "maxLength": 200 },
+        "reservationId": { "type": "string", "maxLength": 128 },
+        "participants": { "type": "array", "items": { "type": "string" } },
+        "participantRoles": { "type": "array", "items": { "type": "string" } },
+        "lastMessage": { "type": "string", "maxLength": 1000 },
+        "lastMessageAt": { "type": "string", "format": "date-time" },
+        "lastMessageSender": { "type": "string", "maxLength": 150 },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["type", "title"]
+    },
+    "message": {
+      "title": "Message",
+      "description": "Message instantané envoyé dans un salon de discussion",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "conversationId": { "type": "string", "maxLength": 128 },
+        "senderId": { "type": "string", "maxLength": 128 },
+        "senderName": { "type": "string", "maxLength": 150 },
+        "senderRole": { "type": "string", "maxLength": 50 },
+        "text": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "readBy": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["conversationId", "senderId", "text"]
     }
   },
   "firestore": {
+    "/conversations/{conversationId}": {
+      "schema": "conversation",
+      "description": "Salons de discussion et canaux de dispatch"
+    },
+    "/messages/{messageId}": {
+      "schema": "message",
+      "description": "Messages échangés en temps réel dans les conversations"
+    },
     "/clients/{clientId}": {
       "schema": "client",
       "description": "Clients enregistrés de LAPERLE TOUR HT"

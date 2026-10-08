@@ -30,6 +30,7 @@ import {
   query,
   where,
   orderBy,
+  limit,
   onSnapshot, 
   getDocFromServer,
   serverTimestamp
@@ -60,6 +61,7 @@ export {
   query,
   where,
   orderBy,
+  limit,
   onSnapshot,
   getDocFromServer,
   serverTimestamp

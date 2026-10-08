@@ -57,7 +57,10 @@ import {
   formatPhoneForWhatsApp, openGpsRoute, openWhatsAppForTrip, quickUpdateTripStatus, submitDriverIncident,
   openSecretaryWhatsAppConfirmation, getTeamRelayNotes, saveTeamRelayNotes,
   detectPlanningConflicts, getFleetStatusBreakdown, getDailyCashBreakdown, getOverdueInvoices,
-  sendInvoiceReminderWhatsApp
+  sendInvoiceReminderWhatsApp,
+  // Messagerie & Live Dispatch
+  sendMessage, subscribeConversations, subscribeMessages, subscribeAllMessages,
+  getOrCreateCourseConversation, seedDefaultConversations, DEFAULT_CHANNELS
 } from './services/index.js';
 
 const DBKEY = "LAPERLE_CENTRE_CONTROL_V3";
@@ -453,6 +456,8 @@ const MODULES = {
   reports: { label: "Rapports", icon: "📈" },
   marketing: { label: "Marketing", icon: "📣" },
   settings: { label: "Paramètres", icon: "⚙️" },
+  messages: { label: "Messagerie & Dispatch", icon: "💬" },
+  chat: { label: "Messagerie & Dispatch", icon: "💬" },
 
   // Aliases for compatibility
   quotes: { label: "Proformas", icon: "📄" },
@@ -903,7 +908,7 @@ function today() {
 const NAV_SECTIONS = [
   { title: "Vue d'ensemble", items: ["dashboard"] },
   { title: "Commercial & Facturation", items: ["proformas", "factures", "clients", "eleves", "prospects"] },
-  { title: "Opérations Transport", items: ["reservations", "abonnements", "plannings", "chauffeurs", "vehicules"] },
+  { title: "Opérations Transport", items: ["reservations", "abonnements", "plannings", "chauffeurs", "vehicules", "messages"] },
   { title: "Finances & Analyse", items: ["paiements", "finances", "reports", "marketing"] },
   { title: "Configuration", items: ["utilisateurs", "settings"] }
 ];
@@ -1673,18 +1678,46 @@ async function handleMarkAllRead() {
   }
 }
 
-function handleNotificationClick(notifId) {
+/**
+ * Marque une notification individuelle comme lue dans l'objet de notification
+ * et met immédiatement à jour le compteur et l'état visuel de la cloche.
+ * @param {string} notifId - L'identifiant de la notification
+ */
+async function markNotificationAsRead(notifId) {
+  if (!notifId) return;
   const notif = (state.notifications || []).find(n => n.id === notifId);
   if (!notif) return;
 
-  // Marquer immédiatement la notification comme lue et effacer les badges correspondants
-  if (!notif.read) {
-    notif.read = true;
-    save();
-    markNotificationRead(notifId).catch(() => {});
-    updateNotificationBadge();
-    updateNavBadges();
+  // Si elle est déjà marquée comme lue, aucun recalcul nécessaire
+  if (notif.read) return;
+
+  // 1. Mise à jour directe de l'objet en mémoire
+  notif.read = true;
+  notif.readAt = new Date().toISOString();
+
+  // 2. Mise à jour immédiate du compteur et de l'état visuel de la cloche
+  updateNotificationBadge();
+  updateNavBadges();
+
+  // 3. Réactualisation visuelle immédiate du volet déroulant
+  renderNotificationDropdown();
+
+  // 4. Persistance dans le cache local et synchronisation Cloud Firestore
+  save();
+  try {
+    await markNotificationRead(notifId);
+  } catch (err) {
+    console.warn("Erreur synchronisation Firestore pour la notification lue:", err);
   }
+}
+window.markNotificationAsRead = markNotificationAsRead;
+
+async function handleNotificationClick(notifId) {
+  const notif = (state.notifications || []).find(n => n.id === notifId);
+  if (!notif) return;
+
+  // Marquer immédiatement la notification comme lue et actualiser la cloche
+  await markNotificationAsRead(notifId);
 
   // 1. Facture officielle liée
   if (notif.factureId) {
@@ -2275,6 +2308,9 @@ function setupFirestoreListeners() {
       firestoreUnsubscribers.push(settingsUnsub);
     } catch (e) {}
   }
+
+  // Initialisation du système de communication et live dispatch
+  initChatSystem();
 }
 
 async function seedInitialDataToFirestoreIfEmpty() {
@@ -2299,6 +2335,7 @@ function resetCurrentUserState() {
   clearUserSession();
   updateRoleBadge([]);
   updateFirebaseBadge("offline");
+  cleanupChatSystem();
   firestoreUnsubscribers.forEach(unsub => { try { unsub(); } catch (e) {} });
   firestoreUnsubscribers = [];
 }
@@ -3453,6 +3490,7 @@ function render() {
   }
 
   if (canon === "dashboard") dashboard();
+  else if (canon === "messages" || canon === "chat") renderMessagesPage();
   else if (SCHEMAS[canon] || SCHEMAS[current]) modulePage(canon);
   else if (canon === "reports") reportsPage();
   else if (canon === "marketing") marketingPage();
@@ -11477,3 +11515,537 @@ window.uploadExactLogoFile = uploadExactLogoFile;
 
 window.drawTable = drawTable;
 window.openUserRoleModal = openUserRoleModal;
+
+// ==========================================================================
+// 💬 SYSTÈME DE COMMUNICATION & LIVE DISPATCH EN TEMPS RÉEL (MESSAGERIE & RADIO)
+// ==========================================================================
+let chatConversationsList = [];
+let activeChatConversationId = 'conv-direction-all';
+let chatActiveMessages = [];
+let chatAllSupervisedMessages = [];
+let isChatModalOpen = false;
+let activeChatFilter = 'all'; // 'all' | 'direction' | 'dispatch' | 'chauffeurs' | 'course' | 'supervisor'
+let chatUnsubConversations = null;
+let chatUnsubMessages = null;
+let chatUnsubSupervisor = null;
+
+function cleanupChatSystem() {
+  if (chatUnsubConversations) { try { chatUnsubConversations(); } catch (e) {} chatUnsubConversations = null; }
+  if (chatUnsubMessages) { try { chatUnsubMessages(); } catch (e) {} chatUnsubMessages = null; }
+  if (chatUnsubSupervisor) { try { chatUnsubSupervisor(); } catch (e) {} chatUnsubSupervisor = null; }
+  chatConversationsList = [];
+  chatActiveMessages = [];
+  chatAllSupervisedMessages = [];
+  updateChatBadge();
+}
+
+function initChatSystem() {
+  cleanupChatSystem();
+  if (!auth.currentUser) return;
+
+  const roles = normalizeRoles(currentUserRoles);
+  const isSuper = isSuperAdminEmail(auth.currentUser.email || currentUserProfile?.email);
+  const isAdminOrDirection = roles.includes(ROLES.ADMIN) || roles.includes(ROLES.DIRECTION) || isSuper;
+
+  // 1. Initialiser les canaux par défaut dans Firestore si nécessaire
+  seedDefaultConversations().catch(() => {});
+
+  // 2. Écouteur en direct des conversations disponibles pour l'utilisateur
+  chatUnsubConversations = subscribeConversations((list) => {
+    // Filtrage selon le rôle
+    chatConversationsList = (list || []).filter(conv => {
+      if (isAdminOrDirection) return true; // L'Admin et la Direction ont accès à 100% des salons
+      if (roles.includes(ROLES.SECRETAIRE) || roles.includes(ROLES.OPERATIONS)) {
+        return true; // Le secrétariat a accès aux courses, dispatch et annonces
+      }
+      if (roles.includes(ROLES.CHAUFFEUR)) {
+        // Le chauffeur voit les canaux généraux, le canal chauffeurs, et ses courses
+        if (conv.type === 'direction' || conv.type === 'dispatch' || conv.type === 'chauffeurs') return true;
+        if (conv.participants && (conv.participants.includes(auth.currentUser.uid) || conv.participants.includes('chauffeurs'))) return true;
+        return false;
+      }
+      // Client ou Prospect
+      if (conv.type === 'direction' || conv.type === 'dispatch') return true;
+      if (conv.participants && conv.participants.includes(auth.currentUser.uid)) return true;
+      return false;
+    });
+
+    // Si la conversation active n'est pas dans la liste, on bascule sur la première disponible
+    if (!chatConversationsList.some(c => c.id === activeChatConversationId) && chatConversationsList.length > 0) {
+      activeChatConversationId = chatConversationsList[0].id;
+      switchActiveChatMessageSubscription(activeChatConversationId);
+    }
+
+    updateChatBadge();
+    if (isChatModalOpen) renderChatModal();
+    if (current === 'messages' || current === 'chat') renderMessagesPage();
+  });
+
+  // 3. Écouteur en direct de la conversation active
+  switchActiveChatMessageSubscription(activeChatConversationId);
+
+  // 4. Écouteur LIVE SUPERVISEUR (Admin & Direction) : "L'admin peut voir TOUS les messages des autres EN DIRECT"
+  if (isAdminOrDirection) {
+    chatUnsubSupervisor = subscribeAllMessages((allMsgs) => {
+      chatAllSupervisedMessages = allMsgs || [];
+      updateChatBadge();
+      if (isChatModalOpen && activeChatFilter === 'supervisor') renderChatModal();
+      if ((current === 'messages' || current === 'chat') && activeChatFilter === 'supervisor') renderMessagesPage();
+      const supFeedEl = document.getElementById('managerSupervisorFeed');
+      if (supFeedEl) supFeedEl.innerHTML = renderSupervisorFeedHtml(chatAllSupervisedMessages.slice(-4).reverse());
+    });
+  }
+}
+
+function switchActiveChatMessageSubscription(convId) {
+  if (chatUnsubMessages) { try { chatUnsubMessages(); } catch (e) {} chatUnsubMessages = null; }
+  activeChatConversationId = convId;
+  if (!convId) return;
+
+  chatUnsubMessages = subscribeMessages(convId, (msgs) => {
+    chatActiveMessages = msgs || [];
+    updateChatBadge();
+    if (isChatModalOpen) {
+      renderChatModal();
+      scrollChatToBottom();
+    }
+    if (current === 'messages' || current === 'chat') {
+      renderMessagesPage();
+      scrollChatToBottom();
+    }
+  });
+}
+
+function updateChatBadge() {
+  const dot = document.getElementById('chatUnreadDot');
+  if (!dot) return;
+  const myUid = auth.currentUser?.uid;
+  if (!myUid) {
+    dot.style.display = 'none';
+    return;
+  }
+
+  let unread = 0;
+  if (chatActiveMessages && chatActiveMessages.length > 0) {
+    unread += chatActiveMessages.filter(m => m.senderId !== myUid && (!m.readBy || !m.readBy.includes(myUid))).length;
+  }
+  if (unread > 0) {
+    dot.style.display = 'flex';
+    dot.textContent = unread > 99 ? '99+' : String(unread);
+  } else {
+    dot.style.display = 'none';
+  }
+}
+
+function scrollChatToBottom() {
+  setTimeout(() => {
+    const el = document.getElementById('chatMessagesContainer');
+    if (el) el.scrollTop = el.scrollHeight;
+  }, 60);
+}
+
+function formatChatTime(isoString) {
+  if (!isoString) return '';
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  } catch (e) {
+    return '';
+  }
+}
+
+function renderSupervisorFeedHtml(msgs = []) {
+  if (!msgs || msgs.length === 0) {
+    return `<div style="padding:16px;text-align:center;color:#94a3b8;font-size:12px">Aucun message échangé pour le moment. La radio est en écoute active.</div>`;
+  }
+  return msgs.map(m => {
+    const conv = chatConversationsList.find(c => c.id === m.conversationId);
+    const convTitle = conv ? conv.title : (m.conversationId || 'Canal direct');
+    const roleClass = m.senderRole || 'client';
+    const roleLabel = ROLE_LABELS[roleClass] || roleClass;
+    return `
+      <div class="chat-supervisor-row" onclick="openChatModal('${m.conversationId}')" style="cursor:pointer;" title="Cliquer pour rejoindre ce salon">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div style="display:flex;align-items:center;gap:6px">
+            <span class="chat-supervisor-channel-tag">${esc(convTitle)}</span>
+            <span class="chat-role-tag ${roleClass}">${esc(roleLabel)}</span>
+            <b style="font-size:12px;color:#0f172a">${esc(m.senderName || 'Utilisateur')}</b>
+          </div>
+          <span style="font-size:11px;color:#94a3b8">⏱️ ${formatChatTime(m.createdAt)}</span>
+        </div>
+        <div style="font-size:12px;color:#334155;margin-top:2px;white-space:pre-wrap;">${esc(m.text)}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function getFilteredChatChannels() {
+  if (!chatConversationsList) return [];
+  if (activeChatFilter === 'all') return chatConversationsList;
+  if (activeChatFilter === 'direction') return chatConversationsList.filter(c => c.type === 'direction');
+  if (activeChatFilter === 'dispatch') return chatConversationsList.filter(c => c.type === 'dispatch');
+  if (activeChatFilter === 'chauffeurs') return chatConversationsList.filter(c => c.type === 'chauffeurs');
+  if (activeChatFilter === 'course') return chatConversationsList.filter(c => c.type === 'course');
+  return chatConversationsList;
+}
+
+function buildChatInterfaceHtml(options = { isModal: true }) {
+  const isModal = options.isModal;
+  const roles = normalizeRoles(currentUserRoles);
+  const isSuper = isSuperAdminEmail(auth.currentUser?.email || currentUserProfile?.email);
+  const isAdminOrDirection = roles.includes(ROLES.ADMIN) || roles.includes(ROLES.DIRECTION) || isSuper;
+  const isChauffeur = roles.includes(ROLES.CHAUFFEUR);
+  const isSecretaire = roles.includes(ROLES.SECRETAIRE) || roles.includes(ROLES.OPERATIONS);
+
+  const channels = getFilteredChatChannels();
+  const currentConv = chatConversationsList.find(c => c.id === activeChatConversationId) || channels[0] || DEFAULT_CHANNELS[0];
+  const myUid = auth.currentUser?.uid;
+
+  // Pré-remplissage des boutons d'actions rapides selon le rôle
+  let quickButtons = [];
+  if (isChauffeur) {
+    quickButtons = [
+      "📍 Arrivé sur place chez le client",
+      "⚠️ Trafic ralenti sur l'itinéraire",
+      "✅ Passagers à bord, départ effectué",
+      "🏁 Course terminée avec succès",
+      "🆘 Demande d'assistance régulation"
+    ];
+  } else if (isSecretaire) {
+    quickButtons = [
+      "📋 Planning et trajet validés au bureau",
+      "📞 Client contacté par téléphone",
+      "ℹ️ Chauffeur en approche (5 min)",
+      "💳 Reçu de paiement vérifié",
+      "📢 Alerte transmise à l'équipe"
+    ];
+  } else if (isAdminOrDirection) {
+    quickButtons = [
+      "📢 Directive officielle de la Direction",
+      "🚨 Alerte générale transmise",
+      "✅ Validation effectuée par la Direction",
+      "ℹ️ Consigne de sécurité rappelée"
+    ];
+  } else {
+    // Client
+    quickButtons = [
+      "👋 Bonjour, je vous attends au point de départ",
+      "📍 Je suis devant l'entrée principale",
+      "⏳ J'ai 5 minutes de retard",
+      "Merci beaucoup !"
+    ];
+  }
+
+  return `
+    <div class="chat-modal-window" style="${!isModal ? 'max-width:100%;height:calc(100vh - 180px);border-radius:16px;box-shadow:none;' : ''}">
+      <!-- 1. VOLET DE GAUCHE : LISTE DES SALONS ET CANAUX -->
+      <div class="chat-sidebar">
+        <div class="chat-sidebar-header">
+          <div class="chat-sidebar-title">
+            <span>💬</span> <span>Messagerie & Dispatch</span>
+          </div>
+          ${isModal ? `<button onclick="closeChatModal()" style="background:transparent;border:none;color:#fff;font-size:18px;cursor:pointer;" title="Fermer">✕</button>` : ''}
+        </div>
+
+        <div class="chat-sidebar-filters">
+          <button class="chat-filter-chip ${activeChatFilter === 'all' ? 'active' : ''}" onclick="setChatFilter('all')">
+            Tous (${chatConversationsList.length})
+          </button>
+          <button class="chat-filter-chip ${activeChatFilter === 'direction' ? 'active' : ''}" onclick="setChatFilter('direction')">
+            👑 Direction
+          </button>
+          <button class="chat-filter-chip ${activeChatFilter === 'dispatch' ? 'active' : ''}" onclick="setChatFilter('dispatch')">
+            🎧 Dispatch
+          </button>
+          <button class="chat-filter-chip ${activeChatFilter === 'chauffeurs' ? 'active' : ''}" onclick="setChatFilter('chauffeurs')">
+            🚌 Conducteurs
+          </button>
+          <button class="chat-filter-chip ${activeChatFilter === 'course' ? 'active' : ''}" onclick="setChatFilter('course')">
+            🚗 Trajets
+          </button>
+          ${isAdminOrDirection ? `
+            <button class="chat-filter-chip supervisor ${activeChatFilter === 'supervisor' ? 'active' : ''}" onclick="setChatFilter('supervisor')" title="Voir tous les messages en direct">
+              👁️ Superviseur (${(chatAllSupervisedMessages || []).length})
+            </button>
+          ` : ''}
+        </div>
+
+        <div class="chat-channels-list">
+          ${channels.length === 0 ? `
+            <div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">
+              Aucun canal dans cette catégorie.
+            </div>
+          ` : channels.map(conv => {
+            const isActive = conv.id === activeChatConversationId && activeChatFilter !== 'supervisor';
+            let icon = '💬';
+            if (conv.type === 'direction') icon = '👑';
+            else if (conv.type === 'dispatch') icon = '🎧';
+            else if (conv.type === 'chauffeurs') icon = '🚌';
+            else if (conv.type === 'course') icon = '🚗';
+
+            return `
+              <div class="chat-channel-item ${isActive ? 'active' : ''}" onclick="selectChatConversation('${conv.id}')">
+                <div class="chat-channel-item-top">
+                  <span class="chat-channel-name">
+                    <span>${icon}</span>
+                    <span>${esc(conv.title || 'Salon')}</span>
+                  </span>
+                  <span class="chat-channel-time">${formatChatTime(conv.lastMessageAt || conv.createdAt)}</span>
+                </div>
+                <div class="chat-channel-snippet">
+                  <b>${esc(conv.lastMessageSender ? conv.lastMessageSender + ': ' : '')}</b>${esc(conv.lastMessage || 'Aucun message pour le moment.')}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+
+      <!-- 2. ZONE PRINCIPALE : DISCUSSION OU SUPERVISEUR LIVE -->
+      <div class="chat-main">
+        ${activeChatFilter === 'supervisor' && isAdminOrDirection ? `
+          <!-- MODE TOUR DE CONTRÔLE ADMIN : SUPERVISEUR EN DIRECT -->
+          <div class="chat-header">
+            <div class="chat-header-info">
+              <div class="chat-header-title">
+                <span>👁️</span> <span>Tour de Contrôle & Superviseur EN DIRECT</span>
+                <span class="chat-live-pill"><span class="chat-live-pulse"></span> SUPERVISION LIVE ACTIVE</span>
+              </div>
+              <div class="chat-header-sub">
+                Flux en direct de l'ensemble des échanges entre clients, chauffeurs, secrétaires et administration
+              </div>
+            </div>
+            ${isModal ? `<button class="close-btn" onclick="closeChatModal()" style="border:none;background:#f1f5f9;border-radius:50%;width:32px;height:32px;cursor:pointer;">✕</button>` : ''}
+          </div>
+
+          <div class="chat-messages-container" style="background:#f8fafc;">
+            <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:10px;padding:12px 16px;color:#92400e;font-size:12px;margin-bottom:8px">
+              <b>Mode Superviseur Direction :</b> Vous visualisez en temps réel tous les flux de messages échangés sur le réseau LAPERLE TOUR HT. Cliquez sur un message pour rejoindre la discussion directement.
+            </div>
+            <div class="chat-supervisor-feed">
+              ${renderSupervisorFeedHtml(chatAllSupervisedMessages.slice().reverse())}
+            </div>
+          </div>
+        ` : `
+          <!-- MODE DISCUSSION D'UN CANAL -->
+          <div class="chat-header">
+            <div class="chat-header-info">
+              <div class="chat-header-title">
+                <span>${esc(currentConv?.title || 'Discussion')}</span>
+                <span class="chat-live-pill"><span class="chat-live-pulse"></span> EN DIRECT</span>
+              </div>
+              <div class="chat-header-sub">
+                ${esc(currentConv?.description || 'Canal d\'échange opérationnel et sécurisé LAPERLE TOUR HT')}
+              </div>
+            </div>
+            ${isModal ? `<button class="close-btn" onclick="closeChatModal()" style="border:none;background:#f1f5f9;border-radius:50%;width:32px;height:32px;cursor:pointer;">✕</button>` : ''}
+          </div>
+
+          <div class="chat-messages-container" id="chatMessagesContainer">
+            ${chatActiveMessages.length === 0 ? `
+              <div style="padding:40px 20px;text-align:center;color:#94a3b8;font-size:13px">
+                <div style="font-size:32px;margin-bottom:8px">💬</div>
+                <b>Aucun message dans ce salon</b><br>
+                Soyez le premier à envoyer un message ou une consigne !
+              </div>
+            ` : chatActiveMessages.map(msg => {
+              const isMe = msg.senderId === myUid;
+              const roleClass = msg.senderRole || 'client';
+              const roleLabel = ROLE_LABELS[roleClass] || roleClass;
+
+              return `
+                <div class="chat-msg-row ${isMe ? 'me' : 'other'}">
+                  <div class="chat-msg-meta">
+                    <span class="chat-role-tag ${roleClass}">${esc(roleLabel)}</span>
+                    <b>${esc(msg.senderName || 'Utilisateur')}</b>
+                    <span>• ${formatChatTime(msg.createdAt)}</span>
+                  </div>
+                  <div class="chat-msg-bubble">
+                    ${esc(msg.text)}
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+
+          <!-- COMPOSER -->
+          <div class="chat-composer">
+            <div class="chat-quick-actions">
+              <span style="font-size:11px;font-weight:700;color:#64748b;display:flex;align-items:center;">⚡ Réponses rapides :</span>
+              ${quickButtons.map(btnText => `
+                <button type="button" class="chat-quick-btn" onclick="sendQuickChatMessage('${esc(btnText)}')">
+                  ${esc(btnText)}
+                </button>
+              `).join('')}
+            </div>
+            <div class="chat-input-row">
+              <input type="text" 
+                     id="chatInputBox" 
+                     class="chat-input" 
+                     placeholder="Écrivez votre message en direct (Entrée pour envoyer)..." 
+                     autocomplete="off"
+                     onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();handleSendChatMessage(event);}">
+              <button type="button" class="chat-send-btn" onclick="handleSendChatMessage(event)">
+                <span>Envoyer</span> <span>➤</span>
+              </button>
+            </div>
+          </div>
+        `}
+      </div>
+    </div>
+  `;
+}
+
+function renderChatModal() {
+  let modalContainer = document.getElementById('chatModalContainer');
+  if (!modalContainer) {
+    modalContainer = document.createElement('div');
+    modalContainer.id = 'chatModalContainer';
+    modalContainer.className = 'chat-modal-backdrop';
+    document.body.appendChild(modalContainer);
+  }
+  modalContainer.innerHTML = buildChatInterfaceHtml({ isModal: true });
+}
+
+function openChatModal(convId = null) {
+  isChatModalOpen = true;
+  if (convId) {
+    activeChatFilter = 'all';
+    activeChatConversationId = convId;
+    switchActiveChatMessageSubscription(convId);
+  }
+  renderChatModal();
+  scrollChatToBottom();
+  setTimeout(() => {
+    document.getElementById('chatInputBox')?.focus();
+  }, 100);
+}
+
+function closeChatModal() {
+  isChatModalOpen = false;
+  const modalContainer = document.getElementById('chatModalContainer');
+  if (modalContainer) {
+    modalContainer.remove();
+  }
+}
+
+function toggleChatModal() {
+  if (isChatModalOpen) {
+    closeChatModal();
+  } else {
+    openChatModal();
+  }
+}
+
+function selectChatConversation(convId) {
+  if (!convId) return;
+  activeChatFilter = 'all';
+  activeChatConversationId = convId;
+  switchActiveChatMessageSubscription(convId);
+  if (isChatModalOpen) renderChatModal();
+  if (current === 'messages' || current === 'chat') renderMessagesPage();
+  scrollChatToBottom();
+  setTimeout(() => {
+    document.getElementById('chatInputBox')?.focus();
+  }, 100);
+}
+
+function setChatFilter(filter) {
+  activeChatFilter = filter;
+  if (filter !== 'supervisor') {
+    const list = getFilteredChatChannels();
+    if (list.length > 0 && !list.some(c => c.id === activeChatConversationId)) {
+      activeChatConversationId = list[0].id;
+      switchActiveChatMessageSubscription(activeChatConversationId);
+    }
+  }
+  if (isChatModalOpen) renderChatModal();
+  if (current === 'messages' || current === 'chat') renderMessagesPage();
+}
+
+async function handleSendChatMessage(event) {
+  if (event) event.preventDefault();
+  const input = document.getElementById('chatInputBox');
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+
+  const myUid = auth.currentUser?.uid;
+  const myName = currentUserProfile?.prenom ? `${currentUserProfile.prenom} ${currentUserProfile.nom || ''}`.trim() : (auth.currentUser?.displayName || auth.currentUser?.email?.split('@')[0] || 'Utilisateur');
+  const myRole = (currentUserRoles && currentUserRoles[0]) || 'client';
+
+  input.value = '';
+
+  // Optimistic insert in memory
+  const now = new Date().toISOString();
+  const tempMsg = {
+    id: `TEMP-${Date.now()}`,
+    conversationId: activeChatConversationId,
+    senderId: myUid,
+    senderName: myName,
+    senderRole: myRole,
+    text,
+    createdAt: now,
+    readBy: [myUid]
+  };
+  chatActiveMessages.push(tempMsg);
+  if (isChatModalOpen) renderChatModal();
+  if (current === 'messages' || current === 'chat') renderMessagesPage();
+  scrollChatToBottom();
+
+  try {
+    await sendMessage({
+      conversationId: activeChatConversationId,
+      text,
+      senderId: myUid,
+      senderName: myName,
+      senderRole: myRole
+    });
+  } catch (err) {
+    console.warn("Erreur envoi message:", err);
+  }
+}
+
+async function sendQuickChatMessage(text) {
+  const input = document.getElementById('chatInputBox');
+  if (input) input.value = text;
+  await handleSendChatMessage();
+}
+
+async function openCourseChat(reservationId) {
+  if (!reservationId) return;
+  const res = (state.reservations || []).find(r => r.id === reservationId || r.code === reservationId);
+  if (!res) {
+    showToast("Trajet introuvable.");
+    return;
+  }
+  try {
+    const conv = await getOrCreateCourseConversation(res);
+    openChatModal(conv.id);
+  } catch (e) {
+    openChatModal(`conv-course-${reservationId}`);
+  }
+}
+
+function renderMessagesPage() {
+  const page = document.getElementById('page');
+  if (!page) return;
+  page.innerHTML = `
+    <div style="padding: 10px 0;">
+      ${buildChatInterfaceHtml({ isModal: false })}
+    </div>
+  `;
+  scrollChatToBottom();
+}
+
+window.toggleChatModal = toggleChatModal;
+window.openChatModal = openChatModal;
+window.closeChatModal = closeChatModal;
+window.selectChatConversation = selectChatConversation;
+window.setChatFilter = setChatFilter;
+window.handleSendChatMessage = handleSendChatMessage;
+window.sendQuickChatMessage = sendQuickChatMessage;
+window.openCourseChat = openCourseChat;
+window.renderMessagesPage = renderMessagesPage;
+

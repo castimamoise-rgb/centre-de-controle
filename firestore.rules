@@ -677,5 +677,60 @@ service cloud.firestore {
       allow get: if testId == 'connection';
       allow write: if isAdmin();
     }
+
+    // 18. Conversations (Canaux de communication & Dispatch)
+    match /conversations/{conversationId} {
+      allow get: if canReadOperations() || (
+        isSignedIn() && (
+          ('participants' in resource.data && (request.auth.uid in resource.data.participants || 'all' in resource.data.participants)) ||
+          resource.data.type in ['broadcast', 'direction', 'dispatch'] ||
+          (isChauffeur() && resource.data.type == 'chauffeurs')
+        )
+      );
+      allow list: if canReadOperations() || (
+        isSignedIn() && (
+          ('participants' in resource.data && (request.auth.uid in resource.data.participants || 'all' in resource.data.participants)) ||
+          resource.data.type in ['broadcast', 'direction', 'dispatch'] ||
+          (isChauffeur() && resource.data.type == 'chauffeurs')
+        )
+      );
+      allow create: if isSignedIn() && isValidId(conversationId) && (
+        canManageOperations() || isChauffeur() || isClient()
+      );
+      allow update: if isSignedIn() && isValidId(conversationId) && (
+        canManageOperations() || (
+          ('participants' in resource.data && request.auth.uid in resource.data.participants) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['lastMessage', 'lastMessageAt', 'lastMessageSender', 'updatedAt'])
+        )
+      );
+      allow delete: if isAdmin() && isValidId(conversationId);
+    }
+
+    // 19. Messages en direct (Chat & Live Dispatch)
+    match /messages/{messageId} {
+      // L'admin et la direction voient TOUS les messages en direct (mode superviseur)
+      // La secrétaire et le personnel voient tous les messages opérationnels
+      // Les clients et chauffeurs voient leurs canaux et diffusions
+      allow get, list: if canReadOperations() || (
+        isSignedIn() && (
+          resource.data.senderId == request.auth.uid ||
+          resource.data.conversationId in ['conv-general-dispatch', 'conv-direction-all'] ||
+          (isChauffeur() && resource.data.conversationId == 'conv-inter-chauffeurs') ||
+          (exists(/databases/$(database)/documents/conversations/$(resource.data.conversationId)) &&
+           request.auth.uid in get(/databases/$(database)/documents/conversations/$(resource.data.conversationId)).data.participants)
+        )
+      );
+      allow create: if isSignedIn() && isValidId(messageId) && (
+        request.auth.uid == incoming().senderId || canManageOperations()
+      );
+      allow update: if isValidId(messageId) && (
+        isAdmin() || (
+          isSignedIn() && (
+            incoming().diff(existing()).affectedKeys().hasOnly(['readBy'])
+          )
+        )
+      );
+      allow delete: if isAdmin() && isValidId(messageId);
+    }
   }
 }
