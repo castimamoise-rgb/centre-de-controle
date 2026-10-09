@@ -1984,8 +1984,10 @@ if (sideBackdrop) {
 }
 
 window.addEventListener("hashchange", () => {
-  current = location.hash.slice(1) || "dashboard";
-  render();
+  const h = location.hash.slice(1) || "dashboard";
+  if (h !== current) {
+    go(h, true);
+  }
 });
 
 // Real-time Firestore sync via onSnapshot respecting RBAC boundaries
@@ -3400,18 +3402,186 @@ function initSessionAtStartup() {
 }
 
 initSessionAtStartup();
-function go(k) {
+let navHistory = [];
+window.navHistory = navHistory;
+
+function getPageInfo(k) {
+  const canon = canonicalCol(k);
+  const modInfo = (typeof MODULES !== "undefined" && (MODULES[canon] || MODULES[k])) || null;
+  let label = modInfo?.label || canon;
+  let icon = modInfo?.icon || "📋";
+
+  if (canon === "dashboard") {
+    label = "Tableau de Bord";
+    icon = "🏠";
+  } else if (canon === "profile") {
+    label = "Mon Profil";
+    icon = "👤";
+  } else if (canon === "messages" || canon === "chat") {
+    label = "Messagerie & Dispatch";
+    icon = "💬";
+  } else if (canon === "reports") {
+    label = "Rapports & Synthèse";
+    icon = "📊";
+  } else if (canon === "marketing") {
+    label = "Marketing Commercial";
+    icon = "📣";
+  } else if (canon === "settings") {
+    label = "Paramètres du Système";
+    icon = "⚙️";
+  } else if (canon === "proformas") {
+    label = "Devis & Proformas";
+    icon = "📄";
+  } else if (canon === "factures") {
+    label = "Factures";
+    icon = "🧾";
+  } else if (canon === "reservations") {
+    label = "Réservations";
+    icon = "🎫";
+  } else if (canon === "paiements") {
+    label = "Paiements & Reçus";
+    icon = "💳";
+  } else if (canon === "plannings") {
+    label = "Plannings & Départs";
+    icon = "📅";
+  } else if (canon === "vehicules") {
+    label = "Flotte de Véhicules";
+    icon = "🚙";
+  } else if (canon === "chauffeurs") {
+    label = "Équipe Chauffeurs";
+    icon = "👨‍✈️";
+  } else if (canon === "clients") {
+    label = "Fichier Clients";
+    icon = "👥";
+  } else if (canon === "utilisateurs") {
+    label = "Utilisateurs & Rôles";
+    icon = "🔑";
+  } else if (canon === "abonnements") {
+    label = "Abonnements Scolaires & Entreprises";
+    icon = "🎒";
+  } else if (canon === "circuits") {
+    label = "Circuits Touristiques";
+    icon = "🗺️";
+  } else if (canon === "depenses") {
+    label = "Dépenses & Finances";
+    icon = "💸";
+  } else if (canon === "carburant") {
+    label = "Suivi Carburant";
+    icon = "⛽";
+  } else if (canon === "maintenance") {
+    label = "Entretien & Maintenance";
+    icon = "🔧";
+  }
+  return { canon, label, icon };
+}
+window.getPageInfo = getPageInfo;
+
+function goBack() {
+  if (Array.isArray(navHistory) && navHistory.length > 0) {
+    const prev = navHistory.pop();
+    go(prev, true);
+  } else {
+    if (canonicalCol(current) !== "dashboard") {
+      go("dashboard", true);
+    } else {
+      if (typeof showToast === "function") {
+        showToast("Vous êtes déjà sur le Tableau de Bord.");
+      }
+    }
+  }
+}
+window.goBack = goBack;
+
+function injectPageNavigationHeader(currentKey) {
+  const page = document.getElementById("page");
+  if (!page) return;
+
+  const canon = canonicalCol(currentKey);
+  const info = getPageInfo(canon);
+  const hasHistory = Array.isArray(navHistory) && navHistory.length > 0;
+  const prevKey = hasHistory ? navHistory[navHistory.length - 1] : "dashboard";
+  const prevInfo = getPageInfo(prevKey);
+  const isDashboard = canon === "dashboard";
+
+  // Remove existing navBar to ensure no duplicate
+  const existing = document.getElementById("pageNavBar");
+  if (existing) existing.remove();
+
+  const navBar = document.createElement("div");
+  navBar.id = "pageNavBar";
+  navBar.className = "page-nav-bar";
+
+  const backTargetLabel = hasHistory ? prevInfo.label : "Tableau de Bord";
+
+  navBar.innerHTML = `
+    <div class="page-nav-bar-left">
+      <button type="button" class="btn-page-back" onclick="goBack()" title="${hasHistory ? `Retourner à : ${esc(prevInfo.label)}` : 'Retourner au Tableau de Bord'}">
+        <span class="back-arrow">←</span>
+        <span class="back-label">Retour</span>
+        <span class="back-target-pill">${esc(backTargetLabel)}</span>
+      </button>
+
+      <div class="page-breadcrumbs" aria-label="Fil d'ariane">
+        <button type="button" class="bc-crumb bc-home" onclick="go('dashboard')" title="Aller à la page d'accueil">
+          <span>🏠 Accueil</span>
+        </button>
+        ${!isDashboard ? `
+          <span class="bc-sep">›</span>
+          <span class="bc-crumb bc-active">
+            <span>${info.icon}</span> <span>${esc(info.label)}</span>
+          </span>
+        ` : ''}
+      </div>
+    </div>
+
+    <div class="page-nav-bar-right">
+      ${hasHistory ? `
+        <button type="button" class="btn-prev-shortcut" onclick="goBack()" title="Revenir immédiatement à ${esc(prevInfo.label)}">
+          <span>↩ Revenir à</span> <b>${esc(prevInfo.label)}</b>
+        </button>
+      ` : ''}
+      ${!isDashboard ? `
+        <button type="button" class="btn-home-shortcut" onclick="go('dashboard')" title="Aller au Tableau de Bord">
+          <span>🏠 Tableau de Bord</span>
+        </button>
+      ` : ''}
+    </div>
+  `;
+
+  page.insertAdjacentElement("afterbegin", navBar);
+}
+window.injectPageNavigationHeader = injectPageNavigationHeader;
+
+function go(k, fromBack = false) {
   document.getElementById("sidebar")?.classList.remove("open");
   document.getElementById("sidebarBackdrop")?.classList.remove("open");
   const isSuper = isSuperAdminEmail(currentUser?.email || currentUserProfile?.email);
   // Un utilisateur avec uniquement lecture_seule ne peut accéder à aucun module métier
   if (!isSuper && !hasBusinessRole(currentUserRoles)) {
+    if (!fromBack && current && current !== "profile") {
+      if (navHistory.length === 0 || navHistory[navHistory.length - 1] !== current) {
+        navHistory.push(current);
+      }
+    }
     current = "profile";
+    currentPage = "profile";
     location.hash = "profile";
     render();
     return;
   }
+
+  const targetCanon = canonicalCol(k);
+  const currentCanon = canonicalCol(current);
+
+  if (!fromBack && current && currentCanon !== targetCanon) {
+    if (navHistory.length === 0 || navHistory[navHistory.length - 1] !== current) {
+      navHistory.push(current);
+      if (navHistory.length > 50) navHistory.shift();
+    }
+  }
+
   current = k;
+  currentPage = k;
   location.hash = k;
 
   // Marquer comme lues les notifications liées à ce module et effacer le badge
@@ -3456,6 +3626,7 @@ function render() {
     renderAuthPage("authenticated");
     updateNavBadges();
     renderLectureSeuleProfilePage();
+    injectPageNavigationHeader("profile");
     return;
   }
 
@@ -3478,20 +3649,24 @@ function render() {
         <p style="color:#64748b;font-size:14px;line-height:1.5;margin-bottom:20px">
           Votre profil ne dispose pas des autorisations requises pour accéder au module <b>${MODULES[canon]?.label || canon}</b>.
         </p>
-        <button class="primary" onclick="go('dashboard')">Retour au Tableau de Bord</button>
+        <button class="primary" onclick="goBack()">← Retourner en arrière</button>
+        <button class="secondary" style="margin-left:8px" onclick="go('dashboard')">Tableau de Bord</button>
       </div>
     `;
+    injectPageNavigationHeader(canon);
     return;
   }
 
   const isSolelyProspect = !isSuper && normCurrentRoles.length === 1 && normCurrentRoles[0] === ROLES.PROSPECT;
   if (canon === "profile" && isSolelyProspect) {
     renderLectureSeuleProfilePage();
+    injectPageNavigationHeader("profile");
     return;
   }
 
   if (canon === "profile") {
     renderAdminOrStaffProfilePage();
+    injectPageNavigationHeader("profile");
     return;
   }
 
@@ -3502,6 +3677,8 @@ function render() {
   else if (canon === "marketing") marketingPage();
   else if (canon === "settings") settingsPage();
   else dashboard();
+
+  injectPageNavigationHeader(canon);
 }
 
 function kpi(icon, label, value, key) {
@@ -6357,11 +6534,19 @@ function modulePage(key) {
 
   document.getElementById("page").innerHTML = `
     <div class="section-head">
-      <div>
-        <h2>${modInfo.icon} ${title}</h2>
-        <p>Gestion en direct Cloud Firestore • Données persistantes et sécurisées.</p>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <button type="button" class="btn-section-back" onclick="goBack()" title="Retourner à la page précédente">
+          <span>←</span> <span>Retour</span>
+        </button>
+        <div>
+          <h2>${modInfo.icon} ${title}</h2>
+          <p>Gestion en direct Cloud Firestore • Données persistantes et sécurisées.</p>
+        </div>
       </div>
       <div class="actions">
+        <button type="button" class="secondary" onclick="goBack()" title="Retourner à la page précédente" style="display:inline-flex;align-items:center;gap:6px">
+          <span>←</span> <span>Retour</span>
+        </button>
         ${syncBtn}
         ${canCreate ? `<button class="primary" onclick="openForm('${canon}')">＋ Ajouter</button>` : `<span class="badge" style="background:#e2e8f0;color:#64748b">Consultation uniquement</span>`}
       </div>
@@ -6818,7 +7003,7 @@ function openForm(key, index = -1) {
         return fieldHTMLLinked(id, label, type, defaultVal, canon);
       }).join("")}
       <div class="full form-actions">
-        <button type="button" class="secondary" onclick="closeModal()">Annuler</button>
+        <button type="button" class="secondary" onclick="closeModal()">← Retour / Annuler</button>
         <button class="primary" id="dataFormSubmitBtn" type="submit">💾 Enregistrer dans le Cloud</button>
       </div>
     </form>
@@ -8574,6 +8759,16 @@ function renderAdminOrStaffProfilePage() {
 
   page.innerHTML = `
     <div style="max-width: 860px; margin: 24px auto; padding: 0 16px;">
+      <!-- Barre d'action supérieure avec bouton retour -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+        <button type="button" class="btn-section-back" onclick="goBack()" title="Retourner à la page précédente">
+          <span>←</span> <span>Retour</span>
+        </button>
+        <button type="button" class="secondary" onclick="go('dashboard')" style="font-size:12px;padding:6px 12px">
+          <span>🏠 Tableau de Bord</span>
+        </button>
+      </div>
+
       <!-- Carte d'identité Administrateur / Staff -->
       <div style="background: linear-gradient(135deg, #092e70 0%, #174291 100%); border-radius: 16px; padding: 28px 24px; color: #ffffff; box-shadow: 0 8px 24px rgba(9,46,112,0.18); margin-bottom: 22px;">
         <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
@@ -8723,6 +8918,13 @@ function renderLectureSeuleProfilePage() {
 
   page.innerHTML = `
     <div style="max-width: 760px; margin: 24px auto; padding: 0 16px;">
+      <!-- Barre d'action supérieure avec bouton retour -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+        <button type="button" class="btn-section-back" onclick="goBack()" title="Retourner à la page précédente">
+          <span>←</span> <span>Retour</span>
+        </button>
+      </div>
+
       <!-- Carte d'identité du Profil -->
       <div style="background: linear-gradient(135deg, #092e70 0%, #174291 100%); border-radius: 16px; padding: 28px 24px; color: #ffffff; box-shadow: 0 8px 24px rgba(9,46,112,0.18); margin-bottom: 22px;">
         <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
@@ -9325,11 +9527,19 @@ function reportsPage() {
   if (!canSeeFinances) {
     document.getElementById("page").innerHTML = `
       <div class="section-head">
-        <div>
-          <h2>📋 Rapport Journalier & Hebdomadaire (Secrétariat)</h2>
-          <p>Synthèse opérationnelle : réservations, plannings, abonnements et encaissements enregistrés.</p>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <button type="button" class="btn-section-back" onclick="goBack()" title="Retourner à la page précédente">
+            <span>←</span> <span>Retour</span>
+          </button>
+          <div>
+            <h2>📋 Rapport Journalier & Hebdomadaire (Secrétariat)</h2>
+            <p>Synthèse opérationnelle : réservations, plannings, abonnements et encaissements enregistrés.</p>
+          </div>
         </div>
-        <button class="primary" onclick="exportData()">Exporter le rapport</button>
+        <div class="actions">
+          <button type="button" class="secondary" onclick="goBack()" title="Retourner à la page précédente">← Retour</button>
+          <button class="primary" onclick="exportData()">Exporter le rapport</button>
+        </div>
       </div>
 
       <!-- SECTION 1 : RAPPORT DU JOUR (JOURNALIER) -->
@@ -9400,11 +9610,19 @@ function reportsPage() {
 
   document.getElementById("page").innerHTML = `
     <div class="section-head">
-      <div>
-        <h2>📊 Rapports Financiers & Synthèse Opérationnelle</h2>
-        <p>Bilan financier d'entreprise et rapports d'activités en direct.</p>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <button type="button" class="btn-section-back" onclick="goBack()" title="Retourner à la page précédente">
+          <span>←</span> <span>Retour</span>
+        </button>
+        <div>
+          <h2>📊 Rapports Financiers & Synthèse Opérationnelle</h2>
+          <p>Bilan financier d'entreprise et rapports d'activités en direct.</p>
+        </div>
       </div>
-      <button class="primary" onclick="exportData()">Exporter les données</button>
+      <div class="actions">
+        <button type="button" class="secondary" onclick="goBack()" title="Retourner à la page précédente">← Retour</button>
+        <button class="primary" onclick="exportData()">Exporter les données</button>
+      </div>
     </div>
 
     <div class="kpis">
@@ -9448,11 +9666,19 @@ function reportsPage() {
 function marketingPage() {
   document.getElementById("page").innerHTML = `
     <div class="section-head">
-      <div>
-        <h2>📣 Marketing</h2>
-        <p>Centre de préparation des actions commerciales LAPERLE TOUR HT.</p>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <button type="button" class="btn-section-back" onclick="goBack()" title="Retourner à la page précédente">
+          <span>←</span> <span>Retour</span>
+        </button>
+        <div>
+          <h2>📣 Marketing</h2>
+          <p>Centre de préparation des actions commerciales LAPERLE TOUR HT.</p>
+        </div>
       </div>
-      <button class="primary orange" onclick="showToast('Brief marketing enregistré.')">＋ Nouvelle action</button>
+      <div class="actions">
+        <button type="button" class="secondary" onclick="goBack()" title="Retourner à la page précédente">← Retour</button>
+        <button class="primary orange" onclick="showToast('Brief marketing enregistré.')">＋ Nouvelle action</button>
+      </div>
     </div>
     <div class="dashboard-grid">
       <div class="panel">
@@ -9481,13 +9707,18 @@ function settingsPage() {
 
   document.getElementById("page").innerHTML = `
     <div class="section-head">
-      <div>
-        <h2>⚙️ Module Paramètres</h2>
-        <p>Configuration générale, coordonnées officielles LAPERLE et synchronisation Firestore.</p>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <button type="button" class="btn-section-back" onclick="goBack()" title="Retourner à la page précédente">
+          <span>←</span> <span>Retour</span>
+        </button>
+        <div>
+          <h2>⚙️ Module Paramètres</h2>
+          <p>Configuration générale, coordonnées officielles LAPERLE et synchronisation Firestore.</p>
+        </div>
       </div>
       <div class="actions">
+        <button class="secondary" onclick="goBack()" title="Retourner à la page précédente">← Retour</button>
         <button class="primary" onclick="saveSettings()">💾 Enregistrer les paramètres</button>
-        <button class="secondary" onclick="go('dashboard')">← Tableau de bord</button>
       </div>
     </div>
 
@@ -13417,7 +13648,15 @@ function renderMessagesPage() {
   const page = document.getElementById('page');
   if (!page) return;
   page.innerHTML = `
-    <div style="padding: 10px 0;">
+    <div style="padding: 4px 0 12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <button type="button" class="btn-section-back" onclick="goBack()" title="Retourner à la page précédente">
+        <span>←</span> <span>Retour</span>
+      </button>
+      <button type="button" class="secondary" onclick="go('dashboard')" style="font-size:12px;padding:6px 12px">
+        <span>🏠 Tableau de Bord</span>
+      </button>
+    </div>
+    <div style="padding: 0 0 10px;">
       ${buildChatInterfaceHtml({ isModal: false })}
     </div>
   `;

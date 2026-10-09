@@ -5481,5 +5481,214 @@ button[disabled] {
   }
 }
 
+/* ========================================================================== */
+/* 🧭 SYSTÈME DE NAVIGATION UNIVERSEL & BOUTONS DE RETOUR                   */
+/* ========================================================================== */
+.page-nav-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 10px 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 6px rgba(9, 46, 112, 0.04);
+  flex-wrap: wrap;
+}
+
+.page-nav-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.page-nav-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.btn-page-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #082b70;
+  color: #ffffff !important;
+  border: 1.5px solid #082b70;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  box-shadow: 0 2px 5px rgba(8, 43, 112, 0.2);
+  line-height: 1;
+}
+
+.btn-page-back:hover {
+  background: #0e3b96;
+  border-color: #0e3b96;
+  transform: translateX(-2px);
+  box-shadow: 0 4px 10px rgba(8, 43, 112, 0.28);
+}
+
+.btn-page-back .back-arrow {
+  font-size: 16px;
+  font-weight: 800;
+  transition: transform 0.18s ease;
+}
+
+.btn-page-back:hover .back-arrow {
+  transform: translateX(-2px);
+}
+
+.btn-page-back .back-label {
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.btn-page-back .back-target-pill {
+  background: rgba(255, 255, 255, 0.2);
+  color: #f8fafc;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+  margin-left: 2px;
+  max-width: 150px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-section-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f1f5f9;
+  color: #092e70;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 7px 13px;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-section-back:hover {
+  background: #e2e8f0;
+  border-color: #94a3b8;
+  color: #082b70;
+  transform: translateX(-2px);
+}
+
+.page-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #64748b;
+  flex-wrap: wrap;
+}
+
+.bc-crumb {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.bc-home {
+  color: #082b70;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.bc-home:hover {
+  text-decoration: underline;
+  color: #f7941d;
+}
+
+.bc-sep {
+  color: #94a3b8;
+  font-weight: 600;
+  font-size: 14px;
+  user-select: none;
+}
+
+.bc-active {
+  color: #1e293b;
+  font-weight: 700;
+  cursor: default;
+}
+
+.btn-prev-shortcut {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-prev-shortcut:hover {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+.btn-home-shortcut {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #f8fafc;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-home-shortcut:hover {
+  background: #f1f5f9;
+  color: #092e70;
+  border-color: #94a3b8;
+}
+
+@media (max-width: 640px) {
+  .page-nav-bar {
+    padding: 8px 12px;
+    gap: 8px;
+  }
+  .page-nav-bar-left, .page-nav-bar-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .btn-prev-shortcut {
+    font-size: 11px;
+    padding: 5px 8px;
+  }
+}
+
+
 
 
