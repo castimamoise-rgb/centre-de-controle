@@ -6559,6 +6559,7 @@ function drawTable(key) {
                       return `
                         ${tag}
                         <button class="tiny" style="color:#082b70;border-color:#bfdbfe;background:#eff6ff" onclick="createProformaFromReservation(${i})" title="Convertir cette réservation en devis proforma">Proforma</button>
+                        <button class="tiny" onclick="printDocument('reservation',${i})" title="Imprimer le bon de réservation">PDF Réservation</button>
                       `;
                     } else {
                       let clientBtns = "";
@@ -6577,7 +6578,10 @@ function drawTable(key) {
                       } else {
                         clientBtns += `<span class="badge" style="background:#e0f2fe;color:#0369a1;font-size:10px;padding:2px 6px">⏳ Facture demandée</span>`;
                       }
-                      return clientBtns;
+                      return `
+                        ${clientBtns}
+                        <button class="tiny" onclick="printDocument('reservation',${i})" title="Imprimer votre bon de réservation">PDF Réservation</button>
+                      `;
                     }
                   })() : ""}
                   ${canon === "proformas" ? (() => {
@@ -7686,6 +7690,7 @@ function viewRow(key, index) {
         <button class="primary" style="background:#082b70;border-color:#082b70;display:inline-flex;align-items:center;gap:6px" onclick="closeModal();createProformaFromReservation(${index})">
           <span>📄</span> <span>Convertir en Proforma</span>
         </button>
+        <button class="primary" onclick="closeModal();printDocument('reservation',${index})">🖨️ PDF Bon de Réservation</button>
       `;
     } else {
       let reqBtns = "";
@@ -7728,6 +7733,9 @@ function viewRow(key, index) {
           </button>
         `;
       }
+      reqBtns += `
+        <button class="primary" onclick="closeModal();printDocument('reservation',${index})">🖨️ PDF Bon de Réservation</button>
+      `;
       extraButtons = reqBtns;
     }
   } else if (canon === "proformas") {
@@ -8053,6 +8061,8 @@ function openClientDossier(clientIdOrName) {
 window.openClientDossier = openClientDossier;
 
 function closeModal() {
+  const m = document.getElementById("modal");
+  if (m) m.style.maxWidth = "";
   document.getElementById("modalBackdrop").classList.remove("open");
 }
 
@@ -10253,8 +10263,19 @@ async function createInvoiceFromQuote(index) {
     ID_Facture: invoiceNumber,
     ID_Paiement: q.ID_Paiement || "",
     amount: q.amount || 0,
+    discount: q.discount || 0,
+    subtotal: q.subtotal || q.amount || 0,
     service: q.service || "Transport & Services LAPERLE TOUR HT",
     route: q.route || "",
+    origin: q.origin || "",
+    destination: q.destination || "",
+    departDate: q.departDate || "",
+    departTime: q.departTime || "",
+    returnDate: q.returnDate || "",
+    returnTime: q.returnTime || "",
+    passengers: q.passengers || 1,
+    vehicleType: q.vehicleType || "",
+    driverName: q.driverName || "",
     paymentMethod: paymentMethodLabel,
     paymentModality: q.modalitePaiement || "Paiement Intégral",
     paymentReference: q.referencePaiement || "",
@@ -11378,6 +11399,137 @@ function renderProformaDocumentBody(d) {
   `;
 }
 
+async function exportDocumentToPdfOrPrint({ containerId, defaultFileName, fullHtml, triggerBtn } = {}) {
+  let btn = triggerBtn;
+  if (!btn && typeof event !== "undefined" && event?.currentTarget) {
+    btn = event.currentTarget;
+  }
+  if (!btn) {
+    btn = document.querySelector("#modal .form-actions button.primary") ||
+          document.querySelector("#modal button.primary");
+  }
+
+  const originalHtml = btn ? btn.innerHTML : "";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `⏳ Téléchargement PDF...`;
+  }
+
+  try {
+    let container = containerId ? document.getElementById(containerId) : null;
+    if (!container) {
+      container = document.querySelector("#modal #proformaPreviewContainer") ||
+                  document.querySelector("#modal #invoicePreviewContainer") ||
+                  document.querySelector("#modal #reservationPreviewContainer") ||
+                  document.querySelector("#modal #paymentPreviewContainer") ||
+                  document.querySelector("#modal .doc") ||
+                  document.getElementById("modal");
+    }
+
+    if (container && window.html2canvas && window.jspdf && window.jspdf.jsPDF) {
+      const prevMaxHeight = container.style.maxHeight;
+      const prevOverflow = container.style.overflow;
+      const prevBoxShadow = container.style.boxShadow;
+      container.style.maxHeight = "none";
+      container.style.overflow = "visible";
+      container.style.boxShadow = "none";
+
+      await new Promise(r => setTimeout(r, 60));
+
+      const canvas = await window.html2canvas(container, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: "#ffffff"
+      });
+
+      container.style.maxHeight = prevMaxHeight;
+      container.style.overflow = prevOverflow;
+      container.style.boxShadow = prevBoxShadow;
+
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+        compress: true
+      });
+
+      const pageWidth = 210;
+      const pageHeight = 297;
+      const margin = 10;
+      const printWidth = pageWidth - (margin * 2);
+      const printHeight = (canvas.height * printWidth) / canvas.width;
+
+      let heightLeft = printHeight;
+      let position = margin;
+
+      const imgData = canvas.toDataURL("image/jpeg", 0.98);
+      pdf.addImage(imgData, "JPEG", margin, position, printWidth, printHeight);
+      heightLeft -= (pageHeight - (margin * 2));
+
+      while (heightLeft > 0) {
+        position = margin - (printHeight - heightLeft);
+        pdf.addPage();
+        pdf.addImage(imgData, "JPEG", margin, position, printWidth, printHeight);
+        heightLeft -= (pageHeight - (margin * 2));
+      }
+
+      const safeName = (defaultFileName || "Document-LAPERLE").replace(/[/\\?%*:|"<>]/g, "-");
+      const finalFileName = safeName.endsWith(".pdf") ? safeName : `${safeName}.pdf`;
+      pdf.save(finalFileName);
+
+      if (typeof toast === "function") {
+        toast("✅ Document PDF téléchargé avec succès !");
+      }
+      return;
+    }
+
+    // Fallback HTML download
+    if (fullHtml) {
+      const blob = new Blob([fullHtml], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = (defaultFileName || "Document-LAPERLE").replace(/\.pdf$/, "") + ".html";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      if (typeof toast === "function") toast("✅ Document téléchargé !");
+    }
+  } catch (err) {
+    console.warn("Erreur export PDF:", err);
+    if (fullHtml) {
+      const blob = new Blob([fullHtml], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = (defaultFileName || "Document-LAPERLE").replace(/\.pdf$/, "") + ".html";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      if (typeof toast === "function") toast("✅ Document téléchargé !");
+    }
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+    }
+  }
+}
+window.exportDocumentToPdfOrPrint = exportDocumentToPdfOrPrint;
+
+function triggerDocumentPrint(printHtml) {
+  exportDocumentToPdfOrPrint({
+    containerId: "proformaPreviewContainer",
+    defaultFileName: "Document-LAPERLE.pdf",
+    fullHtml: printHtml
+  });
+}
+window.triggerDocumentPrint = triggerDocumentPrint;
+
 function buildFullProformaPrintDoc(d) {
   const bodyContent = renderProformaDocumentBody(d);
   return `<!doctype html>
@@ -11398,52 +11550,890 @@ function buildFullProformaPrintDoc(d) {
 <body>
   <div class="doc">
     ${bodyContent}
-    <script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script>
   </div>
 </body>
 </html>`;
 }
 
-function printProformaDoc(index) {
-  const o = list("proformas")[index];
-  if (!o) return;
+async function printProformaDoc(index) {
+  let o = (list("proformas") || [])[index];
+  if (!o) {
+    const heading = document.querySelector("#modal h2")?.textContent || "";
+    const m = heading.match(/PRO-[\w-]+/);
+    if (m) o = (list("proformas") || []).find(p => p.number === m[0]);
+    if (!o) o = (list("proformas") || [])[0] || {};
+  }
   const d = buildProformaDocumentData(o);
   const printHtml = buildFullProformaPrintDoc(d);
-
-  let pWin = null;
-  try {
-    pWin = window.open("", "_blank", "width=920,height=1000");
-  } catch (e) {
-    pWin = null;
-  }
-
-  if (pWin) {
-    pWin.document.write(printHtml);
-    pWin.document.close();
-  } else {
-    let iframe = document.getElementById("printFrame");
-    if (!iframe) {
-      iframe = document.createElement("iframe");
-      iframe.id = "printFrame";
-      iframe.style.position = "fixed";
-      iframe.style.right = "-9999px";
-      iframe.style.bottom = "-9999px";
-      iframe.style.width = "0";
-      iframe.style.height = "0";
-      iframe.style.border = "none";
-      document.body.appendChild(iframe);
-    }
-    const doc = iframe.contentWindow.document;
-    doc.open();
-    doc.write(printHtml);
-    doc.close();
-    setTimeout(() => {
-      iframe.contentWindow.focus();
-      iframe.contentWindow.print();
-    }, 400);
-  }
+  const fileName = `Devis-Proforma-${d.quoteNumber || "LAPERLE"}.pdf`;
+  await exportDocumentToPdfOrPrint({
+    containerId: "proformaPreviewContainer",
+    defaultFileName: fileName,
+    fullHtml: printHtml
+  });
 }
 window.printProformaDoc = printProformaDoc;
+
+function buildInvoiceDocumentData(o) {
+  const linkedProId = o.ID_Proforma || o.proforma || o.proformaId || "";
+  const linkedPro = linkedProId ? (list("proformas") || []).find(p => p.number === linkedProId || p.id === linkedProId) : null;
+
+  const linkedResId = o.ID_Reservation || o.reservationId || linkedPro?.ID_Reservation || linkedPro?.reservationId || "";
+  const linkedRes = linkedResId ? (list("reservations") || []).find(r => r.id === linkedResId || r.code === linkedResId) : null;
+
+  const client = list("clients").find(c => c.name === o.client || c.id === o.client || (o.clientId && (c.id === o.clientId || c.clientId === o.clientId))) || {};
+  const user = (state.utilisateurs || []).find(u => (o.clientId && (u.uid === o.clientId || u.id === o.clientId)) || (o.email && u.email && u.email.toLowerCase() === o.email.toLowerCase()) || (o.client && u.name && u.name.toLowerCase() === o.client.toLowerCase())) || {};
+
+  const clientName = o.client || linkedPro?.client || linkedRes?.client || client.name || user.name || "Client";
+  const clientPhone = o.phone || o.telephone || linkedPro?.phone || linkedRes?.phone || client.phone || client.telephone || user.telephone || user.phone || "Non renseigné";
+  const clientEmail = o.email || linkedPro?.email || linkedRes?.email || client.email || user.email || "Non renseigné";
+  const clientAddress = o.address || o.adresse || linkedPro?.address || linkedRes?.address || client.address || client.zone || user.adresse || user.address || "Port-au-Prince, Haïti";
+
+  const company = localStorage.getItem("LAPERLE_COMPANY") || "LAPERLE TOUR HT S.A.";
+  const phone = localStorage.getItem("LAPERLE_PHONE") || "+509 4440 8687";
+  const email = localStorage.getItem("LAPERLE_EMAIL") || "laperletourht@gmail.com";
+  const slogan = localStorage.getItem("LAPERLE_SLOGAN") || "Le Confort, la Sécurité et la Confiance au cœur d'Haïti";
+  const address = localStorage.getItem("LAPERLE_ADDRESS") || "Port-au-Prince, Haïti";
+  const moncash = localStorage.getItem("LAPERLE_MONCASH") || phone;
+
+  const service = o.service || linkedPro?.service || linkedRes?.service || linkedRes?.type || "Transport Touristique & Privé";
+  const route = o.route || linkedPro?.route || (o.origin && o.destination ? `${o.origin} ➔ ${o.destination}` : (linkedRes?.trajet || (linkedRes?.origin && linkedRes?.destination ? `${linkedRes.origin} ➔ ${linkedRes.destination}` : "Port-au-Prince & Environs")));
+  const origin = o.origin || linkedPro?.origin || linkedRes?.origin || linkedRes?.depart || clientAddress || "Port-au-Prince";
+  const destination = o.destination || linkedPro?.destination || linkedRes?.destination || linkedRes?.arrivee || o.route || "Destination convenue";
+  const departDate = o.departDate || linkedPro?.departDate || linkedRes?.dateDepart || linkedRes?.date || o.date || today();
+  const departTime = o.departTime || linkedPro?.departTime || linkedRes?.heureDepart || linkedRes?.heure || linkedRes?.time || "08:00";
+  const returnDate = o.returnDate || linkedPro?.returnDate || linkedRes?.dateRetour || linkedRes?.returnDate || "";
+  const returnTime = o.returnTime || linkedPro?.returnTime || linkedRes?.heureRetour || linkedRes?.returnTime || "";
+  const passengers = o.passengers || linkedPro?.passengers || linkedRes?.passagers || linkedRes?.passengers || linkedRes?.places || 1;
+  const vehicleType = o.vehicleType || linkedPro?.vehicleType || linkedRes?.vehiculeType || linkedRes?.vehicule || linkedRes?.vehicle || (Number(passengers) > 4 ? "Minivan Touristique Climatisé" : "Berline Confort Climatisée");
+  const driverName = o.driverName || linkedPro?.driverName || linkedRes?.chauffeur || linkedRes?.driver || "Chauffeur professionnel certifié LAPERLE";
+
+  const amount = Number(o.amount || 0);
+  const discount = Number(o.discount || linkedPro?.discount || 0);
+  const subtotal = Number(o.subtotal || (amount + discount));
+  const isPaid = o.status === "Payée";
+  const invoiceNumber = o.number || o.id || o.ID_Facture || 'FAC-0001';
+  const issueDate = o.date || today();
+  const dueDate = o.due || issueDate;
+  const paidDate = o.paidDate || o.paymentDate || o.dateReglement || (isPaid ? (o.date || today()) : "");
+  const paymentMethod = o.paymentMethod || o.method || o.moyenPaiement || (isPaid ? "MonCash / Virement Bancaire" : "MonCash, Virement UNIBANK / SOGEBANK, Chèque ou Espèces");
+  const paymentRef = o.paymentReference || o.reference || o.referencePaiement || (isPaid ? "RÈGLEMENT VALIDÉ & ENREGISTRÉ" : "");
+  const usdApprox = (amount / 132).toFixed(2);
+  const notes = o.notes || "Facture commerciale émise par la Direction Financière LAPERLE TOUR HT S.A.";
+
+  return {
+    invoiceNumber,
+    linkedProId,
+    linkedResId,
+    clientName,
+    clientPhone,
+    clientEmail,
+    clientAddress,
+    company,
+    phone,
+    email,
+    slogan,
+    address,
+    moncash,
+    service,
+    route,
+    origin,
+    destination,
+    departDate,
+    departTime,
+    returnDate,
+    returnTime,
+    passengers,
+    vehicleType,
+    driverName,
+    amount,
+    discount,
+    subtotal,
+    isPaid,
+    status: o.status || (isPaid ? "Payée" : "À recevoir"),
+    issueDate,
+    dueDate,
+    paidDate,
+    paymentMethod,
+    paymentRef,
+    hasProof: !!(o.paymentProof || o.preuvePaiement),
+    usdApprox,
+    notes
+  };
+}
+
+function renderInvoiceDocumentBody(d) {
+  return `
+    <div style="font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif;color:#0f172a;line-height:1.45;background:#ffffff;">
+      <!-- EN-TÊTE OFFICIEL DE LA COMPAGNIE & BADGE DOCUMENT -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #082b70;padding-bottom:16px;gap:15px;flex-wrap:wrap;">
+        <div style="display:flex;gap:14px;align-items:center;">
+          <img src="logo-laperle.jpg" alt="LAPERLE TOUR HT" style="width:115px;height:75px;object-fit:contain;border-radius:8px;border:1px solid #e2e8f0;background:#fff;padding:2px;" onerror="this.style.display='none'">
+          <div>
+            <h1 style="margin:0;font-size:24px;font-weight:900;color:#082b70;letter-spacing:-0.5px;">LAPERLE <span style="color:#f7941d;">TOUR HT</span></h1>
+            <div style="font-size:12px;font-weight:700;color:#1e3a8a;">S.A. • Transport • Tourisme • Location VIP • Navettes</div>
+            <div style="font-size:11px;color:#64748b;margin-top:2px;">« ${esc(d.slogan)} » • Confort • Sécurité • Confiance</div>
+            <div style="font-size:11px;color:#475569;margin-top:3px;">📍 ${esc(d.address)} • 📞 ${esc(d.phone)} • ✉️ ${esc(d.email)}</div>
+          </div>
+        </div>
+        <div style="text-align:right;min-width:230px;">
+          ${d.isPaid ? `
+            <div style="display:inline-block;background:linear-gradient(135deg, #15803d 0%, #16a34a 100%);color:#ffffff;padding:6px 14px;border-radius:6px;font-weight:800;font-size:15px;letter-spacing:0.5px;box-shadow:0 2px 6px rgba(22,163,74,0.2);">
+              🧾 FACTURE ACQUITTÉE
+            </div>
+            <div style="margin-top:6px;font-size:17px;font-weight:900;color:#15803d;">N° ${esc(d.invoiceNumber)}</div>
+            <div style="font-size:11.5px;color:#475569;margin-top:2px;">Date d'émission : <b style="color:#0f172a;">${esc(d.issueDate)}</b></div>
+            <div style="font-size:11.5px;color:#15803d;margin-top:1px;">Date de règlement : <b>${esc(d.paidDate || d.issueDate)}</b></div>
+            <div style="margin-top:5px;">
+              <span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:800;background:#dcfce7;color:#166534;border:1px solid #86efac;">
+                ✓ SOLDÉE & ACQUITTÉE
+              </span>
+            </div>
+          ` : `
+            <div style="display:inline-block;background:linear-gradient(135deg, #082b70 0%, #1e40af 100%);color:#ffffff;padding:6px 14px;border-radius:6px;font-weight:800;font-size:15px;letter-spacing:0.5px;box-shadow:0 2px 6px rgba(8,43,112,0.15);">
+              🧾 FACTURE OFFICIELLE
+            </div>
+            <div style="margin-top:6px;font-size:17px;font-weight:900;color:#ea580c;">N° ${esc(d.invoiceNumber)}</div>
+            <div style="font-size:11.5px;color:#475569;margin-top:2px;">Date d'émission : <b style="color:#0f172a;">${esc(d.issueDate)}</b></div>
+            <div style="font-size:11.5px;color:#b45309;margin-top:1px;">Échéance : <b>${esc(d.dueDate)}</b></div>
+            <div style="margin-top:5px;">
+              <span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:800;background:#fef3c7;color:#92400e;border:1px solid #fde68a;">
+                STATUT : ${esc(d.status.toUpperCase())}
+              </span>
+            </div>
+          `}
+        </div>
+      </div>
+
+      <!-- CARTOUCHE DOUBLE-BLOC ÉMETTEUR & CLIENT -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px;">
+        <div style="background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:8px;padding:12px;">
+          <div style="font-size:11px;font-weight:800;color:#082b70;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e2e8f0;padding-bottom:4px;margin-bottom:6px;display:flex;align-items:center;gap:5px;">
+            <span>🏢</span> <span>ÉMETTEUR & COMPTABILITÉ</span>
+          </div>
+          <b style="font-size:13px;color:#082b70;">${esc(d.company)}</b><br>
+          <span style="font-size:11.5px;color:#334155;">Direction Financière & Comptabilité Générale</span><br>
+          <span style="font-size:11px;color:#475569;">📞 Téléphone / WhatsApp : <b>${esc(d.phone)}</b></span><br>
+          <span style="font-size:11px;color:#475569;">✉️ Email : <b>${esc(d.email)}</b></span><br>
+          <span style="font-size:11px;color:#475569;">📍 Siège : ${esc(d.address)}</span><br>
+          <span style="font-size:11px;color:#15803d;font-weight:700;">💳 MonCash Compte Pro : ${esc(d.moncash)}</span>
+        </div>
+
+        <div style="background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:8px;padding:12px;">
+          <div style="font-size:11px;font-weight:800;color:#082b70;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e2e8f0;padding-bottom:4px;margin-bottom:6px;display:flex;align-items:center;gap:5px;">
+            <span>👤</span> <span>CLIENT / FACTURÉ À</span>
+          </div>
+          <b style="font-size:14px;color:#0f172a;">${esc(d.clientName)}</b><br>
+          <span style="font-size:12px;color:#334155;">📞 Téléphone : <b>${esc(d.clientPhone)}</b></span><br>
+          <span style="font-size:12px;color:#334155;">✉️ Email : <b>${esc(d.clientEmail)}</b></span><br>
+          <span style="font-size:11.5px;color:#475569;">📍 Prise en charge : ${esc(d.clientAddress)}</span>
+          <div style="margin-top:4px;display:flex;gap:10px;flex-wrap:wrap;font-size:11px;">
+            ${d.linkedResId ? `<span style="color:#0369a1;font-weight:700;">🔗 Réservation : #${esc(d.linkedResId)}</span>` : ''}
+            ${d.linkedProId ? `<span style="color:#b45309;font-weight:700;">📄 Proforma : #${esc(d.linkedProId)}</span>` : ''}
+          </div>
+        </div>
+      </div>
+
+      <!-- FICHE LOGISTIQUE & SPÉCIFICATIONS TECHNIQUES DE LA MISSION -->
+      <div style="margin-top:14px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:12px;">
+        <div style="font-size:11.5px;font-weight:800;color:#166534;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+          <span>🚐</span> <span>SPÉCIFICATIONS TECHNIQUES DE LA MISSION COUVERTE</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(210px, 1fr));gap:10px;font-size:12px;color:#1e293b;">
+          <div><span style="color:#64748b;font-size:11px;">Service facturé :</span><br><b style="color:#082b70;">${esc(d.service)}</b></div>
+          <div><span style="color:#64748b;font-size:11px;">Itinéraire / Trajet :</span><br><b style="color:#082b70;">${esc(d.route)}</b></div>
+          <div><span style="color:#64748b;font-size:11px;">Date & Heure mission :</span><br>📅 <b>${esc(d.departDate)}</b> à <b>${esc(d.departTime)}</b></div>
+          ${d.returnDate ? `<div><span style="color:#64748b;font-size:11px;">Retour programmé :</span><br>📅 <b>${esc(d.returnDate)}</b> ${d.returnTime ? 'à <b>' + esc(d.returnTime) + '</b>' : ''}</div>` : ''}
+          <div><span style="color:#64748b;font-size:11px;">Véhicule assigné :</span><br>🚘 <b>${esc(d.vehicleType)}</b></div>
+          <div><span style="color:#64748b;font-size:11px;">Passagers & Chauffeur :</span><br>👥 <b>${esc(d.passengers)} passager(s)</b> • ${esc(d.driverName)}</div>
+        </div>
+        <div style="margin-top:8px;padding-top:7px;border-top:1px dashed #86efac;font-size:11px;color:#15803d;display:flex;flex-wrap:wrap;gap:12px;font-weight:600;">
+          <span>✓ Carburant inclus</span>
+          <span>✓ Chauffeur professionnel dédié</span>
+          <span>✓ Climatisation continue 100%</span>
+          <span>✓ Assurance passagers & Assistance 24/7</span>
+        </div>
+      </div>
+
+      <!-- TABLEAU DÉTAILLÉ DES PRESTATIONS FACTURÉES -->
+      <table style="width:100%;border-collapse:collapse;margin-top:14px;font-size:12px;">
+        <thead>
+          <tr style="background:#082b70;color:#ffffff;text-align:left;">
+            <th style="padding:10px;border-top-left-radius:6px;width:52%;">Désignation & Spécifications de la prestation</th>
+            <th style="padding:10px;text-align:center;width:15%;">Unité / Modalité</th>
+            <th style="padding:10px;text-align:center;width:8%;">Qté</th>
+            <th style="padding:10px;text-align:right;width:12%;">Prix Unit. HT</th>
+            <th style="padding:10px;text-align:right;border-top-right-radius:6px;width:13%;">Total HT</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom:1px solid #e2e8f0;background:#ffffff;">
+            <td style="padding:12px 10px;vertical-align:top;">
+              <div style="font-weight:700;color:#0f172a;font-size:13px;">${esc(d.service)} — ${esc(d.route)}</div>
+              <div style="color:#64748b;font-size:11px;margin-top:3px;line-height:1.4;">
+                Mise à disposition d'un véhicule type <b>${esc(d.vehicleType)}</b> avec chauffeur certifié pour <b>${esc(d.passengers)} passager(s)</b>.<br>
+                Prise en charge : ${esc(d.origin)} ➔ Destination : ${esc(d.destination)}.<br>
+                Frais de carburant, chauffeur professionnel, climatisation et assurance inclus.
+              </div>
+            </td>
+            <td style="padding:12px 10px;text-align:center;color:#475569;vertical-align:top;">Forfait Mission</td>
+            <td style="padding:12px 10px;text-align:center;font-weight:700;color:#0f172a;vertical-align:top;">1</td>
+            <td style="padding:12px 10px;text-align:right;color:#334155;vertical-align:top;">${money(d.subtotal)}</td>
+            <td style="padding:12px 10px;text-align:right;font-weight:700;color:#082b70;vertical-align:top;">${money(d.subtotal)}</td>
+          </tr>
+          ${d.discount > 0 ? `
+            <tr style="border-bottom:1px solid #e2e8f0;background:#f8fafc;">
+              <td style="padding:8px 10px;color:#15803d;font-weight:600;">Remise commerciale accordée par la Direction</td>
+              <td style="padding:8px 10px;text-align:center;color:#15803d;">Remise</td>
+              <td style="padding:8px 10px;text-align:center;color:#15803d;font-weight:700;">1</td>
+              <td style="padding:8px 10px;text-align:right;color:#15803d;">-${money(d.discount)}</td>
+              <td style="padding:8px 10px;text-align:right;color:#15803d;font-weight:700;">-${money(d.discount)}</td>
+            </tr>
+          ` : ''}
+        </tbody>
+      </table>
+
+      <!-- BLOC TOTAUX & ÉTAT DU RÈGLEMENT -->
+      <div style="display:flex;justify-content:space-between;margin-top:14px;gap:15px;align-items:flex-start;flex-wrap:wrap;">
+        <div style="flex:1;min-width:280px;background:#f8fafc;border:1.5px solid ${d.isPaid ? '#86efac' : '#cbd5e1'};border-radius:8px;padding:12px;font-size:11.5px;">
+          ${d.isPaid ? `
+            <div style="display:flex;align-items:center;gap:6px;color:#15803d;font-weight:800;text-transform:uppercase;">
+              <span>✅</span> <span>RÈGLEMENT INTÉGRAL ENREGISTRÉ (QUITTANCE LIBÉRATOIRE)</span>
+            </div>
+            <div style="margin-top:6px;color:#334155;line-height:1.5;">
+              • <b>Statut comptable :</b> <span style="color:#15803d;font-weight:800;">Facture 100% Soldée</span><br>
+              • <b>Date du règlement :</b> <b style="color:#0f172a;">${esc(d.paidDate || d.issueDate)}</b><br>
+              • <b>Mode de paiement :</b> <b>${esc(d.paymentMethod)}</b><br>
+              ${d.paymentRef ? `• <b>Référence transaction :</b> <code style="background:#e2e8f0;padding:1px 4px;border-radius:4px;font-size:11px;">${esc(d.paymentRef)}</code><br>` : ''}
+              • <b>Mention libératoire :</b> Le présent document vaut quittance définitive pour la somme indiquée.
+            </div>
+          ` : `
+            <b style="color:#082b70;text-transform:uppercase;">Instructions de règlement & Coordonnées bancaires :</b>
+            <div style="margin-top:6px;color:#334155;line-height:1.5;">
+              • <b>MonCash Officiel :</b> <span style="color:#ea580c;font-weight:900;font-size:13px;">${esc(d.moncash)}</span><br>
+              • <b>Virement Bancaire :</b> Comptes LAPERLE TOUR HT S.A. (UNIBANK / SOGEBANK)<br>
+              • <b>Chèque ou Espèces :</b> Au siège d'exploitation ou auprès de l'agent habilité.<br>
+              • <b>Devise de facturation :</b> Gourdes Haïtiennes (HTG) • <i>Équivalent estimatif : ~ $ ${esc(d.usdApprox)} USD</i>
+            </div>
+          `}
+        </div>
+
+        <div style="width:280px;background:#ffffff;border:2px solid ${d.isPaid ? '#15803d' : '#082b70'};border-radius:8px;padding:12px;font-size:12px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;color:#475569;">
+            <span>Sous-total Brut HT :</span>
+            <span>${money(d.subtotal)}</span>
+          </div>
+          ${d.discount > 0 ? `
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px;color:#15803d;">
+              <span>Remise commerciale :</span>
+              <span>-${money(d.discount)}</span>
+            </div>
+          ` : ''}
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px;color:#475569;">
+            <span>Taxes & Droits (0%) :</span>
+            <span>0 HTG</span>
+          </div>
+          <div style="border-top:2px solid ${d.isPaid ? '#15803d' : '#082b70'};padding-top:6px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:13.5px;font-weight:900;color:${d.isPaid ? '#15803d' : '#082b70'};">TOTAL NET FACTURÉ :</span>
+            <span style="font-size:19px;font-weight:900;color:${d.isPaid ? '#15803d' : '#ea580c'};">${money(d.amount)}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- CONDITIONS GÉNÉRALES & CLAUSES JURIDIQUES COMPTABLES -->
+      <div style="margin-top:14px;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;background:#ffffff;font-size:11px;color:#475569;line-height:1.45;">
+        <b style="color:#0f172a;">MENTIONS LÉGALES & CONDITIONS COMPTABLES :</b><br>
+        1. <b>Titre comptable officiel :</b> La présente facture commerciale constitue une pièce comptable officielle émise par LAPERLE TOUR HT S.A. en conformité avec la réglementation commerciale en République d'Haïti.<br>
+        2. <b>Exonérations et taxes :</b> Prestation de transport privé et touristique soumise aux barèmes de facturation en vigueur.<br>
+        3. <b>Réclamations :</b> Toute réclamation relative à la prestation doit être notifiée par écrit à la Direction Financière dans un délai de 8 jours suivant la date d'émission.<br>
+        4. <b>Règlement libératoire :</b> Les paiements par chèque ou virement ne sont libératoires qu'après encaissement effectif sur les comptes de la société.
+      </div>
+
+      <!-- DOUBLE BLOC DE SIGNATURES & CACHET OFFICIEL -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px;">
+        <!-- CACHET LAPERLE TOUR HT -->
+        <div style="border:1.5px dashed ${d.isPaid ? '#15803d' : '#082b70'};border-radius:8px;padding:12px;background:#f8fafc;position:relative;min-height:130px;">
+          <div style="font-size:11px;font-weight:800;color:${d.isPaid ? '#15803d' : '#082b70'};">POUR LAPERLE TOUR HT S.A.</div>
+          <div style="font-size:10px;color:#64748b;">Service Comptabilité & Trésorerie</div>
+          <div style="margin-top:10px;display:inline-block;border:2.5px dashed ${d.isPaid ? '#15803d' : '#082b70'};border-radius:50%;width:115px;height:115px;padding:10px;text-align:center;box-sizing:border-box;color:${d.isPaid ? '#15803d' : '#082b70'};transform:rotate(-4deg);background:${d.isPaid ? 'rgba(21,128,61,0.04)' : 'rgba(8,43,112,0.03)'};">
+            <div style="font-size:7.5px;font-weight:900;letter-spacing:0.5px;">★ LAPERLE TOUR HT ★</div>
+            <div style="font-size:9px;font-weight:900;color:${d.isPaid ? '#15803d' : '#f7941d'};margin-top:16px;">${d.isPaid ? 'PAYÉ & ACQUITTÉ' : 'COMPTABILITÉ & FINANCES'}</div>
+            <div style="font-size:8px;font-weight:800;margin-top:4px;">${d.isPaid ? 'VALIDATION REÇUE' : 'CERTIFIÉ CONFORME'}</div>
+            <div style="font-size:7px;color:#64748b;margin-top:4px;">PORT-AU-PRINCE</div>
+          </div>
+          <div style="position:absolute;bottom:10px;right:15px;font-size:10px;color:#475569;font-style:italic;">
+            Le Responsable Financier
+          </div>
+        </div>
+
+        <!-- CADRE ACCUSÉ DE RÉCEPTION CLIENT -->
+        <div style="border:1.5px dashed #64748b;border-radius:8px;padding:12px;background:#ffffff;min-height:130px;display:flex;flex-direction:column;justify-content:space-between;">
+          <div>
+            <div style="font-size:11px;font-weight:800;color:#0f172a;">ACCUSÉ DE RÉCEPTION / VISA DU CLIENT</div>
+            <div style="font-size:10.5px;color:#64748b;margin-top:2px;">Reconnaissance de conformité de la prestation :</div>
+          </div>
+          <div style="font-size:11px;color:#475569;margin-top:25px;">
+            Date de réception : _____ / _____ / 2026<br><br>
+            Nom et Signature du Client :
+          </div>
+        </div>
+      </div>
+
+      <!-- PIED DE PAGE OFFICIEL -->
+      <div style="margin-top:20px;border-top:2px solid #e2e8f0;padding-top:10px;text-align:center;font-size:10.5px;color:#64748b;line-height:1.4;">
+        ${esc(d.company)} • Société Anonyme • ${esc(d.address)}<br>
+        Transport Touristique • Location Véhicules VIP • Navettes Scolaires & Entreprises • Taxi Privé<br>
+        MonCash : <b>${esc(d.moncash)}</b> • Contact : <b>${esc(d.phone)}</b> • Email : <b>${esc(d.email)}</b> • Confort • Sécurité • Confiance
+      </div>
+    </div>
+  `;
+}
+
+function buildFullInvoicePrintDoc(d) {
+  const bodyContent = renderInvoiceDocumentBody(d);
+  return `<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>FACTURE ${esc(d.invoiceNumber)} - LAPERLE TOUR HT</title>
+  <style>
+    body { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif; margin: 0; color: #0f172a; background: #fff; }
+    .doc { max-width: 820px; margin: auto; padding: 30px; }
+    @media print {
+      body { font-size: 11pt; }
+      .doc { padding: 0; max-width: 100%; }
+      button { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="doc">
+    ${bodyContent}
+  </div>
+</body>
+</html>`;
+}
+
+async function printInvoiceDoc(index) {
+  let o = (list("factures") || [])[index];
+  if (!o) {
+    const heading = document.querySelector("#modal h2")?.textContent || "";
+    const m = heading.match(/FAC-[\w-]+/);
+    if (m) o = (list("factures") || []).find(f => f.number === m[0] || f.id === m[0]);
+    if (!o) o = (list("factures") || [])[0] || {};
+  }
+  const d = buildInvoiceDocumentData(o);
+  const printHtml = buildFullInvoicePrintDoc(d);
+  const fileName = `Facture-${d.invoiceNumber || "LAPERLE"}.pdf`;
+  await exportDocumentToPdfOrPrint({
+    containerId: "invoicePreviewContainer",
+    defaultFileName: fileName,
+    fullHtml: printHtml
+  });
+}
+window.printInvoiceDoc = printInvoiceDoc;
+
+function buildReservationDocumentData(o) {
+  const resNumber = o.code || o.id || o.number || o.ID_Reservation || "RES-0001";
+  const linkedProId = o.ID_Proforma || o.proforma || o.proformaGenerated || "";
+  const linkedFacId = o.ID_Facture || o.facture || o.factureGenerated || "";
+
+  const client = list("clients").find(c => c.name === o.client || c.id === o.client || (o.clientId && (c.id === o.clientId || c.clientId === o.clientId))) || {};
+  const user = (state.utilisateurs || []).find(u => (o.clientId && (u.uid === o.clientId || u.id === o.clientId)) || (o.email && u.email && u.email.toLowerCase() === o.email.toLowerCase()) || (o.client && u.name && u.name.toLowerCase() === o.client.toLowerCase())) || {};
+
+  const clientName = o.client || client.name || user.name || "Client";
+  const clientPhone = o.phone || o.telephone || client.phone || client.telephone || user.telephone || user.phone || "Non renseigné";
+  const clientEmail = o.email || client.email || user.email || "Non renseigné";
+  const clientAddress = o.address || o.adresse || client.address || client.zone || user.adresse || user.address || "Port-au-Prince, Haïti";
+
+  const company = localStorage.getItem("LAPERLE_COMPANY") || "LAPERLE TOUR HT S.A.";
+  const phone = localStorage.getItem("LAPERLE_PHONE") || "+509 4440 8687";
+  const email = localStorage.getItem("LAPERLE_EMAIL") || "laperletourht@gmail.com";
+  const slogan = localStorage.getItem("LAPERLE_SLOGAN") || "Le Confort, la Sécurité et la Confiance au cœur d'Haïti";
+  const address = localStorage.getItem("LAPERLE_ADDRESS") || "Port-au-Prince, Haïti";
+  const moncash = localStorage.getItem("LAPERLE_MONCASH") || phone;
+
+  const service = o.service || o.type || "Transport Touristique & Privé";
+  const route = o.route || (o.origin && o.destination ? `${o.origin} ➔ ${o.destination}` : (o.trajet || "Port-au-Prince & Environs"));
+  const origin = o.origin || o.depart || clientAddress || "Port-au-Prince";
+  const destination = o.destination || o.arrivee || o.route || "Destination convenue";
+  const departDate = o.dateDepart || o.date || today();
+  const departTime = o.heureDepart || o.time || o.heure || "08:00";
+  const returnDate = o.dateRetour || o.returnDate || "";
+  const returnTime = o.heureRetour || o.returnTime || "";
+  const passengers = o.passagers || o.passengers || o.places || 1;
+  const vehicleType = o.vehicle || o.vehicule || o.vehiculeType || (Number(passengers) > 4 ? "Minivan Touristique Climatisé" : "Berline Confort Climatisée");
+  const driverName = o.driver || o.chauffeur || "Chauffeur professionnel certifié LAPERLE";
+
+  const driverObj = (list("chauffeurs") || []).find(ch => ch.nom === driverName || ch.name === driverName || (ch.id && ch.id === driverName));
+  const driverPhone = driverObj?.telephone || driverObj?.phone || phone;
+
+  const status = o.status || "Confirmée";
+  const amount = Number(o.amount || o.montantTotal || o.price || 0);
+
+  let paymentStatus = "En attente";
+  if (linkedFacId) {
+    const fac = (list("factures") || []).find(f => f.number === linkedFacId || f.id === linkedFacId);
+    if (fac?.status === "Payée") paymentStatus = "Réglé intégralement (Facture acquittée)";
+    else paymentStatus = `Facturé (${linkedFacId}) - Solde à régler`;
+  } else if (o.payment === "Payé" || o.paymentStatus === "Payé") {
+    paymentStatus = "Réglé intégralement";
+  } else if (o.payment === "Partiel") {
+    paymentStatus = "Acompte versé - Solde à bord";
+  }
+
+  const notes = o.notes || "Prise en charge à l'adresse indiquée. Véhicule climatisé et inspecté avant chaque départ.";
+
+  return {
+    resNumber,
+    linkedProId,
+    linkedFacId,
+    clientName,
+    clientPhone,
+    clientEmail,
+    clientAddress,
+    company,
+    phone,
+    email,
+    slogan,
+    address,
+    moncash,
+    service,
+    route,
+    origin,
+    destination,
+    departDate,
+    departTime,
+    returnDate,
+    returnTime,
+    passengers,
+    vehicleType,
+    driverName,
+    driverPhone,
+    status,
+    amount,
+    paymentStatus,
+    notes,
+    date: o.date || today()
+  };
+}
+
+function renderReservationDocumentBody(d) {
+  const isConfirmed = d.status === "Confirmée" || d.status === "Effectuée";
+  return `
+    <div style="font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif;color:#0f172a;line-height:1.45;background:#ffffff;">
+      <!-- EN-TÊTE OFFICIEL DE LA COMPAGNIE & BADGE DOCUMENT -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #082b70;padding-bottom:16px;gap:15px;flex-wrap:wrap;">
+        <div style="display:flex;gap:14px;align-items:center;">
+          <img src="logo-laperle.jpg" alt="LAPERLE TOUR HT" style="width:115px;height:75px;object-fit:contain;border-radius:8px;border:1px solid #e2e8f0;background:#fff;padding:2px;" onerror="this.style.display='none'">
+          <div>
+            <h1 style="margin:0;font-size:24px;font-weight:900;color:#082b70;letter-spacing:-0.5px;">LAPERLE <span style="color:#f7941d;">TOUR HT</span></h1>
+            <div style="font-size:12px;font-weight:700;color:#1e3a8a;">S.A. • Transport • Tourisme • Location VIP • Navettes</div>
+            <div style="font-size:11px;color:#64748b;margin-top:2px;">« ${esc(d.slogan)} » • Confort • Sécurité • Confiance</div>
+            <div style="font-size:11px;color:#475569;margin-top:3px;">📍 ${esc(d.address)} • 📞 ${esc(d.phone)} • ✉️ ${esc(d.email)}</div>
+          </div>
+        </div>
+        <div style="text-align:right;min-width:230px;">
+          <div style="display:inline-block;background:linear-gradient(135deg, #082b70 0%, #0284c7 100%);color:#ffffff;padding:6px 14px;border-radius:6px;font-weight:800;font-size:15px;letter-spacing:0.5px;box-shadow:0 2px 6px rgba(8,43,112,0.15);">
+            🎟️ BON DE RÉSERVATION
+          </div>
+          <div style="margin-top:6px;font-size:17px;font-weight:900;color:#082b70;">N° ${esc(d.resNumber)}</div>
+          <div style="font-size:11.5px;color:#475569;margin-top:2px;">Date d'enregistrement : <b style="color:#0f172a;">${esc(d.date)}</b></div>
+          <div style="font-size:11.5px;color:#0284c7;margin-top:1px;">Départ programmé : <b>${esc(d.departDate)}</b></div>
+          <div style="margin-top:5px;">
+            <span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:800;background:${isConfirmed ? '#dcfce7' : '#fef3c7'};color:${isConfirmed ? '#166534' : '#92400e'};border:1px solid ${isConfirmed ? '#86efac' : '#fde68a'};">
+              STATUT : ${esc(d.status.toUpperCase())}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- CARTOUCHE DOUBLE-BLOC ÉMETTEUR & PASSAGER -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px;">
+        <div style="background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:8px;padding:12px;">
+          <div style="font-size:11px;font-weight:800;color:#082b70;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e2e8f0;padding-bottom:4px;margin-bottom:6px;display:flex;align-items:center;gap:5px;">
+            <span>🏢</span> <span>AGENCE & DISPATCH VOYAGES</span>
+          </div>
+          <b style="font-size:13px;color:#082b70;">${esc(d.company)}</b><br>
+          <span style="font-size:11.5px;color:#334155;">Régie des Opérations & Dispatch Flotte</span><br>
+          <span style="font-size:11px;color:#475569;">📞 Ligne d'assistance 24/7 : <b>${esc(d.phone)}</b></span><br>
+          <span style="font-size:11px;color:#475569;">✉️ Contact : <b>${esc(d.email)}</b></span><br>
+          <span style="font-size:11px;color:#475569;">📍 Siège : ${esc(d.address)}</span>
+        </div>
+
+        <div style="background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:8px;padding:12px;">
+          <div style="font-size:11px;font-weight:800;color:#082b70;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e2e8f0;padding-bottom:4px;margin-bottom:6px;display:flex;align-items:center;gap:5px;">
+            <span>👤</span> <span>PASSAGER PRINCIPAL / DONNEUR D'ORDRE</span>
+          </div>
+          <b style="font-size:14px;color:#0f172a;">${esc(d.clientName)}</b><br>
+          <span style="font-size:12px;color:#334155;">📞 Téléphone / WhatsApp : <b>${esc(d.clientPhone)}</b></span><br>
+          <span style="font-size:12px;color:#334155;">✉️ Email : <b>${esc(d.clientEmail)}</b></span><br>
+          <span style="font-size:11.5px;color:#475569;">📍 Prise en charge : ${esc(d.clientAddress)}</span>
+          <div style="margin-top:4px;display:flex;gap:10px;flex-wrap:wrap;font-size:11px;">
+            ${d.linkedProId ? `<span style="color:#b45309;font-weight:700;">📄 Proforma : #${esc(d.linkedProId)}</span>` : ''}
+            ${d.linkedFacId ? `<span style="color:#15803d;font-weight:700;">🧾 Facture : #${esc(d.linkedFacId)}</span>` : ''}
+          </div>
+        </div>
+      </div>
+
+      <!-- PLANNING LOGISTIQUE COMPLET DE LA COURSE -->
+      <div style="margin-top:14px;background:#f0f9ff;border:1.5px solid #7dd3fc;border-radius:8px;padding:14px;">
+        <div style="font-size:12px;font-weight:800;color:#0369a1;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+          <span>📍</span> <span>ITINÉRAIRE DÉTAILLÉ & CALENDRIER OPÉRATIONNEL</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(210px, 1fr));gap:12px;font-size:12px;color:#0f172a;">
+          <div style="background:#ffffff;padding:10px;border-radius:6px;border:1px solid #e0f2fe;">
+            <span style="color:#64748b;font-size:11px;">Lieu précis de départ :</span><br>
+            <b style="color:#082b70;font-size:13px;">${esc(d.origin)}</b>
+          </div>
+          <div style="background:#ffffff;padding:10px;border-radius:6px;border:1px solid #e0f2fe;">
+            <span style="color:#64748b;font-size:11px;">Destination d'arrivée :</span><br>
+            <b style="color:#082b70;font-size:13px;">${esc(d.destination)}</b>
+          </div>
+          <div style="background:#ffffff;padding:10px;border-radius:6px;border:1px solid #e0f2fe;">
+            <span style="color:#64748b;font-size:11px;">Convocation & Départ :</span><br>
+            📅 <b>${esc(d.departDate)}</b> à <b>${esc(d.departTime)}</b><br>
+            <small style="color:#0284c7;font-weight:600;">(Présence 15 min avant)</small>
+          </div>
+          ${d.returnDate ? `
+            <div style="background:#ffffff;padding:10px;border-radius:6px;border:1px solid #e0f2fe;">
+              <span style="color:#64748b;font-size:11px;">Retour programmé :</span><br>
+              📅 <b>${esc(d.returnDate)}</b> ${d.returnTime ? 'à <b>' + esc(d.returnTime) + '</b>' : ''}
+            </div>
+          ` : ''}
+          <div style="background:#ffffff;padding:10px;border-radius:6px;border:1px solid #e0f2fe;">
+            <span style="color:#64748b;font-size:11px;">Véhicule assigné :</span><br>
+            🚘 <b>${esc(d.vehicleType)}</b>
+          </div>
+          <div style="background:#ffffff;padding:10px;border-radius:6px;border:1px solid #e0f2fe;">
+            <span style="color:#64748b;font-size:11px;">Équipage & Passagers :</span><br>
+            👥 <b>${esc(d.passengers)} passager(s)</b><br>
+            👨‍✈️ <b>${esc(d.driverName)}</b>
+          </div>
+        </div>
+        <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #7dd3fc;font-size:11px;color:#0369a1;display:flex;flex-wrap:wrap;gap:12px;font-weight:600;">
+          <span>✓ Chauffeur professionnel dédié</span>
+          <span>✓ Carburant inclus</span>
+          <span>✓ Climatisation continue 100%</span>
+          <span>✓ Assistance bagages & transport sécurisé</span>
+          <span>✓ Prise en charge porte-à-porte</span>
+        </div>
+      </div>
+
+      <!-- RÉCAPITULATIF TARIFAIRE & RÈGLEMENT -->
+      <div style="display:flex;justify-content:space-between;margin-top:14px;gap:15px;align-items:flex-start;flex-wrap:wrap;">
+        <div style="flex:1;min-width:280px;background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:8px;padding:12px;font-size:11.5px;">
+          <b style="color:#082b70;text-transform:uppercase;">Détails financiers & Modalités de la mission :</b>
+          <div style="margin-top:6px;color:#334155;line-height:1.5;">
+            • <b>Service sélectionné :</b> <b>${esc(d.service)}</b><br>
+            • <b>Statut du règlement :</b> <span style="color:#15803d;font-weight:800;">${esc(d.paymentStatus)}</span><br>
+            • <b>MonCash officiel :</b> <b>${esc(d.moncash)}</b> (Mentionner réf #${esc(d.resNumber)})<br>
+            • <b>Assistance & Contact régie :</b> <b>${esc(d.phone)}</b>
+          </div>
+        </div>
+
+        <div style="width:280px;background:#ffffff;border:2px solid #082b70;border-radius:8px;padding:12px;font-size:12px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;color:#475569;">
+            <span>Prestation de transport :</span>
+            <span>${money(d.amount)}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px;color:#475569;">
+            <span>Assurance & Carburant :</span>
+            <span style="color:#15803d;font-weight:700;">Inclus</span>
+          </div>
+          <div style="border-top:2px solid #082b70;padding-top:6px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:13.5px;font-weight:900;color:#082b70;">MONTANT TOTAL :</span>
+            <span style="font-size:19px;font-weight:900;color:#082b70;">${money(d.amount)}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- CONSIGNES DU PASSAGER & SÉCURITÉ DE ROUTE -->
+      <div style="margin-top:14px;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;background:#ffffff;font-size:11px;color:#475569;line-height:1.45;">
+        <b style="color:#0f172a;">CONSIGNES IMPORTANTES POUR LE PASSAGER & RÈGLES DE SÉCURITÉ :</b><br>
+        1. <b>Ponctualité :</b> Merci de vous tenir prêt au lieu de rendez-vous 15 minutes avant l'heure fixée de départ.<br>
+        2. <b>Sécurité à bord :</b> Le port de la ceinture de sécurité est obligatoire pour l'ensemble des passagers. Véhicule strictement non-fumeur.<br>
+        3. <b>Bagages & Effets personnels :</b> Les bagages sont pris en charge avec soin. Veuillez vérifier l'habitacle avant de quitter le véhicule.<br>
+        4. <b>Modification ou imprévu :</b> Tout changement d'adresse ou d'horaire doit être communiqué sans délai à la régie centrale au <b>${esc(d.phone)}</b>.
+      </div>
+
+      <!-- DOUBLE BLOC DE SIGNATURES & CACHET OFFICIEL -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px;">
+        <!-- CACHET LAPERLE TOUR HT -->
+        <div style="border:1.5px dashed #082b70;border-radius:8px;padding:12px;background:#f8fafc;position:relative;min-height:130px;">
+          <div style="font-size:11px;font-weight:800;color:#082b70;">POUR LAPERLE TOUR HT S.A.</div>
+          <div style="font-size:10px;color:#64748b;">Régie d'Exploitation & Dispatch Flotte</div>
+          <div style="margin-top:10px;display:inline-block;border:2.5px dashed #082b70;border-radius:50%;width:115px;height:115px;padding:10px;text-align:center;box-sizing:border-box;color:#082b70;transform:rotate(-4deg);background:rgba(8,43,112,0.03);">
+            <div style="font-size:7.5px;font-weight:900;letter-spacing:0.5px;">★ LAPERLE TOUR HT ★</div>
+            <div style="font-size:9.5px;font-weight:900;color:#0284c7;margin-top:16px;">RÉGIE D'EXPLOITATION</div>
+            <div style="font-size:8px;font-weight:800;margin-top:4px;">MISSION CONFIRMÉE</div>
+            <div style="font-size:7px;color:#64748b;margin-top:4px;">PORT-AU-PRINCE</div>
+          </div>
+          <div style="position:absolute;bottom:10px;right:15px;font-size:10px;color:#475569;font-style:italic;">
+            Le Responsable de Dispatch
+          </div>
+        </div>
+
+        <!-- CADRE ÉMARGEMENT PASSAGER -->
+        <div style="border:1.5px dashed #64748b;border-radius:8px;padding:12px;background:#ffffff;min-height:130px;display:flex;flex-direction:column;justify-content:space-between;">
+          <div>
+            <div style="font-size:11px;font-weight:800;color:#0f172a;">LE PASSAGER / CLIENT</div>
+            <div style="font-size:10.5px;color:#64748b;margin-top:2px;">Visa de prise en charge et acceptation des consignes :</div>
+          </div>
+          <div style="font-size:11px;color:#475569;margin-top:25px;">
+            Date : _____ / _____ / 2026<br><br>
+            Signature du passager :
+          </div>
+        </div>
+      </div>
+
+      <!-- PIED DE PAGE OFFICIEL -->
+      <div style="margin-top:20px;border-top:2px solid #e2e8f0;padding-top:10px;text-align:center;font-size:10.5px;color:#64748b;line-height:1.4;">
+        ${esc(d.company)} • Société Anonyme • ${esc(d.address)}<br>
+        Transport Touristique • Location Véhicules VIP • Navettes Scolaires & Entreprises • Taxi Privé<br>
+        MonCash : <b>${esc(d.moncash)}</b> • Contact : <b>${esc(d.phone)}</b> • Email : <b>${esc(d.email)}</b> • Confort • Sécurité • Confiance
+      </div>
+    </div>
+  `;
+}
+
+function buildFullReservationPrintDoc(d) {
+  const bodyContent = renderReservationDocumentBody(d);
+  return `<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>BON DE RÉSERVATION ${esc(d.resNumber)} - LAPERLE TOUR HT</title>
+  <style>
+    body { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif; margin: 0; color: #0f172a; background: #fff; }
+    .doc { max-width: 820px; margin: auto; padding: 30px; }
+    @media print {
+      body { font-size: 11pt; }
+      .doc { padding: 0; max-width: 100%; }
+      button { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="doc">
+    ${bodyContent}
+  </div>
+</body>
+</html>`;
+}
+
+async function printReservationDoc(index) {
+  let o = (list("reservations") || [])[index];
+  if (!o) {
+    const heading = document.querySelector("#modal h2")?.textContent || "";
+    const m = heading.match(/RES-[\w-]+/);
+    if (m) o = (list("reservations") || []).find(r => r.code === m[0] || r.id === m[0]);
+    if (!o) o = (list("reservations") || [])[0] || {};
+  }
+  const d = buildReservationDocumentData(o);
+  const printHtml = buildFullReservationPrintDoc(d);
+  const fileName = `Bon-Reservation-${d.resNumber || "LAPERLE"}.pdf`;
+  await exportDocumentToPdfOrPrint({
+    containerId: "reservationPreviewContainer",
+    defaultFileName: fileName,
+    fullHtml: printHtml
+  });
+}
+window.printReservationDoc = printReservationDoc;
+
+function buildPaymentReceiptDocumentData(o) {
+  const payNumber = o.number || o.id || o.ID_Paiement || "REC-0001";
+  const linkedFacId = o.ID_Facture || o.facture || o.factureId || "";
+  const linkedProId = o.ID_Proforma || o.proforma || o.proformaId || "";
+  const linkedResId = o.ID_Reservation || o.reservationId || "";
+
+  const client = list("clients").find(c => c.name === o.client || c.id === o.client || (o.clientId && (c.id === o.clientId || c.clientId === o.clientId))) || {};
+  const user = (state.utilisateurs || []).find(u => (o.clientId && (u.uid === o.clientId || u.id === o.clientId)) || (o.email && u.email && u.email.toLowerCase() === o.email.toLowerCase()) || (o.client && u.name && u.name.toLowerCase() === o.client.toLowerCase())) || {};
+
+  const clientName = o.client || client.name || user.name || "Client";
+  const clientPhone = o.phone || o.telephone || client.phone || client.telephone || user.telephone || user.phone || "Non renseigné";
+  const clientEmail = o.email || client.email || user.email || "Non renseigné";
+  const clientAddress = o.address || o.adresse || client.address || client.zone || user.adresse || user.address || "Port-au-Prince, Haïti";
+
+  const company = localStorage.getItem("LAPERLE_COMPANY") || "LAPERLE TOUR HT S.A.";
+  const phone = localStorage.getItem("LAPERLE_PHONE") || "+509 4440 8687";
+  const email = localStorage.getItem("LAPERLE_EMAIL") || "laperletourht@gmail.com";
+  const slogan = localStorage.getItem("LAPERLE_SLOGAN") || "Le Confort, la Sécurité et la Confiance au cœur d'Haïti";
+  const address = localStorage.getItem("LAPERLE_ADDRESS") || "Port-au-Prince, Haïti";
+  const moncash = localStorage.getItem("LAPERLE_MONCASH") || phone;
+
+  const amount = Number(o.amount || 0);
+  const method = o.method || o.mode || "MonCash";
+  const reference = o.reference || o.ref || "Enregistrement direct";
+  const date = o.date || today();
+
+  return {
+    payNumber,
+    linkedFacId,
+    linkedProId,
+    linkedResId,
+    clientName,
+    clientPhone,
+    clientEmail,
+    clientAddress,
+    company,
+    phone,
+    email,
+    slogan,
+    address,
+    moncash,
+    amount,
+    method,
+    reference,
+    date,
+    notes: o.notes || "Reçu officiel constatant le versement libératoire de la somme indiquée."
+  };
+}
+
+function renderPaymentReceiptDocumentBody(d) {
+  return `
+    <div style="font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif;color:#0f172a;line-height:1.45;background:#ffffff;">
+      <!-- EN-TÊTE OFFICIEL DE LA COMPAGNIE & BADGE DOCUMENT -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #15803d;padding-bottom:16px;gap:15px;flex-wrap:wrap;">
+        <div style="display:flex;gap:14px;align-items:center;">
+          <img src="logo-laperle.jpg" alt="LAPERLE TOUR HT" style="width:115px;height:75px;object-fit:contain;border-radius:8px;border:1px solid #e2e8f0;background:#fff;padding:2px;" onerror="this.style.display='none'">
+          <div>
+            <h1 style="margin:0;font-size:24px;font-weight:900;color:#082b70;letter-spacing:-0.5px;">LAPERLE <span style="color:#f7941d;">TOUR HT</span></h1>
+            <div style="font-size:12px;font-weight:700;color:#1e3a8a;">S.A. • Transport • Tourisme • Location VIP • Navettes</div>
+            <div style="font-size:11px;color:#64748b;margin-top:2px;">« ${esc(d.slogan)} » • Confort • Sécurité • Confiance</div>
+            <div style="font-size:11px;color:#475569;margin-top:3px;">📍 ${esc(d.address)} • 📞 ${esc(d.phone)} • ✉️ ${esc(d.email)}</div>
+          </div>
+        </div>
+        <div style="text-align:right;min-width:230px;">
+          <div style="display:inline-block;background:linear-gradient(135deg, #15803d 0%, #16a34a 100%);color:#ffffff;padding:6px 14px;border-radius:6px;font-weight:800;font-size:15px;letter-spacing:0.5px;box-shadow:0 2px 6px rgba(22,163,74,0.2);">
+            🧾 REÇU DE RÈGLEMENT
+          </div>
+          <div style="margin-top:6px;font-size:17px;font-weight:900;color:#15803d;">N° ${esc(d.payNumber)}</div>
+          <div style="font-size:11.5px;color:#475569;margin-top:2px;">Date du versement : <b style="color:#0f172a;">${esc(d.date)}</b></div>
+          <div style="margin-top:5px;">
+            <span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:800;background:#dcfce7;color:#166534;border:1px solid #86efac;">
+              ✓ SOMME ENCAISSÉE
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- CARTOUCHE DOUBLE-BLOC ÉMETTEUR & PAYEUR -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px;">
+        <div style="background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:8px;padding:12px;">
+          <div style="font-size:11px;font-weight:800;color:#082b70;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e2e8f0;padding-bottom:4px;margin-bottom:6px;">
+            <span>🏢</span> <span>BÉNÉFICIAIRE & CAISSE CENTRALE</span>
+          </div>
+          <b style="font-size:13px;color:#082b70;">${esc(d.company)}</b><br>
+          <span style="font-size:11.5px;color:#334155;">Direction Financière & Caisse Générale</span><br>
+          <span style="font-size:11px;color:#475569;">📞 Contact : <b>${esc(d.phone)}</b></span><br>
+          <span style="font-size:11px;color:#475569;">📍 Siège : ${esc(d.address)}</span>
+        </div>
+
+        <div style="background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:8px;padding:12px;">
+          <div style="font-size:11px;font-weight:800;color:#082b70;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e2e8f0;padding-bottom:4px;margin-bottom:6px;">
+            <span>👤</span> <span>PAYEUR / CLIENT DÉPOSITAIRE</span>
+          </div>
+          <b style="font-size:14px;color:#0f172a;">${esc(d.clientName)}</b><br>
+          <span style="font-size:12px;color:#334155;">📞 Téléphone : <b>${esc(d.clientPhone)}</b></span><br>
+          <span style="font-size:12px;color:#334155;">✉️ Email : <b>${esc(d.clientEmail)}</b></span><br>
+          <span style="font-size:11.5px;color:#475569;">📍 Adresse : ${esc(d.clientAddress)}</span>
+          <div style="margin-top:4px;display:flex;gap:10px;flex-wrap:wrap;font-size:11px;">
+            ${d.linkedFacId ? `<span style="color:#15803d;font-weight:700;">🧾 Facture : #${esc(d.linkedFacId)}</span>` : ''}
+            ${d.linkedResId ? `<span style="color:#0369a1;font-weight:700;">🔗 Réservation : #${esc(d.linkedResId)}</span>` : ''}
+          </div>
+        </div>
+      </div>
+
+      <!-- DÉTAILS DU PAIEMENT ENCAISSÉ -->
+      <div style="margin-top:14px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+          <div>
+            <div style="font-size:11px;color:#166534;font-weight:700;text-transform:uppercase;">Montant réglé et encaissé :</div>
+            <div style="font-size:24px;font-weight:900;color:#15803d;">${money(d.amount)}</div>
+          </div>
+          <div style="font-size:12px;color:#334155;line-height:1.6;">
+            • <b>Mode de paiement :</b> <span style="font-weight:700;color:#0f172a;">${esc(d.method)}</span><br>
+            • <b>Référence / Reçu :</b> <code style="background:#e2e8f0;padding:1px 5px;border-radius:4px;">${esc(d.reference)}</code><br>
+            • <b>Date de réception :</b> <b>${esc(d.date)}</b>
+          </div>
+        </div>
+      </div>
+
+      <!-- CACHET DE CAISSE & SIGNATURES -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px;">
+        <div style="border:1.5px dashed #15803d;border-radius:8px;padding:12px;background:#f8fafc;position:relative;min-height:120px;">
+          <div style="font-size:11px;font-weight:800;color:#15803d;">POUR LA CAISSE LAPERLE TOUR HT S.A.</div>
+          <div style="margin-top:8px;display:inline-block;border:2.5px dashed #15803d;border-radius:50%;width:105px;height:105px;padding:8px;text-align:center;box-sizing:border-box;color:#15803d;transform:rotate(-4deg);background:rgba(21,128,61,0.04);">
+            <div style="font-size:7px;font-weight:900;">★ LAPERLE TOUR HT ★</div>
+            <div style="font-size:9px;font-weight:900;margin-top:14px;">CAISSE PRINCIPALE</div>
+            <div style="font-size:8px;font-weight:800;margin-top:3px;">PAYÉ & SOLDÉ</div>
+          </div>
+          <div style="position:absolute;bottom:10px;right:15px;font-size:10px;color:#475569;font-style:italic;">
+            Le Caissier Habilité
+          </div>
+        </div>
+
+        <div style="border:1.5px dashed #64748b;border-radius:8px;padding:12px;background:#ffffff;min-height:120px;display:flex;flex-direction:column;justify-content:space-between;">
+          <div style="font-size:11px;font-weight:800;color:#0f172a;">LE CLIENT / DÉPOSITAIRE</div>
+          <div style="font-size:11px;color:#475569;margin-top:25px;">
+            Date : _____ / _____ / 2026<br><br>
+            Signature :
+          </div>
+        </div>
+      </div>
+
+      <!-- PIED DE PAGE OFFICIEL -->
+      <div style="margin-top:20px;border-top:2px solid #e2e8f0;padding-top:10px;text-align:center;font-size:10.5px;color:#64748b;line-height:1.4;">
+        ${esc(d.company)} • Société Anonyme • ${esc(d.address)} • Contact : <b>${esc(d.phone)}</b>
+      </div>
+    </div>
+  `;
+}
+
+function buildFullPaymentReceiptPrintDoc(d) {
+  const bodyContent = renderPaymentReceiptDocumentBody(d);
+  return `<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>REÇU DE RÈGLEMENT ${esc(d.payNumber)} - LAPERLE TOUR HT</title>
+  <style>
+    body { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif; margin: 0; color: #0f172a; background: #fff; }
+    .doc { max-width: 820px; margin: auto; padding: 30px; }
+    @media print {
+      body { font-size: 11pt; }
+      .doc { padding: 0; max-width: 100%; }
+      button { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="doc">
+    ${bodyContent}
+  </div>
+</body>
+</html>`;
+}
+
+async function printPaymentReceiptDoc(index) {
+  let o = (list("paiements") || [])[index];
+  if (!o) {
+    const heading = document.querySelector("#modal h2")?.textContent || "";
+    const m = heading.match(/REC-[\w-]+/);
+    if (m) o = (list("paiements") || []).find(p => p.number === m[0] || p.id === m[0]);
+    if (!o) o = (list("paiements") || [])[0] || {};
+  }
+  const d = buildPaymentReceiptDocumentData(o);
+  const printHtml = buildFullPaymentReceiptPrintDoc(d);
+  const fileName = `Recu-Reglement-${d.payNumber || "LAPERLE"}.pdf`;
+  await exportDocumentToPdfOrPrint({
+    containerId: "paymentPreviewContainer",
+    defaultFileName: fileName,
+    fullHtml: printHtml
+  });
+}
+window.printPaymentReceiptDoc = printPaymentReceiptDoc;
 
 function printDocument(type, index) {
   const isQuote = type === "proforma" || type === "quote";
@@ -11459,169 +12449,74 @@ function printDocument(type, index) {
   const o = list(key)[index];
   if (!o) return;
 
-  // Si c'est un Devis Proforma, on utilise le moteur proforma enrichi
+  const modalEl = document.getElementById("modal");
+  if (modalEl) modalEl.style.maxWidth = "920px";
+
+  // 1. DEVIS PROFORMA ENRICHI
   if (isQuote) {
     const d = buildProformaDocumentData(o);
-    const fullPrintHtml = buildFullProformaPrintDoc(d);
     const previewBody = renderProformaDocumentBody(d);
 
-    let w = null;
-    try {
-      w = window.open("", "_blank", "width=920,height=1000");
-    } catch (e) {
-      w = null;
-    }
-
-    if (w) {
-      w.document.write(fullPrintHtml);
-      w.document.close();
-    } else {
-      document.getElementById("modal").innerHTML = `
-        <div class="modal-head">
-          <div>
-            <h2 style="color:#082b70">📄 DEVIS PROFORMA ${esc(d.quoteNumber)}</h2>
-            <small>Aperçu officiel de l'offre commerciale LAPERLE TOUR HT</small>
-          </div>
-          <button class="close" onclick="closeModal()">×</button>
+    document.getElementById("modal").innerHTML = `
+      <div class="modal-head">
+        <div>
+          <h2 style="color:#082b70">📄 DEVIS PROFORMA ${esc(d.quoteNumber)}</h2>
+          <small>Aperçu officiel de l'offre commerciale LAPERLE TOUR HT</small>
         </div>
-        <div id="proformaPreviewContainer" style="background:#fff;border:1.5px solid #cbd5e1;border-radius:10px;padding:20px;max-height:72vh;overflow-y:auto;margin-bottom:15px;box-shadow:0 4px 15px rgba(0,0,0,0.04)">
-          ${previewBody}
-        </div>
-        <div class="form-actions" style="flex-wrap:wrap">
-          <button class="secondary" onclick="closeModal()">Fermer</button>
-          <button class="primary" style="background:#082b70;border-color:#082b70" onclick="printProformaDoc(${index})">🖨️ Imprimer / Télécharger PDF</button>
-          ${(() => {
-            const roles = normalizeRoles(currentUserRoles);
-            const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
-            if (isStaff) {
-              return `
-                <button class="primary" style="background:#0284c7;border-color:#0284c7" onclick="closeModal();sendProformaToClient(${index})">✉️ Transmettre au Client</button>
-                ${o.factureGenerated
-                  ? `<button class="primary" style="background:#15803d;border-color:#15803d" onclick="closeModal();handleOpenDocumentFromAlert('facture', '${esc(o.factureGenerated)}')">🧾 Voir Facture (${esc(o.factureGenerated)})</button>`
-                  : `<button class="primary" style="background:#ea580c;border-color:#ea580c;font-weight:700" onclick="closeModal();createInvoiceFromQuote(${index})">⚡ Émettre Facture ${o.demandeFacture ? '(' + esc(o.moyenPaiement || '') + ')' : ''}</button>`}
-              `;
+        <button class="close" onclick="closeModal()">×</button>
+      </div>
+      <div id="proformaPreviewContainer" style="background:#fff;border:1.5px solid #cbd5e1;border-radius:10px;padding:20px;max-height:72vh;overflow-y:auto;margin-bottom:15px;box-shadow:0 4px 15px rgba(0,0,0,0.04)">
+        ${previewBody}
+      </div>
+      <div class="form-actions" style="flex-wrap:wrap">
+        <button class="secondary" onclick="closeModal()">Fermer</button>
+        <button class="primary" style="background:#082b70;border-color:#082b70;font-weight:700" onclick="printProformaDoc(${index})" title="Télécharger ce devis proforma au format PDF">📥 Télécharger PDF Officiel</button>
+        ${(() => {
+          const roles = normalizeRoles(currentUserRoles);
+          const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
+          if (isStaff) {
+            return `
+              <button class="primary" style="background:#0284c7;border-color:#0284c7" onclick="closeModal();sendProformaToClient(${index})">✉️ Transmettre au Client</button>
+              ${o.factureGenerated
+                ? `<button class="primary" style="background:#15803d;border-color:#15803d" onclick="closeModal();handleOpenDocumentFromAlert('facture', '${esc(o.factureGenerated)}')">🧾 Voir Facture (${esc(o.factureGenerated)})</button>`
+                : `<button class="primary" style="background:#ea580c;border-color:#ea580c;font-weight:700" onclick="closeModal();createInvoiceFromQuote(${index})">⚡ Émettre Facture ${o.demandeFacture ? '(' + esc(o.moyenPaiement || '') + ')' : ''}</button>`}
+            `;
+          } else {
+            if (o.factureGenerated) {
+              return `<button class="primary" style="background:#15803d;border-color:#15803d;font-weight:700" onclick="closeModal();handleOpenDocumentFromAlert('facture', '${esc(o.factureGenerated)}')">🧾 Voir ma Facture Officielle</button>`;
+            } else if (o.demandeFacture) {
+              return `<span class="badge" style="background:#e0f2fe;color:#0369a1;padding:8px 14px;font-size:12px;font-weight:700">⏳ Facture demandée via ${esc(o.moyenPaiement || 'paiement')}</span>`;
             } else {
-              if (o.factureGenerated) {
-                return `<button class="primary" style="background:#15803d;border-color:#15803d;font-weight:700" onclick="closeModal();handleOpenDocumentFromAlert('facture', '${esc(o.factureGenerated)}')">🧾 Voir ma Facture Officielle</button>`;
-              } else if (o.demandeFacture) {
-                return `<span class="badge" style="background:#e0f2fe;color:#0369a1;padding:8px 14px;font-size:12px;font-weight:700">⏳ Facture demandée via ${esc(o.moyenPaiement || 'paiement')}</span>`;
-              } else {
-                return `<button class="primary" style="background:#16a34a;border-color:#16a34a;font-weight:700" onclick="closeModal();openRequestInvoiceFromQuoteModal(${index})">💳 DEMANDER FACTURE ET MOYEN DE PAIEMENT</button>`;
-              }
+              return `<button class="primary" style="background:#16a34a;border-color:#16a34a;font-weight:700" onclick="closeModal();openRequestInvoiceFromQuoteModal(${index})">💳 DEMANDER FACTURE ET MOYEN DE PAIEMENT</button>`;
             }
-          })()}
-        </div>
-      `;
-      document.getElementById("modalBackdrop").classList.add("open");
-    }
+          }
+        })()}
+      </div>
+    `;
+    document.getElementById("modalBackdrop").classList.add("open");
     return;
   }
 
-  // Autres types de documents (Facture, Réservation, Reçu)
-  let title = "FACTURE OFFICIELLE";
-  if (isReservation) title = "BON DE RÉSERVATION";
-  else if (isPayment) title = "REÇU OFFICIEL DE RÈGLEMENT";
+  // 2. FACTURE OFFICIELLE ENRICHIE
+  if (isInvoice) {
+    const d = buildInvoiceDocumentData(o);
+    const previewBody = renderInvoiceDocumentBody(d);
 
-  const client = list("clients").find(c => c.name === o.client || c.id === o.client || (o.clientId && (c.id === o.clientId || c.clientId === o.clientId))) || {};
-  const user = (state.utilisateurs || []).find(u => (o.clientId && (u.uid === o.clientId || u.id === o.clientId)) || (o.email && u.email && u.email.toLowerCase() === o.email.toLowerCase()) || (o.client && u.name && u.name.toLowerCase() === o.client.toLowerCase())) || {};
-
-  const clientName = o.client || client.name || user.name || "Client";
-  const clientPhone = o.phone || o.telephone || client.phone || client.telephone || user.telephone || user.phone || "Non renseigné";
-  const clientEmail = o.email || client.email || user.email || "Non renseigné";
-  const clientAddress = o.address || o.adresse || client.address || client.zone || user.adresse || user.address || "Port-au-Prince, Haïti";
-
-  const company = localStorage.getItem("LAPERLE_COMPANY") || "LAPERLE TOUR HT";
-  const phone = localStorage.getItem("LAPERLE_PHONE") || "+509 4440 8687";
-  const email = localStorage.getItem("LAPERLE_EMAIL") || "laperletourht@gmail.com";
-  const slogan = localStorage.getItem("LAPERLE_SLOGAN") || "Un coup d'œil sur Haïti";
-  const address = localStorage.getItem("LAPERLE_ADDRESS") || "Port-au-Prince, Haïti";
-  const moncash = localStorage.getItem("LAPERLE_MONCASH") || phone;
-
-  let w = null;
-  try {
-    w = window.open("", "_blank", "width=900,height=1000");
-  } catch (e) {
-    w = null;
-  }
-
-  const docHTML = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${title} ${esc(o.number || o.id || o.code || '')}</title>
-  <style>
-  body{font-family:Arial,sans-serif;margin:0;color:#102b61;background:#fff}.doc{max-width:800px;margin:auto;padding:40px}.head{display:flex;justify-content:space-between;align-items:center;border-bottom:6px solid #123c98;padding-bottom:18px}.logo{width:150px;height:100px;object-fit:contain}.brand h1{margin:0;font-size:27px}.brand h1 span{color:#f7941d}.brand p{margin:6px 0;color:#526b8e}.tag{font-weight:700;color:#35a853;font-size:12px}.title{font-size:30px;font-weight:800;margin:28px 0 15px}.meta{display:flex;gap:15px}.box{flex:1;border:1px solid #dce4ee;border-radius:10px;padding:15px}.total{text-align:right;font-size:25px;font-weight:800;margin:25px 0;color:#0b3275}.foot{margin-top:60px;border-top:3px solid #35a853;padding-top:12px;text-align:center;font-size:12px;color:#667991}@media print{button{display:none}}
-  </style></head><body><div class="doc">
-  <div class="head"><img class="logo" src="logo-laperle.jpg"><div class="brand"><h1>LAPERLE <span>TOUR HT</span></h1><p>${esc(slogan)}</p><div class="tag">Confort • Sécurité • Confiance</div></div></div>
-  <div class="title">${title}</div>
-  <div class="meta">
-    <div class="box">
-      <b>DESTINATAIRE / CLIENT</b><br>
-      <strong>Nom complet :</strong> ${esc(clientName)}<br>
-      <strong>Téléphone :</strong> ${esc(clientPhone)}<br>
-      <strong>Email :</strong> ${esc(clientEmail)}<br>
-      <strong>Adresse complète :</strong> ${esc(clientAddress)}
-    </div>
-    <div class="box">
-      <b>DOCUMENT</b><br>
-      N° ${esc(o.number || o.id || o.code || '—')}<br>
-      Date : ${esc(o.date || today())}
-      ${(o.ID_Reservation || o.reservationId) ? `<br><b>Réf. Réservation :</b> ${esc(o.ID_Reservation || o.reservationId)}` : ""}
-      ${(!isQuote && (o.ID_Proforma || o.proforma || o.proformaId)) ? `<br><b>N° Devis Proforma :</b> ${esc(o.ID_Proforma || o.proforma || o.proformaId)}` : ""}
-      ${(!isInvoice && (o.ID_Facture || o.facture || o.factureId)) ? `<br><b>N° Facture liée :</b> ${esc(o.ID_Facture || o.facture || o.factureId)}` : ""}
-      ${(!isPayment && (o.ID_Paiement || o.paiementId || o.payId)) ? `<br><b>N° Reçu de Paiement :</b> ${esc(o.ID_Paiement || o.paiementId || o.payId)}` : ""}
-      ${isPayment && o.method ? `<br><b>Mode de règlement :</b> ${esc(o.method)}` : ""}
-      ${isPayment && o.reference ? `<br><b>Réf. Transaction / Reçu :</b> ${esc(o.reference)}` : ""}
-    </div>
-  </div>
-  <div class="box" style="margin-top:15px">
-    <b>Détails de la prestation</b>
-    <p>Service : ${esc(o.service || (isPayment ? "Règlement de prestation transport" : "Transport & Services LAPERLE TOUR HT"))}</p>
-    <p>Trajet : ${esc(o.route || (o.origin && o.destination ? o.origin + " ➔ " + o.destination : "—"))}</p>
-    <p>${isQuote ? "Validité" : "Échéance / Statut"} : ${esc(isQuote ? (o.validity || "—") : (o.due || o.status || "—"))}</p>
-  </div>
-  <div class="total">TOTAL : ${money(o.amount || 0)}</div>
-  <p><b>Paiement :</b> MonCash ${esc(moncash)} | <b>Contact :</b> ${esc(phone)} | <b>Email :</b> ${esc(email)}</p>
-  <div class="foot">${esc(company)} • ${esc(address)} • Transport • Tourisme • Location • Abonnement • Taxi<br>Confort • Sécurité • Confiance</div>
-  <script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></div></body></html>`;
-
-  if (w) {
-    w.document.write(docHTML);
-    w.document.close();
-  } else {
     document.getElementById("modal").innerHTML = `
       <div class="modal-head">
-        <div><h2>${title} ${esc(o.number || o.id || o.code || '')}</h2><small>Aperçu du document</small></div>
+        <div>
+          <h2 style="color:#082b70">🧾 FACTURE OFFICIELLE ${esc(d.invoiceNumber)}</h2>
+          <small>Pièce comptable certifiée LAPERLE TOUR HT S.A.</small>
+        </div>
         <button class="close" onclick="closeModal()">×</button>
       </div>
-      <div style="background:#fff;border:1px solid #dce4ee;border-radius:10px;padding:20px;margin-bottom:15px">
-        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #123c98;padding-bottom:12px">
-          <div><h3 style="margin:0;color:#082b70">LAPERLE <span style="color:#f7941d">TOUR HT</span></h3><small style="color:#667991">${esc(slogan)}</small></div>
-          <div style="text-align:right"><div style="font-weight:800;font-size:18px;color:#082b70">${title}</div><span style="color:#f7941d;font-weight:700">N° ${esc(o.number || o.id || o.code || '')}</span></div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
-          <div class="info">
-            <b>DESTINATAIRE / CLIENT</b><br>
-            <strong>Nom complet :</strong> ${esc(clientName)}<br>
-            <strong>Téléphone :</strong> ${esc(clientPhone)}<br>
-            <strong>Email :</strong> ${esc(clientEmail)}<br>
-            <strong>Adresse complète :</strong> ${esc(clientAddress)}
-          </div>
-          <div class="info">
-            <b>DOCUMENT</b><br>
-            Date : ${esc(o.date || today())}
-            ${isQuote ? "" : (o.proforma ? "<br>N° Proforma lié : " + esc(o.proforma) : "")}
-            ${o.reservationId ? "<br>Réf. Réservation : " + esc(o.reservationId) : ""}
-            ${isPayment && o.method ? "<br>Mode de règlement : " + esc(o.method) : ""}
-            ${isPayment && o.reference ? "<br>Référence reçu : " + esc(o.reference) : ""}
-          </div>
-        </div>
-        <div class="info" style="margin-top:10px">
-          <b>Détails</b><br>Service : ${esc(o.service || (isPayment ? "Règlement de prestation transport" : "Transport LAPERLE TOUR HT"))}<br>Trajet : ${esc(o.route || (o.origin && o.destination ? o.origin + " ➔ " + o.destination : "—"))}<br>${isQuote ? "Validité" : "Échéance / Statut"} : ${esc(isQuote ? (o.validity || "—") : (o.due || o.status || "—"))}
-        </div>
-        <div style="text-align:right;font-size:20px;font-weight:800;color:#0b3275;margin-top:15px">TOTAL : ${money(o.amount || 0)}</div>
-        <p style="font-size:12px;color:#555;margin:8px 0 0">Paiement : MonCash ${esc(moncash)} • Contact : ${esc(phone)} • ${esc(email)}</p>
+      <div id="invoicePreviewContainer" style="background:#fff;border:1.5px solid #cbd5e1;border-radius:10px;padding:20px;max-height:72vh;overflow-y:auto;margin-bottom:15px;box-shadow:0 4px 15px rgba(0,0,0,0.04)">
+        ${previewBody}
       </div>
-      <div class="form-actions">
+      <div class="form-actions" style="flex-wrap:wrap">
         <button class="secondary" onclick="closeModal()">Fermer</button>
-        <button class="primary" onclick="window.print()">🖨️ Imprimer / PDF</button>
-        ${!isQuote ? (() => {
+        <button class="primary" style="background:#082b70;border-color:#082b70;font-weight:700" onclick="printInvoiceDoc(${index})" title="Télécharger la facture officielle au format PDF">📥 Télécharger PDF Officiel</button>
+        ${(() => {
           const roles = normalizeRoles(currentUserRoles);
           const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
           const isPaid = o.status === "Payée";
@@ -11644,10 +12539,81 @@ function printDocument(type, index) {
               return `<button class="primary" style="background:#15803d;border-color:#15803d;font-weight:700" onclick="closeModal();openConfirmPaymentModal(${index})">📸 Confirmer Paiement (Envoyer Capture)</button>`;
             }
           }
-        })() : ""}
+        })()}
       </div>
     `;
     document.getElementById("modalBackdrop").classList.add("open");
+    return;
+  }
+
+  // 3. BON DE RÉSERVATION ENRICHI
+  if (isReservation) {
+    const d = buildReservationDocumentData(o);
+    const previewBody = renderReservationDocumentBody(d);
+
+    document.getElementById("modal").innerHTML = `
+      <div class="modal-head">
+        <div>
+          <h2 style="color:#082b70">🎟️ BON DE RÉSERVATION ${esc(d.resNumber)}</h2>
+          <small>Voucher officiel de confirmation et logistique LAPERLE TOUR HT</small>
+        </div>
+        <button class="close" onclick="closeModal()">×</button>
+      </div>
+      <div id="reservationPreviewContainer" style="background:#fff;border:1.5px solid #cbd5e1;border-radius:10px;padding:20px;max-height:72vh;overflow-y:auto;margin-bottom:15px;box-shadow:0 4px 15px rgba(0,0,0,0.04)">
+        ${previewBody}
+      </div>
+      <div class="form-actions" style="flex-wrap:wrap">
+        <button class="secondary" onclick="closeModal()">Fermer</button>
+        <button class="primary" style="background:#082b70;border-color:#082b70;font-weight:700" onclick="printReservationDoc(${index})" title="Télécharger le bon de réservation au format PDF">📥 Télécharger PDF Officiel</button>
+        ${(() => {
+          const roles = normalizeRoles(currentUserRoles);
+          const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
+          if (isStaff) {
+            return `
+              <button class="primary" style="background:#0284c7;border-color:#0284c7" onclick="closeModal();createProformaFromReservation(${index})">📄 Convertir en Proforma</button>
+              ${o.factureGenerated ? `<button class="primary green" onclick="closeModal();handleOpenDocumentFromAlert('facture', '${esc(o.factureGenerated)}')">🧾 Voir Facture</button>` : ''}
+            `;
+          } else {
+            let clientActions = "";
+            if (o.proformaGenerated) {
+              clientActions += `<button class="primary" style="background:#082b70;border-color:#082b70" onclick="closeModal();handleOpenDocumentFromAlert('proforma', '${esc(o.proformaGenerated)}')">📄 Mon Devis Proforma</button>`;
+            }
+            if (o.factureGenerated) {
+              clientActions += `<button class="primary green" onclick="closeModal();handleOpenDocumentFromAlert('facture', '${esc(o.factureGenerated)}')">🧾 Ma Facture</button>`;
+            }
+            return clientActions;
+          }
+        })()}
+      </div>
+    `;
+    document.getElementById("modalBackdrop").classList.add("open");
+    return;
+  }
+
+  // 4. REÇU OFFICIEL DE RÈGLEMENT
+  if (isPayment) {
+    const d = buildPaymentReceiptDocumentData(o);
+    const previewBody = renderPaymentReceiptDocumentBody(d);
+
+    document.getElementById("modal").innerHTML = `
+      <div class="modal-head">
+        <div>
+          <h2 style="color:#15803d">🧾 REÇU DE RÈGLEMENT ${esc(d.payNumber)}</h2>
+          <small>Attestation officielle d'encaissement LAPERLE TOUR HT</small>
+        </div>
+        <button class="close" onclick="closeModal()">×</button>
+      </div>
+      <div id="paymentPreviewContainer" style="background:#fff;border:1.5px solid #cbd5e1;border-radius:10px;padding:20px;max-height:72vh;overflow-y:auto;margin-bottom:15px;box-shadow:0 4px 15px rgba(0,0,0,0.04)">
+        ${previewBody}
+      </div>
+      <div class="form-actions" style="flex-wrap:wrap">
+        <button class="secondary" onclick="closeModal()">Fermer</button>
+        <button class="primary" style="background:#15803d;border-color:#15803d;font-weight:700" onclick="printPaymentReceiptDoc(${index})" title="Télécharger le reçu officiel au format PDF">📥 Télécharger PDF Officiel</button>
+        ${d.linkedFacId ? `<button class="primary" style="background:#082b70;border-color:#082b70" onclick="closeModal();handleOpenDocumentFromAlert('facture', '${esc(d.linkedFacId)}')">🧾 Voir Facture liée</button>` : ''}
+      </div>
+    `;
+    document.getElementById("modalBackdrop").classList.add("open");
+    return;
   }
 }
 
