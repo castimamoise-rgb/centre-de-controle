@@ -490,8 +490,8 @@ const SCHEMAS = {
     ["grade", "Classe / Niveau", "text"],
     ["route", "Circuit scolaire", "text"],
     ["zone", "Zone de prise en charge", "text"],
-    ["timeMorning", "Heure ramassage matin", "time"],
-    ["timeAfternoon", "Heure retour après-midi", "time"],
+    ["timeMorning", "Heure de ramassage (matin)", "time"],
+    ["timeAfternoon", "Heure de retour (après-midi)", "time"],
     ["status", "Statut", "select:Inscrit|Actif|En attente|Suspendu|Archivé"],
     ["notes", "Notes & Contacts d'urgence", "textarea"]
   ],
@@ -500,8 +500,8 @@ const SCHEMAS = {
     ["eleve", "Élève concerné (optionnel)", "text"],
     ["type", "Formule", "select:Scolaire annuel|Scolaire mensuel|Travail mensuel|VIP personnalisé|Location longue durée"],
     ["route", "Ligne / Trajet", "text"],
-    ["startDate", "Date début", "date"],
-    ["endDate", "Date expiration", "date"],
+    ["startDate", "Date de début", "date"],
+    ["endDate", "Date d'expiration", "date"],
     ["price", "Prix HTG", "number"],
     ["driver", "Chauffeur attitré", "text"],
     ["vehicle", "Véhicule attitré", "text"],
@@ -514,8 +514,8 @@ const SCHEMAS = {
     ["address", "Adresse", "text"],
     ["vehicle", "Véhicule assigné", "text"],
     ["status", "Disponibilité", "select:Disponible|En course|Repos|Inactif"],
-    ["commission", "Part chauffeur %", "number"],
-    ["joinedDate", "Date intégration", "date"],
+    ["commission", "Part du chauffeur (%)", "number"],
+    ["joinedDate", "Date d'intégration", "date"],
     ["notes", "Notes & Permis de conduire", "textarea"]
   ],
   drivers: [
@@ -525,7 +525,7 @@ const SCHEMAS = {
     ["capacity", "Capacité", "number"],
     ["zone", "Zone", "text"],
     ["status", "Disponibilité", "select:Disponible|Occupé|Inactif"],
-    ["share", "Part chauffeur %", "number"],
+    ["share", "Part du chauffeur (%)", "number"],
     ["notes", "Notes", "textarea"]
   ],
   vehicules: [
@@ -578,7 +578,7 @@ const SCHEMAS = {
     ["status", "Statut", "select:Reçu|En attente|Validé|Remboursé|Archivé"],
     ["reference", "N° Reçu / Référence", "text"],
     ["ID_Facture", "N° Facture liée (ID_Facture)", "text"],
-    ["ID_Proforma", "N° Proforma liée (ID_Proforma)", "text"],
+    ["ID_Proforma", "N° Devis proforma lié (ID_Proforma)", "text"],
     ["ID_Reservation", "N° Réservation liée (ID_Reservation)", "text"],
     ["ID_Paiement", "N° Paiement (ID_Paiement)", "text"],
     ["abonnement", "Abonnement lié (optionnel)", "text"],
@@ -595,7 +595,7 @@ const SCHEMAS = {
     ["status", "Statut", "select:Reçu|À recevoir|Remboursé"],
     ["reference", "Référence", "text"],
     ["ID_Facture", "N° Facture liée (ID_Facture)", "text"],
-    ["ID_Proforma", "N° Proforma liée (ID_Proforma)", "text"],
+    ["ID_Proforma", "N° Devis proforma lié (ID_Proforma)", "text"],
     ["ID_Reservation", "N° Réservation liée (ID_Reservation)", "text"],
     ["ID_Paiement", "N° Paiement (ID_Paiement)", "text"],
     ["notes", "Notes", "textarea"]
@@ -616,7 +616,7 @@ const SCHEMAS = {
     ["demandeProforma", "Demander un devis Proforma", "select:Oui|Non"],
     ["status", "Statut", "select:À confirmer|Confirmée|En cours|Effectuée|Annulée|Archivée"],
     ["ID_Reservation", "N° Réservation (ID_Reservation)", "text"],
-    ["ID_Proforma", "N° Proforma liée (ID_Proforma)", "text"],
+    ["ID_Proforma", "N° Devis proforma lié (ID_Proforma)", "text"],
     ["ID_Facture", "N° Facture liée (ID_Facture)", "text"],
     ["ID_Paiement", "N° Paiement lié (ID_Paiement)", "text"],
     ["notes", "Notes", "textarea"]
@@ -634,7 +634,7 @@ const SCHEMAS = {
     ["payment", "Paiement", "select:En attente|Partiel|Payé"],
     ["status", "Statut", "select:À confirmer|Confirmée|Effectuée|Annulée"],
     ["ID_Reservation", "N° Réservation (ID_Reservation)", "text"],
-    ["ID_Proforma", "N° Proforma liée (ID_Proforma)", "text"],
+    ["ID_Proforma", "N° Devis proforma lié (ID_Proforma)", "text"],
     ["ID_Facture", "N° Facture liée (ID_Facture)", "text"],
     ["ID_Paiement", "N° Paiement lié (ID_Paiement)", "text"],
     ["notes", "Notes", "textarea"]
@@ -704,7 +704,7 @@ const SCHEMAS = {
     ["status", "Statut", "select:Brouillon|Envoyée|Payée|Partielle|Annulée|Archivée"],
     ["due", "Échéance", "date"],
     ["ID_Reservation", "N° Réservation liée (ID_Reservation)", "text"],
-    ["ID_Proforma", "N° Proforma liée (ID_Proforma)", "text"],
+    ["ID_Proforma", "N° Devis proforma lié (ID_Proforma)", "text"],
     ["ID_Facture", "N° Facture (ID_Facture)", "text"],
     ["ID_Paiement", "N° Paiement / Reçu lié (ID_Paiement)", "text"],
     ["notes", "Notes", "textarea"]
@@ -719,17 +719,17 @@ const SCHEMAS = {
     ["status", "Statut", "select:Brouillon|Envoyée|Payée|Partielle|Annulée"],
     ["due", "Échéance", "date"],
     ["ID_Reservation", "N° Réservation liée (ID_Reservation)", "text"],
-    ["ID_Proforma", "N° Proforma liée (ID_Proforma)", "text"],
+    ["ID_Proforma", "N° Devis proforma lié (ID_Proforma)", "text"],
     ["ID_Facture", "N° Facture (ID_Facture)", "text"],
     ["ID_Paiement", "N° Paiement / Reçu lié (ID_Paiement)", "text"],
     ["notes", "Notes", "textarea"]
   ],
   prospects: [
-    ["name", "Nom / entreprise", "text"],
+    ["name", "Nom / Entreprise", "text"],
     ["phone", "Téléphone / WhatsApp", "text"],
-    ["need", "Besoin / trajet", "text"],
+    ["need", "Besoin / Trajet", "text"],
     ["source", "Source", "text"],
-    ["status", "Statut", "select:Nouveau|Contacté|Intéressé|Proforma envoyée|Gagné|Perdu"],
+    ["status", "Statut", "select:Nouveau|Contacté|Intéressé|Devis proforma envoyé|Gagné|Perdu"],
     ["next", "Prochaine action", "date"],
     ["notes", "Notes", "textarea"]
   ],
@@ -1597,7 +1597,7 @@ function renderNotificationDropdown() {
         }
 
         return `
-          <div class="notif-item ${isNewArrival ? 'notif-new-arrival' : ''} ${!item.read ? 'unread' : ''} ${isUrgent ? 'is-urgent' : ''} ${isTransport ? 'is-transport' : ''}" style="animation-delay: ${animDelay}; cursor:pointer;" onclick="handleNotificationClick('${item.id}')" title="Cliquer pour ouvrir">
+          <div class="notif-item ${isNewArrival ? 'notif-new-arrival' : ''} ${!item.read ? 'unread' : ''} ${isUrgent ? 'is-urgent' : ''} ${isTransport ? 'is-transport' : ''}" style="animation-delay: ${animDelay}; cursor:pointer;" onclick="handleNotificationClick('${item.id}')" title="Cliquez pour ouvrir">
             <div class="notif-item-top">
               <div style="display:flex;align-items:center;gap:6px;">
                 ${!item.read ? `<span class="notif-unread-dot" title="Non lu"></span>` : ''}
@@ -3915,7 +3915,7 @@ function openCalendarDayReservations(dateStr) {
                       <button type="button" 
                         class="reservation-link-badge"
                         onclick="openReservationPageFromCalendar('${esc(r.id || r.code || '')}')"
-                        title="Cliquer pour ouvrir la page complète des réservations"
+                        title="Cliquez pour ouvrir la page complète des réservations"
                         style="background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:all 0.15s ease;"
                         onmouseover="this.style.background='#dbeafe';this.style.borderColor='#93c5fd';this.style.transform='translateY(-1px)'"
                         onmouseout="this.style.background='#eff6ff';this.style.borderColor='#bfdbfe';this.style.transform='translateY(0)'">
@@ -6690,7 +6690,7 @@ function drawTable(key) {
                       <button type="button" 
                         class="reservation-table-badge"
                         onclick="viewRow('${canon}', ${i})" 
-                        title="Cliquer pour ouvrir les détails de la réservation ${esc(displayId)}"
+                        title="Cliquez pour ouvrir les détails de la réservation ${esc(displayId)}"
                         style="background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;transition:all 0.15s ease;"
                         onmouseover="this.style.background='#dbeafe';this.style.borderColor='#93c5fd';this.style.transform='translateY(-1px)'"
                         onmouseout="this.style.background='#eff6ff';this.style.borderColor='#bfdbfe';this.style.transform='translateY(0)'">
@@ -6743,6 +6743,8 @@ function drawTable(key) {
                       if (o.demandeFacture) tag += `<span class="badge" style="background:#e0f2fe;color:#0369a1;font-size:10px;padding:2px 6px;margin-right:2px" title="Demande de facture reçue">🔔 Demande Facture</span>`;
                       return `
                         ${tag}
+                        <button class="tiny" style="color:#16a34a;border-color:#bbf7d0;background:#f0fdf4;font-weight:700" onclick="shareDocumentViaWhatsApp('reservation',${i})" title="Partager la confirmation au client par WhatsApp">💬 WhatsApp</button>
+                        <button class="tiny" style="color:#047857;border-color:#a7f3d0;background:#ecfdf5;font-weight:700" onclick="sendDriverMissionWhatsApp(${i})" title="Transmettre l'ordre de mission au chauffeur par WhatsApp">👨‍✈️ Mission</button>
                         <button class="tiny" style="color:#082b70;border-color:#bfdbfe;background:#eff6ff" onclick="createProformaFromReservation(${i})" title="Convertir cette réservation en devis proforma">Proforma</button>
                         <button class="tiny" onclick="printDocument('reservation',${i})" title="Imprimer le bon de réservation">PDF Réservation</button>
                       `;
@@ -6775,7 +6777,8 @@ function drawTable(key) {
                     if (isStaff) {
                       return `
                         ${o.demandeFacture && !o.factureGenerated ? `<span class="badge orange" style="font-size:10px;padding:2px 6px" title="Moyen : ${esc(o.moyenPaiement || '')}">Demande Facture (${esc(o.moyenPaiement || '')})</span>` : ''}
-                        ${o.factureGenerated ? `<button class="tiny" style="color:#15803d;border-color:#bbf7d0;background:#f0fdf4" onclick="handleOpenDocumentFromAlert('facture', '${esc(o.factureGenerated)}')" title="Consulter la facture officielle émise">Facture ${esc(o.factureGenerated)}</button>` : `<button class="tiny" onclick="createInvoiceFromQuote(${i})">${o.demandeFacture ? '⚡ Émettre Facture' : 'Facture'}</button>`}
+                        <button class="tiny" style="color:#16a34a;border-color:#bbf7d0;background:#f0fdf4;font-weight:700" onclick="shareDocumentViaWhatsApp('proforma',${i})" title="Partager ce devis par WhatsApp">💬 WhatsApp</button>
+                        ${o.factureGenerated ? `<button class="tiny" style="color:#15803d;border-color:#bbf7d0;background:#f0fdf4" onclick="handleOpenDocumentFromAlert('facture', '${esc(o.factureGenerated)}')" title="Consulter la facture officielle émise">Facture ${esc(o.factureGenerated)}</button>` : `<button class="tiny" style="color:#ea580c;border-color:#fed7aa;background:#fff7ed;font-weight:700" onclick="convertQuoteToInvoiceAndBooking(${i})" title="Convertir en Facture officielle et planifier la course">⚡ Convertir</button>`}
                         <button class="tiny" style="color:#0284c7;border-color:#bae6fd;background:#f0f9ff" onclick="sendProformaToClient(${i})" title="Envoyer le devis proforma directement au client">✉️ Envoyer</button>
                         <button class="tiny" onclick="printDocument('proforma',${i})">PDF Proforma</button>
                       `;
@@ -6806,6 +6809,7 @@ function drawTable(key) {
                     if (isStaff) {
                       return `
                         ${proofBtn}
+                        <button class="tiny" style="color:#16a34a;border-color:#bbf7d0;background:#f0fdf4;font-weight:700" onclick="shareDocumentViaWhatsApp('facture',${i})" title="Transmettre la facture par WhatsApp">💬 WhatsApp</button>
                         ${!isPaid && hasProof ? `<button class="tiny" style="color:#15803d;border-color:#bbf7d0;background:#f0fdf4;font-weight:700" onclick="handleValidatePaymentFromInvoice(${i})">✅ Valider Paiement</button>` : ''}
                         ${!isPaid && !hasProof ? `<button class="tiny" style="color:#15803d;border-color:#bbf7d0;background:#f0fdf4" onclick="handleQuickMarkPaid(${i})">Marquer Payée</button>` : ''}
                         <button class="tiny" onclick="printDocument('facture',${i})">PDF Facture</button>
@@ -6842,7 +6846,7 @@ function formatTraceableLink(v, fieldKey = "", canonContext = "") {
     return `<button type="button" 
       class="traceable-badge badge-fac"
       onclick="event.stopPropagation();openLinkedDocument('factures', '${esc(s)}')" 
-      title="Cliquer pour ouvrir la Facture ${esc(s)}"
+      title="Cliquez pour ouvrir la Facture ${esc(s)}"
       style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;transition:all 0.15s ease;"
       onmouseover="this.style.background='#dcfce7';this.style.borderColor='#86efac';this.style.transform='translateY(-1px)'"
       onmouseout="this.style.background='#f0fdf4';this.style.borderColor='#bbf7d0';this.style.transform='translateY(0)'">
@@ -6857,7 +6861,7 @@ function formatTraceableLink(v, fieldKey = "", canonContext = "") {
     return `<button type="button" 
       class="traceable-badge badge-pro"
       onclick="event.stopPropagation();openLinkedDocument('proformas', '${esc(s)}')" 
-      title="Cliquer pour ouvrir le Devis Proforma ${esc(s)}"
+      title="Cliquez pour ouvrir le Devis Proforma ${esc(s)}"
       style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;transition:all 0.15s ease;"
       onmouseover="this.style.background='#dbeafe';this.style.borderColor='#93c5fd';this.style.transform='translateY(-1px)'"
       onmouseout="this.style.background='#eff6ff';this.style.borderColor='#bfdbfe';this.style.transform='translateY(0)'">
@@ -6872,7 +6876,7 @@ function formatTraceableLink(v, fieldKey = "", canonContext = "") {
     return `<button type="button" 
       class="traceable-badge badge-res"
       onclick="event.stopPropagation();openLinkedDocument('reservations', '${esc(s)}')" 
-      title="Cliquer pour ouvrir la Réservation ${esc(s)}"
+      title="Cliquez pour ouvrir la Réservation ${esc(s)}"
       style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;transition:all 0.15s ease;"
       onmouseover="this.style.background='#fde68a';this.style.borderColor='#f59e0b';this.style.transform='translateY(-1px)'"
       onmouseout="this.style.background='#fef3c7';this.style.borderColor='#fde68a';this.style.transform='translateY(0)'">
@@ -6887,7 +6891,7 @@ function formatTraceableLink(v, fieldKey = "", canonContext = "") {
     return `<button type="button" 
       class="traceable-badge badge-pay"
       onclick="event.stopPropagation();openLinkedDocument('paiements', '${esc(s)}')" 
-      title="Cliquer pour ouvrir le Reçu de Paiement ${esc(s)}"
+      title="Cliquez pour ouvrir le Reçu de Paiement ${esc(s)}"
       style="background:#fdf2f8;color:#9d174d;border:1px solid #fbcfe8;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;transition:all 0.15s ease;"
       onmouseover="this.style.background='#fce7f3';this.style.borderColor='#f472b6';this.style.transform='translateY(-1px)'"
       onmouseout="this.style.background='#fdf2f8';this.style.borderColor='#fbcfe8';this.style.transform='translateY(0)'">
@@ -6902,7 +6906,7 @@ function formatTraceableLink(v, fieldKey = "", canonContext = "") {
     return `<button type="button" 
       class="traceable-badge badge-cl"
       onclick="event.stopPropagation();openClientDossier('${esc(s)}')" 
-      title="Cliquer pour ouvrir le Dossier Client 360° ${esc(s)}"
+      title="Cliquez pour ouvrir le Dossier Client 360° ${esc(s)}"
       style="background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;transition:all 0.15s ease;"
       onmouseover="this.style.background='#dbeafe';this.style.borderColor='#93c5fd';this.style.transform='translateY(-1px)'"
       onmouseout="this.style.background='#eff6ff';this.style.borderColor='#bfdbfe';this.style.transform='translateY(0)'">
@@ -9682,13 +9686,13 @@ function marketingPage() {
     </div>
     <div class="dashboard-grid">
       <div class="panel">
-        <div class="panel-title"><h3>Calendrier contenu</h3></div>
+        <div class="panel-title"><h3>Calendrier de contenu</h3></div>
         <div class="info"><b>Contenu de la semaine</b><br>Campagne axée sur le confort, la ponctualité du transport scolaire et les navettes aéroportuaires sécurisées.</div>
         <div class="info" style="margin-top:8px"><b>Canaux officiels</b><br>Facebook • Instagram • WhatsApp Business (+509 4440 8687)</div>
       </div>
       <div class="panel">
         <div class="panel-title"><h3>Prospection commerciale</h3></div>
-        <div class="info"><b>Objectif actif</b><br>Suivre les demandes d'écoles et entreprises dans le module Prospects.</div>
+        <div class="info"><b>Objectif actif</b><br>Suivre les demandes d'écoles et d'entreprises dans le module Prospects.</div>
         <button class="primary" style="margin-top:10px" onclick="go('prospects')">Ouvrir les prospects</button>
       </div>
     </div>
@@ -10595,6 +10599,236 @@ async function createInvoiceFromQuote(index) {
   }
 }
 window.createInvoiceFromQuote = createInvoiceFromQuote;
+
+function openWhatsAppMessage(phoneNumber, messageText) {
+  let clean = typeof formatPhoneForWhatsApp === "function" ? formatPhoneForWhatsApp(phoneNumber) : String(phoneNumber || "").replace(/\D/g, "");
+  if (clean && clean.length === 8) clean = "509" + clean;
+  const url = clean
+    ? `https://wa.me/${clean}?text=${encodeURIComponent(messageText)}`
+    : `https://api.whatsapp.com/send?text=${encodeURIComponent(messageText)}`;
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { try { a.remove(); } catch (e) {} }, 100);
+}
+window.openWhatsAppMessage = openWhatsAppMessage;
+
+function shareDocumentViaWhatsApp(type, index) {
+  const isQuote = type === "proforma" || type === "quote";
+  const isInvoice = type === "facture" || type === "invoice";
+  const isReservation = type === "reservation" || type === "booking";
+  const isPayment = type === "paiement" || type === "payment" || type === "receipt";
+
+  let key = "factures";
+  if (isQuote) key = "proformas";
+  else if (isReservation) key = "reservations";
+  else if (isPayment) key = "paiements";
+
+  const o = (list(key) || [])[index];
+  if (!o) {
+    showToast("Document introuvable.", "error");
+    return;
+  }
+
+  const clientName = o.client || o.clientName || o.nom || "Cher client";
+  const phone = o.phone || o.telephone || o.clientPhone || "";
+  const amountStr = money(o.amount || o.montant || 0);
+  const companyPhone = localStorage.getItem("LAPERLE_PHONE") || "+509 4440 8687";
+
+  let msg = "";
+
+  if (isQuote) {
+    const quoteNum = o.number || o.id || "DEVIS";
+    const route = o.route || (o.origin && o.destination ? `${o.origin} ➔ ${o.destination}` : (o.service || "Transport & Services"));
+    const dateStr = o.departDate || o.date || today();
+    const timeStr = o.departTime || o.time || "";
+    msg = `Bonjour ${clientName},\n\n` +
+      `LAPERLE TOUR HT a le plaisir de vous transmettre votre *Devis Proforma officiel N° ${quoteNum}*.\n\n` +
+      `📋 *Détails de l'offre commerciale :*\n` +
+      `• Prestation : ${o.service || 'Transport & Logistique'}\n` +
+      `• Trajet : ${route}\n` +
+      (dateStr ? `• Date : ${dateStr}${timeStr ? ` à ${timeStr}` : ''}\n` : '') +
+      (o.vehicleType ? `• Véhicule : ${o.vehicleType}\n` : '') +
+      `• Montant total : *${amountStr}*\n` +
+      `• Statut : Devis validé par la direction\n\n` +
+      `Pour confirmer votre réservation ou procéder à votre acompte par MonCash (${companyPhone}) ou virement, répondez directement à ce message.\n\n` +
+      `— *LAPERLE TOUR HT* • « Un coup d'œil sur Haïti »`;
+
+    if (o.status === "Brouillon" || o.status === "En attente") {
+      o.status = "Envoyée";
+      save();
+      saveDocumentToFirestore("proformas", o).catch(() => {});
+    }
+  } else if (isInvoice) {
+    const invNum = o.number || o.id || "FACTURE";
+    const route = o.route || (o.origin && o.destination ? `${o.origin} ➔ ${o.destination}` : (o.service || "Prestation de transport"));
+    const isPaid = o.status === "Payée";
+    msg = `Bonjour ${clientName},\n\n` +
+      `Veuillez trouver les informations de votre *Facture Officielle N° ${invNum}* émise par *LAPERLE TOUR HT*.\n\n` +
+      `🧾 *Détails de la facture :*\n` +
+      `• Référence : *${invNum}*\n` +
+      `• Prestation : ${route}\n` +
+      `• Montant dû : *${amountStr}*\n` +
+      `• Statut : *${isPaid ? 'PAYÉE & ACQUITTÉE ✅' : 'À régler'}*\n\n` +
+      (!isPaid ? `Coordonnées de règlement :\n📱 *MonCash Marchand* : ${companyPhone} (Réf : ${invNum})\n\n` : '') +
+      `Merci pour votre confiance.\n` +
+      `— *LAPERLE TOUR HT* • « Un coup d'œil sur Haïti »`;
+  } else if (isReservation) {
+    const resNum = o.id || o.number || o.code || "RÉSERVATION";
+    const origin = o.origin || "Point de ramassage convenu";
+    const dest = o.destination || o.route || "Destination convenue";
+    const dateStr = o.date || today();
+    const timeStr = o.time || "";
+    const driver = o.driver || "Chauffeur professionnel LAPERLE";
+    const vehicle = o.vehicle || "Véhicule climatisé de flotte";
+
+    msg = `Bonjour ${clientName},\n\n` +
+      `Votre réservation auprès de *LAPERLE TOUR HT* est bien confirmée (Bon N° *${resNum}*).\n\n` +
+      `🎫 *Récapitulatif de votre course :*\n` +
+      `📅 Date : *${dateStr}*${timeStr ? ` à *${timeStr}*` : ''}\n` +
+      `📍 Prise en charge : ${origin}\n` +
+      `🏁 Destination : ${dest}\n` +
+      `👥 Passagers : ${o.passengers || 1}\n` +
+      `🚗 Véhicule : ${vehicle}\n` +
+      `👨‍✈️ Chauffeur : ${driver}\n\n` +
+      `Notre équipe reste à votre entière disposition au ${companyPhone}.\n` +
+      `Bon voyage avec *LAPERLE TOUR HT* !`;
+  } else if (isPayment) {
+    const payNum = o.number || o.id || "REÇU";
+    const method = o.method || o.paymentMethod || "MonCash / Caisse";
+    const ref = o.reference || "Validée";
+    msg = `Bonjour ${clientName},\n\n` +
+      `*LAPERLE TOUR HT* vous confirme la bonne réception de votre règlement de *${amountStr}* (Reçu officiel N° *${payNum}*).\n\n` +
+      `💳 *Détails du paiement :*\n` +
+      `• Montant réglé : *${amountStr}*\n` +
+      `• Mode : ${method}\n` +
+      `• Référence : ${ref}\n` +
+      `• Date : ${o.date || today()}\n` +
+      `• Statut : *Payé et Soldé ✅*\n\n` +
+      `Nous vous remercions de votre confiance.\n` +
+      `— *LAPERLE TOUR HT* • « Un coup d'œil sur Haïti »`;
+  }
+
+  openWhatsAppMessage(phone, msg);
+  showToast("📲 Ouverture de WhatsApp...");
+}
+window.shareDocumentViaWhatsApp = shareDocumentViaWhatsApp;
+
+function sendDriverMissionWhatsApp(index) {
+  const res = (list("reservations") || [])[index];
+  if (!res) {
+    showToast("Réservation introuvable.", "error");
+    return;
+  }
+
+  const driverName = res.driver || res.chauffeur || "";
+  let driverPhone = "";
+
+  if (driverName) {
+    const dObj = (list("chauffeurs") || []).find(c => 
+      (c.name && c.name.toLowerCase() === driverName.toLowerCase()) ||
+      (c.nom && c.nom.toLowerCase() === driverName.toLowerCase())
+    );
+    if (dObj) {
+      driverPhone = dObj.phone || dObj.telephone || "";
+    } else {
+      const uObj = (list("utilisateurs") || []).find(u =>
+        (u.name && u.name.toLowerCase() === driverName.toLowerCase()) ||
+        (u.nom && u.nom.toLowerCase() === driverName.toLowerCase())
+      );
+      if (uObj) driverPhone = uObj.phone || uObj.telephone || "";
+    }
+  }
+
+  const resNum = res.id || res.number || res.code || "COURSE";
+  const dateStr = res.date || today();
+  const timeStr = res.time || "À préciser";
+  const origin = res.origin || "Point de ramassage à convenir";
+  const dest = res.destination || res.route || "Destination client";
+  const clientName = res.client || "Client Laperle";
+  const clientPhone = res.phone || res.telephone || "Non renseigné";
+  const passengers = res.passengers || 1;
+  const vehicle = res.vehicle || "Véhicule de flotte assigné";
+  const notes = res.notes || "Ponctualité, courtoisie et sécurité prioritaires.";
+
+  const missionText = `🚨 *ORDRE DE MISSION CHAUFFEUR • LAPERLE TOUR HT*\n` +
+    `-----------------------------------------\n` +
+    `Course Réf : *${resNum}*\n` +
+    `📅 Date & Heure : *${dateStr}* à *${timeStr}*\n\n` +
+    `📍 *Prise en charge :* ${origin}\n` +
+    `🏁 *Destination :* ${dest}\n\n` +
+    `👤 *Passager principal :* ${clientName}\n` +
+    `📞 *Téléphone Client :* ${clientPhone}\n` +
+    `👥 *Nombre de passagers :* ${passengers}\n` +
+    `🚙 *Véhicule :* ${vehicle}\n` +
+    (driverName ? `👨‍✈️ *Chauffeur missionné :* ${driverName}\n\n` : '\n') +
+    `ℹ️ *Consignes & Notes :*\n${notes}\n\n` +
+    `Merci d'accuser réception de cet ordre de mission et de signaler votre départ au Centre de Contrôle.\n` +
+    `— *Direction des Opérations LAPERLE TOUR HT*`;
+
+  openWhatsAppMessage(driverPhone, missionText);
+  showToast(driverPhone ? "👨‍✈️ Ordre de mission transmis au chauffeur !" : "📲 Ouverture WhatsApp pour transmission de la mission...");
+}
+window.sendDriverMissionWhatsApp = sendDriverMissionWhatsApp;
+
+async function convertQuoteToInvoiceAndBooking(index) {
+  const q = (list("proformas") || [])[index];
+  if (!q) {
+    showToast("Devis proforma introuvable.", "error");
+    return;
+  }
+
+  // 1. Si pas de réservation liée, créer automatiquement la réservation confirmée
+  let linkedResId = q.ID_Reservation || q.reservationId || "";
+  if (!linkedResId) {
+    const resId = nextNumber("RES", "reservations");
+    const newReservation = {
+      id: resId,
+      code: resId,
+      number: resId,
+      client: q.client || "",
+      phone: q.phone || q.telephone || "",
+      telephone: q.phone || q.telephone || "",
+      email: q.email || "",
+      clientId: q.clientId || q.clientUid || "",
+      clientUid: q.clientUid || q.clientId || "",
+      origin: q.origin || "Port-au-Prince",
+      destination: q.destination || q.route || "Destination convenue",
+      route: q.route || `${q.origin || 'Port-au-Prince'} ➔ ${q.destination || ''}`,
+      date: q.departDate || q.date || today(),
+      time: q.departTime || "08:00",
+      passengers: Number(q.passengers) || 1,
+      vehicle: q.vehicleType || "Minibus LAPERLE",
+      driver: q.driverName || "À assigner",
+      amount: Number(q.amount) || 0,
+      status: "Confirmée",
+      service: q.service || "Transport & Services",
+      ID_Proforma: q.number || q.id || "",
+      proformaId: q.number || q.id || "",
+      proformaGenerated: q.number || q.id || "",
+      createdAt: new Date().toISOString(),
+      archived: false,
+      notes: `Course créée automatiquement depuis la proforma ${q.number || q.id}`
+    };
+
+    list("reservations").push(newReservation);
+    q.ID_Reservation = resId;
+    q.reservationId = resId;
+    save();
+    try {
+      await saveDocumentToFirestore("reservations", newReservation);
+      await saveDocumentToFirestore("proformas", q);
+    } catch (e) {}
+  }
+
+  // 2. Émettre la facture officielle
+  await createInvoiceFromQuote(index);
+}
+window.convertQuoteToInvoiceAndBooking = convertQuoteToInvoiceAndBooking;
 
 function openRequestInvoiceFromQuoteModal(index) {
   const q = list("proformas")[index];
@@ -11586,7 +11820,7 @@ function renderProformaDocumentBody(d) {
         <b style="color:#0f172a;">CONDITIONS DE L'OFFRE & ENGAGEMENT :</b><br>
         1. <b>Validité de l'offre :</b> Le présent devis proforma est valable pendant <b>${esc(d.validity)}</b>. Les tarifs sont garantis sous réserve d'acceptation dans ce délai.<br>
         2. <b>Confirmation de commande :</b> La réservation devient ferme et définitive dès réception du présent devis revêtu de la signature du client et du règlement de l'acompte de 50%.<br>
-        3. <b>Politique d'annulation :</b> Annulation sans frais jusqu'à 48 heures avant l'heure prévue. Moins de 48h avant le départ, l'acompte reste acquis pour immobilisation de véhicule et personnel.<br>
+        3. <b>Politique d'annulation :</b> Annulation sans frais jusqu'à 48 heures avant l'heure prévue. Moins de 48h avant le départ, l'acompte reste acquis pour immobilisation du véhicule et du personnel.<br>
         4. <b>Facture définitive :</b> Une facture commerciale officielle sera émise automatiquement dès validation du règlement.
       </div>
 
@@ -11623,7 +11857,7 @@ function renderProformaDocumentBody(d) {
       <!-- PIED DE PAGE OFFICIEL -->
       <div style="margin-top:20px;border-top:2px solid #e2e8f0;padding-top:10px;text-align:center;font-size:10.5px;color:#64748b;line-height:1.4;">
         ${esc(d.company)} • Société Anonyme • ${esc(d.address)}<br>
-        Transport Touristique • Location Véhicules VIP • Navettes Scolaires & Entreprises • Taxi Privé<br>
+        Transport Touristique • Location de Véhicules VIP • Navettes Scolaires & Entreprises • Taxi Privé<br>
         MonCash : <b>${esc(d.moncash)}</b> • Contact : <b>${esc(d.phone)}</b> • Email : <b>${esc(d.email)}</b> • Confort • Sécurité • Confiance
       </div>
     </div>
@@ -12113,7 +12347,7 @@ function renderInvoiceDocumentBody(d) {
       <!-- PIED DE PAGE OFFICIEL -->
       <div style="margin-top:20px;border-top:2px solid #e2e8f0;padding-top:10px;text-align:center;font-size:10.5px;color:#64748b;line-height:1.4;">
         ${esc(d.company)} • Société Anonyme • ${esc(d.address)}<br>
-        Transport Touristique • Location Véhicules VIP • Navettes Scolaires & Entreprises • Taxi Privé<br>
+        Transport Touristique • Location de Véhicules VIP • Navettes Scolaires & Entreprises • Taxi Privé<br>
         MonCash : <b>${esc(d.moncash)}</b> • Contact : <b>${esc(d.phone)}</b> • Email : <b>${esc(d.email)}</b> • Confort • Sécurité • Confiance
       </div>
     </div>
@@ -12421,7 +12655,7 @@ function renderReservationDocumentBody(d) {
       <!-- PIED DE PAGE OFFICIEL -->
       <div style="margin-top:20px;border-top:2px solid #e2e8f0;padding-top:10px;text-align:center;font-size:10.5px;color:#64748b;line-height:1.4;">
         ${esc(d.company)} • Société Anonyme • ${esc(d.address)}<br>
-        Transport Touristique • Location Véhicules VIP • Navettes Scolaires & Entreprises • Taxi Privé<br>
+        Transport Touristique • Location de Véhicules VIP • Navettes Scolaires & Entreprises • Taxi Privé<br>
         MonCash : <b>${esc(d.moncash)}</b> • Contact : <b>${esc(d.phone)}</b> • Email : <b>${esc(d.email)}</b> • Confort • Sécurité • Confiance
       </div>
     </div>
@@ -12702,6 +12936,7 @@ function printDocument(type, index) {
       <div class="form-actions" style="flex-wrap:wrap">
         <button class="secondary" onclick="closeModal()">Fermer</button>
         <button class="primary" style="background:#082b70;border-color:#082b70;font-weight:700" onclick="printProformaDoc(${index})" title="Télécharger ce devis proforma au format PDF">📥 Télécharger PDF Officiel</button>
+        <button class="primary" style="background:#25d366;border-color:#22c55e;font-weight:700" onclick="shareDocumentViaWhatsApp('proforma',${index})" title="Partager ce devis directement avec le client sur WhatsApp">💬 Partager sur WhatsApp</button>
         ${(() => {
           const roles = normalizeRoles(currentUserRoles);
           const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
@@ -12710,7 +12945,7 @@ function printDocument(type, index) {
               <button class="primary" style="background:#0284c7;border-color:#0284c7" onclick="closeModal();sendProformaToClient(${index})">✉️ Transmettre au Client</button>
               ${o.factureGenerated
                 ? `<button class="primary" style="background:#15803d;border-color:#15803d" onclick="closeModal();handleOpenDocumentFromAlert('facture', '${esc(o.factureGenerated)}')">🧾 Voir Facture (${esc(o.factureGenerated)})</button>`
-                : `<button class="primary" style="background:#ea580c;border-color:#ea580c;font-weight:700" onclick="closeModal();createInvoiceFromQuote(${index})">⚡ Émettre Facture ${o.demandeFacture ? '(' + esc(o.moyenPaiement || '') + ')' : ''}</button>`}
+                : `<button class="primary" style="background:#ea580c;border-color:#ea580c;font-weight:700" onclick="closeModal();convertQuoteToInvoiceAndBooking(${index})">⚡ Valider & Convertir (Facture + Course)</button>`}
             `;
           } else {
             if (o.factureGenerated) {
@@ -12747,6 +12982,7 @@ function printDocument(type, index) {
       <div class="form-actions" style="flex-wrap:wrap">
         <button class="secondary" onclick="closeModal()">Fermer</button>
         <button class="primary" style="background:#082b70;border-color:#082b70;font-weight:700" onclick="printInvoiceDoc(${index})" title="Télécharger la facture officielle au format PDF">📥 Télécharger PDF Officiel</button>
+        <button class="primary" style="background:#25d366;border-color:#22c55e;font-weight:700" onclick="shareDocumentViaWhatsApp('facture',${index})" title="Transmettre cette facture au client par WhatsApp">💬 Partager sur WhatsApp</button>
         ${(() => {
           const roles = normalizeRoles(currentUserRoles);
           const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
@@ -12796,6 +13032,8 @@ function printDocument(type, index) {
       <div class="form-actions" style="flex-wrap:wrap">
         <button class="secondary" onclick="closeModal()">Fermer</button>
         <button class="primary" style="background:#082b70;border-color:#082b70;font-weight:700" onclick="printReservationDoc(${index})" title="Télécharger le bon de réservation au format PDF">📥 Télécharger PDF Officiel</button>
+        <button class="primary" style="background:#25d366;border-color:#22c55e;font-weight:700" onclick="shareDocumentViaWhatsApp('reservation',${index})" title="Envoyer la confirmation au client par WhatsApp">💬 WhatsApp Client</button>
+        <button class="primary" style="background:#059669;border-color:#059669;font-weight:700" onclick="sendDriverMissionWhatsApp(${index})" title="Transmettre l'ordre de mission au chauffeur par WhatsApp">👨‍✈️ Ordre de Mission Chauffeur</button>
         ${(() => {
           const roles = normalizeRoles(currentUserRoles);
           const isStaff = roles.some(r => ['admin', 'direction', 'operations', 'secretaire', 'comptabilite'].includes(r)) || isSuperAdminEmail(currentUser?.email);
@@ -12840,6 +13078,7 @@ function printDocument(type, index) {
       <div class="form-actions" style="flex-wrap:wrap">
         <button class="secondary" onclick="closeModal()">Fermer</button>
         <button class="primary" style="background:#15803d;border-color:#15803d;font-weight:700" onclick="printPaymentReceiptDoc(${index})" title="Télécharger le reçu officiel au format PDF">📥 Télécharger PDF Officiel</button>
+        <button class="primary" style="background:#25d366;border-color:#22c55e;font-weight:700" onclick="shareDocumentViaWhatsApp('paiement',${index})" title="Transmettre le reçu officiel au payeur par WhatsApp">💬 Envoyer Reçu (WhatsApp)</button>
         ${d.linkedFacId ? `<button class="primary" style="background:#082b70;border-color:#082b70" onclick="closeModal();handleOpenDocumentFromAlert('facture', '${esc(d.linkedFacId)}')">🧾 Voir Facture liée</button>` : ''}
       </div>
     `;
@@ -13276,7 +13515,7 @@ function renderSupervisorFeedHtml(msgs = []) {
     const roleClass = m.senderRole || 'client';
     const roleLabel = ROLE_LABELS[roleClass] || roleClass;
     return `
-      <div class="chat-supervisor-row" onclick="openChatModal('${m.conversationId}')" style="cursor:pointer;" title="Cliquer pour rejoindre ce salon">
+      <div class="chat-supervisor-row" onclick="openChatModal('${m.conversationId}')" style="cursor:pointer;" title="Cliquez pour rejoindre ce salon">
         <div style="display:flex;align-items:center;justify-content:space-between">
           <div style="display:flex;align-items:center;gap:6px">
             <span class="chat-supervisor-channel-tag">${esc(convTitle)}</span>
