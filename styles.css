@@ -74,11 +74,12 @@ button, input, select, textarea {
   min-height: 100vh;
   min-height: 100dvh;
   background: radial-gradient(circle at 18% 25%, #0f3d8f 0%, #082862 38%, #041639 100%);
-  padding: 32px 18px;
+  padding: 24px 18px;
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
   box-sizing: border-box;
@@ -88,12 +89,12 @@ button, input, select, textarea {
 .auth-card-split {
   display: flex;
   width: min(1040px, 100%);
-  min-height: 620px;
+  min-height: 600px;
   background: #ffffff;
   border-radius: 24px;
   box-shadow: 0 28px 70px -12px rgba(4, 22, 57, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.16);
   overflow: hidden;
-  margin: auto;
+  margin: 0 auto;
   position: relative;
   transition: all 0.3s ease;
 }
@@ -112,12 +113,11 @@ button, input, select, textarea {
 }
 
 /* ==========================================================
-   VOLET GAUCHE : Branding LAPERLE & Décoration Diagonale 
-   Inspirée des capsules flottantes de la référence
+   VOLET GAUCHE : Branding LAPERLE Épuré & Statutaire
    ========================================================== */
 .auth-brand-side {
   flex: 1.15;
-  background: linear-gradient(145deg, #07255e 0%, #0d3b87 45%, #1557bf 88%, #f7941d 160%);
+  background: linear-gradient(145deg, #07255e 0%, #0d3b87 60%, #1557bf 100%);
   position: relative;
   overflow: hidden;
   padding: 42px 38px;
@@ -128,13 +128,9 @@ button, input, select, textarea {
   box-sizing: border-box;
 }
 
-/* Décoration d'arrière-plan avec capsules diagonales arrondies */
+/* Décoration d'arrière-plan épurée (suppression des capsules désordonnées) */
 .auth-decor-bg {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  overflow: hidden;
-  z-index: 1;
+  display: none !important;
 }
 
 /* Orbes lumineux en arrière-plan */
@@ -1027,30 +1023,19 @@ button, input, select, textarea {
 @media (max-width: 880px) {
   .auth-page {
     padding: 16px 12px;
-    align-items: flex-start;
+    align-items: center;
+    justify-content: center;
   }
   .auth-card-split {
     flex-direction: column;
     min-height: auto;
     border-radius: 18px;
+    width: 100%;
+    max-width: 460px;
+    margin: 0 auto;
   }
   .auth-brand-side {
-    padding: 28px 22px;
-    min-height: 260px;
-  }
-  .auth-brand-title {
-    font-size: 22px;
-  }
-  .auth-brand-desc {
-    display: none;
-  }
-  .auth-decor-bg .decor-pill-orange-1 {
-    width: 200px;
-    height: 38px;
-    bottom: 20px;
-  }
-  .auth-decor-bg .decor-pill-blue-1 {
-    display: none;
+    display: none !important;
   }
   .auth-form-side {
     padding: 28px 20px;
@@ -3157,17 +3142,13 @@ button, input, select, textarea, .nav-item, .tiny, .firebase-chip, .user-btn {
   .auth-card-split {
     flex-direction: column;
     width: 100%;
-    max-width: 580px;
+    max-width: 480px;
     min-height: auto;
     border-radius: 20px;
     margin: 12px auto;
   }
   .auth-brand-side {
-    padding: 26px 20px;
-    min-height: 200px;
-  }
-  .auth-brand-desc {
-    display: none;
+    display: none !important;
   }
   .auth-form-side {
     padding: 28px 22px;
@@ -3875,14 +3856,7 @@ button, input, select, textarea, .nav-item, .tiny, .firebase-chip, .user-btn {
     max-width: 100% !important;
   }
   .auth-brand-side {
-    padding: 18px 14px !important;
-    min-height: auto !important;
-  }
-  .auth-brand-title {
-    font-size: 19px !important;
-  }
-  .auth-brand-tagline {
-    font-size: 12px !important;
+    display: none !important;
   }
   .auth-form-side {
     padding: 20px 14px !important;
@@ -5703,12 +5677,16 @@ button[disabled] {
   font-family: inherit;
   line-height: 1.5;
   overflow-x: hidden;
+  padding-top: 68px;
 }
 
-/* 1. Barre de navigation sticky haut de gamme */
+/* 1. Barre de navigation fixe haut de gamme au déroulement */
 .pl-navbar {
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
   z-index: 1000;
   background: rgba(4, 22, 57, 0.94);
   backdrop-filter: blur(14px);
@@ -5912,7 +5890,7 @@ button[disabled] {
 /* 2. Hero Section d'envergure internationale */
 .pl-hero {
   position: relative;
-  min-height: 620px;
+  min-height: 520px;
   display: flex;
   align-items: center;
   background-color: #041639;
@@ -5921,7 +5899,7 @@ button[disabled] {
   background-position: center right;
   background-repeat: no-repeat;
   color: #ffffff;
-  padding: 70px 24px 90px;
+  padding: 36px 24px 44px;
   overflow: hidden;
 }
 
@@ -5935,6 +5913,7 @@ button[disabled] {
 
 .pl-hero-content {
   max-width: 780px;
+  border-radius: 0px;
 }
 
 .pl-hero-kicker {
@@ -5942,19 +5921,19 @@ button[disabled] {
   align-items: center;
   gap: 8px;
   color: #f59e0b;
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 1.2px;
   text-transform: uppercase;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 
 .pl-hero-title {
-  font-size: clamp(32px, 5vw, 54px);
+  font-size: clamp(30px, 4.4vw, 50px);
   font-weight: 850;
   line-height: 1.12;
   letter-spacing: -0.5px;
-  margin: 0 0 12px;
+  margin: 0 0 10px;
   color: #ffffff;
 }
 
@@ -5966,18 +5945,18 @@ button[disabled] {
 }
 
 .pl-hero-slogan {
-  font-size: 20px;
+  font-size: 19px;
   color: #93c5fd;
   font-style: italic;
   font-weight: 500;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 
 .pl-hero-desc {
-  font-size: 16px;
+  font-size: 15px;
   color: #cbd5e1;
-  line-height: 1.65;
-  margin: 0 0 24px;
+  line-height: 1.55;
+  margin: 0 0 16px;
   max-width: 700px;
 }
 
@@ -5987,9 +5966,9 @@ button[disabled] {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  font-size: 13.5px;
+  font-size: 13px;
   color: #94a3b8;
-  margin-bottom: 32px;
+  margin-bottom: 22px;
 }
 
 .pl-hero-meta span {
@@ -6195,10 +6174,18 @@ button[disabled] {
   font-weight: 700;
 }
 
+.pl-result-custom-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 20px;
+  font-weight: 800;
+  color: #ffffff;
+  margin: 3px 0 6px;
+}
+
 .pl-result-price-wrap {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
+  display: none !important;
 }
 
 .pl-result-price-usd {
@@ -6309,49 +6296,38 @@ button[disabled] {
 }
 
 .pl-services-arrows {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  display: none !important;
 }
 
 .pl-arrow-btn {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  border: 1.5px solid #cbd5e1;
-  background: #ffffff;
-  color: #041639;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  box-shadow: 0 4px 14px rgba(4, 22, 57, 0.08);
-  transition: all 0.2s ease;
-}
-
-.pl-arrow-btn:hover {
-  background: #041639;
-  color: #ffffff;
-  border-color: #041639;
-  transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgba(4, 22, 57, 0.16);
-}
-
-.pl-arrow-btn:active {
-  transform: scale(0.95);
+  display: none !important;
 }
 
 .pl-services-grid {
-  display: flex;
-  overflow-x: auto;
-  scroll-behavior: smooth;
-  scroll-snap-type: x mandatory;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 28px;
-  padding: 10px 4px 24px 4px;
-  /* AUCUN RAIL : scrollbar totalement masquée sur tous navigateurs */
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-  -webkit-overflow-scrolling: touch;
+  padding: 10px 0 24px 0;
+}
+
+@media (max-width: 1024px) {
+  .pl-services-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .pl-services-grid {
+    display: flex;
+    overflow-x: auto;
+    scroll-behavior: smooth;
+    scroll-snap-type: x mandatory;
+    gap: 20px;
+    padding: 10px 4px 24px 4px;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 .pl-services-grid::-webkit-scrollbar {
@@ -6361,9 +6337,9 @@ button[disabled] {
 }
 
 .pl-service-card {
-  flex: 0 0 360px;
-  min-width: 350px;
-  max-width: 370px;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
   scroll-snap-align: start;
   background: #ffffff;
   border-radius: 16px;
@@ -6375,7 +6351,7 @@ button[disabled] {
   flex-direction: column;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .pl-service-card {
     flex: 0 0 85vw;
     min-width: 270px;
@@ -6509,17 +6485,32 @@ button[disabled] {
   color: #fbbf24;
 }
 
-/* 6. Notre Flotte - Défilement horizontal sans rail */
+/* 6. Notre Flotte - Grille responsive native sur grand écran, swipe fluide sur mobile */
 .pl-fleet-grid {
-  display: flex;
-  overflow-x: auto;
-  scroll-behavior: smooth;
-  scroll-snap-type: x mandatory;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
   gap: 24px;
-  padding: 8px 4px 20px 4px;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  padding: 8px 0 20px 0;
+}
+
+@media (max-width: 1100px) {
+  .pl-fleet-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .pl-fleet-grid {
+    display: flex;
+    overflow-x: auto;
+    scroll-behavior: smooth;
+    scroll-snap-type: x mandatory;
+    gap: 20px;
+    padding: 8px 4px 20px 4px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
 }
 
 .pl-fleet-grid::-webkit-scrollbar {
@@ -6529,8 +6520,9 @@ button[disabled] {
 }
 
 .pl-fleet-card {
-  flex: 0 0 320px;
-  max-width: 340px;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
   scroll-snap-align: start;
   background: #ffffff;
   border-radius: 16px;
@@ -6540,6 +6532,13 @@ button[disabled] {
   transition: all 0.25s ease;
   display: flex;
   flex-direction: column;
+}
+
+@media (max-width: 768px) {
+  .pl-fleet-card {
+    flex: 0 0 290px;
+    max-width: 320px;
+  }
 }
 
 .pl-fleet-card:hover {
@@ -6602,17 +6601,32 @@ button[disabled] {
   border-color: #041639;
 }
 
-/* 7. Circuits Touristiques d'Haïti - Défilement horizontal sans rail */
+/* 7. Circuits Touristiques d'Haïti - Grille responsive native sur grand écran, swipe fluide sur mobile */
 .pl-circuits-grid {
-  display: flex;
-  overflow-x: auto;
-  scroll-behavior: smooth;
-  scroll-snap-type: x mandatory;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
   gap: 22px;
-  padding: 8px 4px 20px 4px;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  padding: 8px 0 20px 0;
+}
+
+@media (max-width: 1100px) {
+  .pl-circuits-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .pl-circuits-grid {
+    display: flex;
+    overflow-x: auto;
+    scroll-behavior: smooth;
+    scroll-snap-type: x mandatory;
+    gap: 20px;
+    padding: 8px 4px 20px 4px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
 }
 
 .pl-circuits-grid::-webkit-scrollbar {
@@ -6622,8 +6636,9 @@ button[disabled] {
 }
 
 .pl-circuit-card {
-  flex: 0 0 320px;
-  max-width: 340px;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
   scroll-snap-align: start;
   position: relative;
   border-radius: 16px;
@@ -6637,6 +6652,13 @@ button[disabled] {
   padding: 20px;
   color: #ffffff;
   text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .pl-circuit-card {
+    flex: 0 0 290px;
+    max-width: 320px;
+  }
 }
 
 .pl-circuit-bg {
@@ -6693,17 +6715,32 @@ button[disabled] {
   margin: 0;
 }
 
-/* 8. Engagements & Valeurs - Défilement horizontal sans rail */
+/* 8. Engagements & Valeurs - Grille responsive native sur grand écran, swipe fluide sur mobile */
 .pl-pillars-grid {
-  display: flex;
-  overflow-x: auto;
-  scroll-behavior: smooth;
-  scroll-snap-type: x mandatory;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
   gap: 24px;
-  padding: 8px 4px 20px 4px;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  padding: 8px 0 20px 0;
+}
+
+@media (max-width: 1100px) {
+  .pl-pillars-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .pl-pillars-grid {
+    display: flex;
+    overflow-x: auto;
+    scroll-behavior: smooth;
+    scroll-snap-type: x mandatory;
+    gap: 20px;
+    padding: 8px 4px 20px 4px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
 }
 
 .pl-pillars-grid::-webkit-scrollbar {
@@ -6713,8 +6750,9 @@ button[disabled] {
 }
 
 .pl-pillar-card {
-  flex: 0 0 300px;
-  max-width: 320px;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
   scroll-snap-align: start;
   background: #ffffff;
   border-radius: 16px;
@@ -6722,6 +6760,13 @@ button[disabled] {
   border: 1px solid #e2e8f0;
   box-shadow: 0 4px 16px rgba(4, 22, 57, 0.04);
   transition: all 0.2s ease;
+}
+
+@media (max-width: 768px) {
+  .pl-pillar-card {
+    flex: 0 0 280px;
+    max-width: 300px;
+  }
 }
 
 .pl-pillar-card:hover {
@@ -6756,17 +6801,32 @@ button[disabled] {
   margin: 0;
 }
 
-/* 9. Étapes pour Devenir Client - Défilement horizontal sans rail */
+/* 9. Étapes pour Devenir Client - Grille responsive native sur grand écran, swipe fluide sur mobile */
 .pl-steps-grid {
-  display: flex;
-  overflow-x: auto;
-  scroll-behavior: smooth;
-  scroll-snap-type: x mandatory;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
   gap: 20px;
-  padding: 8px 4px 20px 4px;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  padding: 8px 0 20px 0;
+}
+
+@media (max-width: 1100px) {
+  .pl-steps-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .pl-steps-grid {
+    display: flex;
+    overflow-x: auto;
+    scroll-behavior: smooth;
+    scroll-snap-type: x mandatory;
+    gap: 16px;
+    padding: 8px 4px 20px 4px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
 }
 
 .pl-steps-grid::-webkit-scrollbar {
@@ -6776,14 +6836,22 @@ button[disabled] {
 }
 
 .pl-step-card {
-  flex: 0 0 280px;
-  max-width: 300px;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
   scroll-snap-align: start;
   background: #ffffff;
   border-radius: 14px;
   padding: 24px 20px;
   border: 1px solid #e2e8f0;
   position: relative;
+}
+
+@media (max-width: 768px) {
+  .pl-step-card {
+    flex: 0 0 260px;
+    max-width: 280px;
+  }
 }
 
 .pl-step-number {
@@ -7069,21 +7137,196 @@ button[disabled] {
   }
 }
 
-@media (max-width: 640px) {
-  .pl-footer-inner {
-    grid-template-columns: 1fr;
-  }
-  .pl-simulator-card {
-    padding: 20px 16px;
-  }
-  .pl-result-price-wrap {
-    flex-direction: column;
-    gap: 2px;
-  }
-  .pl-cta-banner {
-    padding: 36px 20px;
-    margin: 20px 12px 40px;
-  }
+/* ========================================================
+   🌐 MODULE DE GESTION DU SITE VITRINE (ADMIN)
+   ======================================================== */
+.vitrine-admin-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 2px solid #e2e8f0;
+  margin-bottom: 24px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.vitrine-tab-btn {
+  background: none;
+  border: none;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #64748b;
+  cursor: pointer;
+  border-radius: 8px 8px 0 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.vitrine-tab-btn:hover {
+  color: #092e70;
+  background: #f1f5f9;
+}
+.vitrine-tab-btn.active {
+  color: #092e70;
+  background: #ffffff;
+  border-bottom: 3px solid #f7941d;
+  box-shadow: 0 -2px 6px rgba(0,0,0,0.03);
+}
+.vitrine-tab-badge {
+  background: #e2e8f0;
+  color: #475569;
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 12px;
+}
+.vitrine-tab-btn.active .vitrine-tab-badge {
+  background: #092e70;
+  color: #ffffff;
+}
+.vitrine-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.vitrine-item-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  transition: all 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.vitrine-item-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(9,46,112,0.06);
+}
+.vitrine-item-card.is-inactive {
+  opacity: 0.6;
+  background: #f8fafc;
+}
+.vitrine-item-thumb {
+  width: 72px;
+  height: 56px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #092e70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+}
+.vitrine-item-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.vitrine-item-content {
+  flex: 1;
+  min-width: 0;
+}
+.vitrine-item-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.vitrine-item-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+.vitrine-item-category {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+.vitrine-status-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.vitrine-status-badge.active {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+.vitrine-status-badge.inactive {
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+}
+.vitrine-item-desc {
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.4;
+  margin: 0 0 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 600px;
+}
+.vitrine-item-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.vitrine-item-chip {
+  font-size: 11px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: #64748b;
+}
+.vitrine-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.vitrine-action-btn {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s;
+}
+.vitrine-action-btn:hover {
+  background: #f1f5f9;
+  color: #092e70;
+  border-color: #94a3b8;
+}
+.vitrine-action-btn.btn-delete:hover {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+.vitrine-action-btn.btn-move {
+  padding: 6px 8px;
 }
 
 

@@ -34,6 +34,7 @@ import {
   createOrUpdateUser, getUtilisateurs, updateUtilisateur, deleteUtilisateur, subscribeUtilisateurs, checkUserPermission, provisionUserInFirestore,
   createNotification, getNotifications, markNotificationRead, markAllNotificationsRead, deleteNotification, subscribeNotifications, seedDefaultServiceAlerts, DEFAULT_SERVICE_ALERTS,
   getCompanySettings, saveCompanySettings, subscribeCompanySettings,
+  DEFAULT_VITRINE_DATA, getLocalVitrineData, saveLocalVitrineData, getCloudVitrineData, saveCloudVitrineData, subscribeCloudVitrineData,
   // RBAC & Authentication Services
   ROLES, ROLE_LABELS, STATUS_LABELS, SUPER_ADMIN_EMAIL, SUPER_ADMIN_EMAILS, SUPER_ADMIN_PHONES,
   isSuperAdminEmail, isSuperAdminIdentifier, normalizeRole, normalizeRoles, normalizeStatus,
@@ -457,6 +458,7 @@ const MODULES = {
   utilisateurs: { label: "Équipe & Rôles", icon: "🛡️" },
   reports: { label: "Rapports", icon: "📈" },
   marketing: { label: "Marketing", icon: "📣" },
+  vitrine: { label: "Site Vitrine & Contenus", icon: "🌐" },
   settings: { label: "Paramètres", icon: "⚙️" },
   messages: { label: "Messagerie & Dispatch", icon: "💬" },
   chat: { label: "Messagerie & Dispatch", icon: "💬" },
@@ -918,7 +920,7 @@ const NAV_SECTIONS = [
   { title: "Commercial & Facturation", items: ["proformas", "factures", "clients", "eleves", "prospects"] },
   { title: "Opérations Transport", items: ["reservations", "abonnements", "plannings", "chauffeurs", "vehicules", "messages"] },
   { title: "Finances & Analyse", items: ["paiements", "finances", "reports", "marketing"] },
-  { title: "Configuration", items: ["utilisateurs", "settings"] }
+  { title: "Configuration", items: ["utilisateurs", "vitrine", "settings"] }
 ];
 
 function buildNavigation() {
@@ -3320,6 +3322,10 @@ function showPublicLandingPage() {
   if (authContainer) authContainer.style.display = "none";
   if (appContainer) appContainer.style.display = "none";
 
+  if (typeof renderDynamicVitrineSections === "function") {
+    renderDynamicVitrineSections();
+  }
+
   // Si l'utilisateur est déjà connecté, adapter les boutons pour revenir au dashboard
   const navLoginBtn = document.getElementById("plNavBtnLogin");
   const mobileLoginBtn = document.getElementById("plMobileBtnLogin");
@@ -3433,12 +3439,12 @@ function updateSimulatorPrice() {
   const elInc = document.getElementById("plSimInclusions");
   const waLink = document.getElementById("plSimWaLink");
 
-  if (elUSD) elUSD.textContent = `$${baseUSD} USD`;
-  if (elHTG) elHTG.textContent = `~ ${baseHTG.toLocaleString("fr-FR")} HTG`;
+  if (elUSD) elUSD.textContent = "";
+  if (elHTG) elHTG.textContent = "";
   if (elInc) elInc.textContent = desc;
 
   if (waLink) {
-    const msg = encodeURIComponent(`Bonjour LAPERLE TOUR HT, je souhaite un devis officiel pour : ${service.toUpperCase()} de ${depart} vers ${dest} pour ${pass} passagers (Estimation indicative : $${baseUSD} USD).`);
+    const msg = encodeURIComponent(`Bonjour LAPERLE TOUR HT, je souhaite un devis officiel sur mesure pour : ${service.toUpperCase()} de ${depart} vers ${dest} pour ${pass} passagers.`);
     waLink.href = `https://wa.me/50944408687?text=${msg}`;
   }
 }
@@ -3561,12 +3567,24 @@ function initLandingPageUI() {
         }));
       } catch (e) {}
 
-      showToast("✨ Votre estimation de devis a été enregistrée ! Créez votre compte client pour la valider.");
+      showToast("✨ Votre demande de devis a été enregistrée ! Créez votre compte pour la valider.");
       showAuthView("register");
     });
   }
 
   updateSimulatorPrice();
+
+  try {
+    if (typeof renderDynamicVitrineSections === "function") {
+      renderDynamicVitrineSections();
+      getCloudVitrineData().then(cData => {
+        if (cData) renderDynamicVitrineSections(cData);
+      }).catch(() => {});
+      subscribeCloudVitrineData((cData) => {
+        if (cData) renderDynamicVitrineSections(cData);
+      });
+    }
+  } catch (e) {}
 }
 
 if (document.readyState === "loading") {
@@ -3971,6 +3989,7 @@ function render() {
   else if (SCHEMAS[canon] || SCHEMAS[current]) modulePage(canon);
   else if (canon === "reports") reportsPage();
   else if (canon === "marketing") marketingPage();
+  else if (canon === "vitrine") vitrineAdminPage();
   else if (canon === "settings") settingsPage();
   else dashboard();
 
@@ -10059,6 +10078,7 @@ function settingsPage() {
           <button onclick="testFirebaseConnectionUI()">⚡ Tester la connexion Firestore <b>›</b></button>
           <button onclick="openFirebaseModal()">⚙️ Gérer l'accès Firebase <b>›</b></button>
           <button onclick="go('utilisateurs')">🛡️ Gérer les Utilisateurs & Rôles <b>›</b></button>
+          <button onclick="go('vitrine')">🌐 Gérer les contenus de la vitrine (Services, Flotte, Circuits, Engagements) <b>›</b></button>
         </div>
 
         <div class="panel-title" style="margin-top:20px"><h3>💾 Sauvegarde & Restauration locale</h3></div>
@@ -10134,6 +10154,715 @@ function executeResetData() {
   showToast("Données réinitialisées.");
   render();
 }
+
+// ========================================================
+// 🌐 GESTION DYNAMIQUE & ADMINISTRATION DE LA VITRINE WEB
+// ========================================================
+let currentVitrineDataCache = null;
+let currentVitrineTab = "services";
+
+function renderDynamicVitrineSections(data) {
+  const vData = data || currentVitrineDataCache || getLocalVitrineData();
+  currentVitrineDataCache = vData;
+
+  // 1. NOS SERVICES & PRESTATIONS
+  const srvGrid = document.querySelector("#plServices .pl-services-grid");
+  if (srvGrid && Array.isArray(vData.services)) {
+    const activeServices = vData.services
+      .filter(s => s && s.active !== false)
+      .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+
+    if (activeServices.length > 0) {
+      srvGrid.innerHTML = activeServices.map(s => `
+        <div class="pl-service-card" data-service-id="${esc(s.id)}">
+          <div class="pl-service-img-wrap">
+            <img src="${esc(s.image || 'vip-suv.jpg')}" alt="${esc(s.title)}" class="pl-service-img" loading="lazy">
+            <span class="pl-service-tag">${esc(s.category || 'Prestation')}</span>
+          </div>
+          <div class="pl-service-body">
+            <h3 class="pl-service-title">${esc(s.title)}</h3>
+            <p class="pl-service-desc">${esc(s.description || '')}</p>
+            ${Array.isArray(s.perks) && s.perks.length > 0 ? `
+              <ul class="pl-service-perks">
+                ${s.perks.map(p => `<li>${esc(p)}</li>`).join('')}
+              </ul>
+            ` : ''}
+            <div class="pl-service-foot">
+              <button type="button" class="pl-service-btn" onclick="selectServiceForQuote('${esc(s.actionKey || 'vip')}')">
+                ${esc(s.actionLabel || 'Réserver ce service')}
+              </button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+  }
+
+  // 2. NOTRE FLOTTE
+  const fleetGrid = document.querySelector("#plFlotte .pl-fleet-grid");
+  if (fleetGrid && Array.isArray(vData.flotte)) {
+    const activeFleet = vData.flotte
+      .filter(f => f && f.active !== false)
+      .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+
+    if (activeFleet.length > 0) {
+      fleetGrid.innerHTML = activeFleet.map(f => `
+        <div class="pl-fleet-card" data-fleet-id="${esc(f.id)}">
+          <div class="pl-fleet-icon">${esc(f.icon || '🚙')}</div>
+          <h3 class="pl-fleet-name">${esc(f.name)}</h3>
+          <div class="pl-fleet-sub">${esc(f.subtitle || '')}</div>
+          <div class="pl-fleet-specs">
+            ${(Array.isArray(f.specs) ? f.specs : []).map(sp => `<span>${esc(sp)}</span>`).join('')}
+          </div>
+          <button type="button" class="pl-fleet-btn" onclick="selectServiceForQuote('${esc(f.serviceKey || 'vip')}')">Sélectionner ce véhicule</button>
+        </div>
+      `).join('');
+    }
+  }
+
+  // 3. CIRCUITS TOURISTIQUES
+  const circuitsGrid = document.querySelector("#plCircuits .pl-circuits-grid");
+  if (circuitsGrid && Array.isArray(vData.circuits)) {
+    const activeCircuits = vData.circuits
+      .filter(c => c && c.active !== false)
+      .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+
+    if (activeCircuits.length > 0) {
+      circuitsGrid.innerHTML = activeCircuits.map(c => `
+        <div class="pl-circuit-card" data-circuit-id="${esc(c.id)}" onclick="selectDestinationForQuote('${esc(c.title)}')">
+          <img src="${esc(c.image || 'tourisme-haiti.jpg')}" alt="${esc(c.title)}" class="pl-circuit-bg" loading="lazy">
+          <div class="pl-circuit-overlay"></div>
+          <div class="pl-circuit-info">
+            <div class="pl-circuit-dest">${esc(c.destination || 'Haïti')}</div>
+            <h3 class="pl-circuit-name">${esc(c.title)}</h3>
+            <p class="pl-circuit-desc">${esc(c.description || '')}</p>
+          </div>
+        </div>
+      `).join('');
+    }
+  }
+
+  // 4. ENGAGEMENTS QUALITÉ
+  const pillarsGrid = document.querySelector("#plEngagements .pl-pillars-grid");
+  if (pillarsGrid && Array.isArray(vData.engagements)) {
+    const activeEngagements = vData.engagements
+      .filter(e => e && e.active !== false)
+      .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+
+    if (activeEngagements.length > 0) {
+      pillarsGrid.innerHTML = activeEngagements.map(e => `
+        <div class="pl-pillar-card" data-engagement-id="${esc(e.id)}">
+          <div class="pl-pillar-icon">${esc(e.icon || '🛡️')}</div>
+          <h3 class="pl-pillar-title">${esc(e.title)}</h3>
+          <p class="pl-pillar-text">${esc(e.text || e.description || '')}</p>
+        </div>
+      `).join('');
+    }
+  }
+}
+window.renderDynamicVitrineSections = renderDynamicVitrineSections;
+
+function setVitrineTab(tab) {
+  currentVitrineTab = tab;
+  vitrineAdminPage();
+}
+window.setVitrineTab = setVitrineTab;
+
+function vitrineAdminPage() {
+  const isSuper = isSuperAdminEmail(currentUser?.email || currentUserProfile?.email);
+  const isAdminUser = isSuper || currentUserRoles.includes(ROLES.ADMIN) || currentUserRoles.includes(ROLES.DIRECTION);
+  if (!isAdminUser) {
+    document.getElementById("page").innerHTML = `
+      <div class="unauthorized-box" style="padding:40px 20px;text-align:center;background:#fff;border-radius:12px;border:1px solid #e2e8f0;margin:20px auto;max-width:540px">
+        <div style="font-size:40px;margin-bottom:12px">🔒</div>
+        <h3 style="color:#092e70;margin-bottom:8px">Accès Administrateur Requis</h3>
+        <p style="color:#64748b;font-size:14px;line-height:1.5;margin-bottom:20px">
+          Seuls les administrateurs et la direction peuvent modifier les contenus du site vitrine public.
+        </p>
+        <button class="primary" onclick="go('dashboard')">Tableau de Bord</button>
+      </div>
+    `;
+    return;
+  }
+
+  const vData = currentVitrineDataCache || getLocalVitrineData();
+  const items = Array.isArray(vData[currentVitrineTab]) ? vData[currentVitrineTab] : [];
+
+  const tabConfigs = {
+    services: {
+      title: "Nos Prestations & Services",
+      desc: "Services principaux affichés dans la section Nos Prestations (#plServices).",
+      btnLabel: "＋ Ajouter une prestation",
+      icon: "🧳",
+      badgeCount: (vData.services || []).length
+    },
+    flotte: {
+      title: "Notre Flotte d'Excellence",
+      desc: "Véhicules, capacités et caractéristiques affichés dans la section Flotte (#plFlotte).",
+      btnLabel: "＋ Ajouter un véhicule",
+      icon: "🚙",
+      badgeCount: (vData.flotte || []).length
+    },
+    circuits: {
+      title: "Circuits & Destinations Phares",
+      desc: "Circuits touristiques et lieux d'excursion affichés dans la section Circuits (#plCircuits).",
+      btnLabel: "＋ Ajouter un circuit",
+      icon: "🏖️",
+      badgeCount: (vData.circuits || []).length
+    },
+    engagements: {
+      title: "Nos Engagements Qualité",
+      desc: "Piliers d'excellence et garanties affichés dans la section Engagements (#plEngagements).",
+      btnLabel: "＋ Ajouter un engagement",
+      icon: "🛡️",
+      badgeCount: (vData.engagements || []).length
+    }
+  };
+
+  const currentConfig = tabConfigs[currentVitrineTab] || tabConfigs.services;
+
+  document.getElementById("page").innerHTML = `
+    <div class="section-head">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <button type="button" class="btn-section-back" onclick="goBack()" title="Retourner à la page précédente">
+          <span>←</span> <span>Retour</span>
+        </button>
+        <div>
+          <h2>🌐 Gestion des Contenus Vitrine</h2>
+          <p>Créez, modifiez, ordonnez ou masquez les offres et contenus visibles sur le site public.</p>
+        </div>
+      </div>
+      <div class="actions" style="display:flex;gap:8px;flex-wrap:wrap">
+        <button type="button" class="secondary" onclick="showPublicLandingPage()" title="Visualiser la page d'accueil avec ces contenus">
+          <span>👁️</span> <span>Voir le Site Public</span>
+        </button>
+        <button type="button" class="secondary" onclick="confirmResetVitrineData()" style="color:#b42318;border-color:#fca5a5" title="Restaurer les contenus de base">
+          <span>🔄</span> <span>Réinitialiser par défaut</span>
+        </button>
+        <button type="button" class="primary" onclick="syncVitrineToFirestoreUI()" title="Publier immédiatement toutes les modifications sur Firestore Cloud">
+          <span>🔥</span> <span>Publier sur Firestore Cloud</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Sélecteur d'onglets pour les 4 sections -->
+    <div class="vitrine-admin-tabs">
+      <button class="vitrine-tab-btn ${currentVitrineTab === 'services' ? 'active' : ''}" onclick="setVitrineTab('services')">
+        <span>🧳</span> <span>Prestations & Services</span>
+        <span class="vitrine-tab-badge">${(vData.services || []).length}</span>
+      </button>
+      <button class="vitrine-tab-btn ${currentVitrineTab === 'flotte' ? 'active' : ''}" onclick="setVitrineTab('flotte')">
+        <span>🚙</span> <span>Notre Flotte</span>
+        <span class="vitrine-tab-badge">${(vData.flotte || []).length}</span>
+      </button>
+      <button class="vitrine-tab-btn ${currentVitrineTab === 'circuits' ? 'active' : ''}" onclick="setVitrineTab('circuits')">
+        <span>🏖️</span> <span>Circuits Touristiques</span>
+        <span class="vitrine-tab-badge">${(vData.circuits || []).length}</span>
+      </button>
+      <button class="vitrine-tab-btn ${currentVitrineTab === 'engagements' ? 'active' : ''}" onclick="setVitrineTab('engagements')">
+        <span>🛡️</span> <span>Engagements Qualité</span>
+        <span class="vitrine-tab-badge">${(vData.engagements || []).length}</span>
+      </button>
+    </div>
+
+    <!-- En-tête de section active avec bouton d'ajout -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;gap:12px;flex-wrap:wrap">
+      <div>
+        <h3 style="margin:0;font-size:17px;color:#092e70;display:flex;align-items:center;gap:8px">
+          <span>${currentConfig.icon}</span> <span>${currentConfig.title}</span>
+        </h3>
+        <p style="margin:3px 0 0;font-size:12.5px;color:#64748b">${currentConfig.desc}</p>
+      </div>
+      <button class="primary orange" onclick="openVitrineItemModal('${currentVitrineTab}', -1)" style="font-weight:700">
+        ${currentConfig.btnLabel}
+      </button>
+    </div>
+
+    <!-- Liste des éléments de l'onglet -->
+    <div class="vitrine-items-list" id="vitrineItemsContainer">
+      ${items.length === 0 ? `
+        <div style="background:#fff;padding:40px;border-radius:12px;border:1px dashed #cbd5e1;text-align:center;color:#64748b">
+          <div style="font-size:36px;margin-bottom:10px">${currentConfig.icon}</div>
+          <b>Aucun élément dans cette section.</b>
+          <p style="font-size:13px;margin:8px 0 16px">Cliquez sur le bouton ci-dessous pour ajouter votre premier contenu.</p>
+          <button class="primary" onclick="openVitrineItemModal('${currentVitrineTab}', -1)">${currentConfig.btnLabel}</button>
+        </div>
+      ` : items.map((item, idx) => renderVitrineItemRow(currentVitrineTab, item, idx, items.length)).join('')}
+    </div>
+  `;
+}
+window.vitrineAdminPage = vitrineAdminPage;
+
+function renderVitrineItemRow(tab, item, idx, total) {
+  const isInactive = item.active === false;
+  let thumbHtml = '';
+  let title = '';
+  let categoryTag = '';
+  let desc = '';
+  let chipsHtml = '';
+
+  if (tab === 'services') {
+    thumbHtml = item.image ? `<img src="${esc(item.image)}" alt="">` : '🧳';
+    title = item.title || 'Service sans titre';
+    categoryTag = item.category ? `<span class="vitrine-item-category">${esc(item.category)}</span>` : '';
+    desc = item.description || '';
+    if (Array.isArray(item.perks)) {
+      chipsHtml = item.perks.slice(0, 3).map(p => `<span class="vitrine-item-chip">✓ ${esc(p)}</span>`).join('');
+    }
+  } else if (tab === 'flotte') {
+    thumbHtml = `<span style="font-size:32px">${esc(item.icon || '🚙')}</span>`;
+    title = item.name || 'Véhicule';
+    categoryTag = item.subtitle ? `<span class="vitrine-item-category">${esc(item.subtitle)}</span>` : '';
+    desc = Array.isArray(item.specs) ? item.specs.join(' • ') : '';
+  } else if (tab === 'circuits') {
+    thumbHtml = item.image ? `<img src="${esc(item.image)}" alt="">` : '🏖️';
+    title = item.title || 'Circuit';
+    categoryTag = item.destination ? `<span class="vitrine-item-category">${esc(item.destination)}</span>` : '';
+    desc = item.description || '';
+  } else if (tab === 'engagements') {
+    thumbHtml = `<span style="font-size:32px">${esc(item.icon || '🛡️')}</span>`;
+    title = item.title || 'Engagement';
+    desc = item.text || item.description || '';
+  }
+
+  return `
+    <div class="vitrine-item-card ${isInactive ? 'is-inactive' : ''}" data-idx="${idx}">
+      <div class="vitrine-item-thumb">
+        ${thumbHtml}
+      </div>
+      <div class="vitrine-item-content">
+        <div class="vitrine-item-head">
+          <h4 class="vitrine-item-title">${esc(title)}</h4>
+          ${categoryTag}
+          <span class="vitrine-status-badge ${isInactive ? 'inactive' : 'active'}">
+            ${isInactive ? '⚪ Masqué' : '🟢 Actif'}
+          </span>
+          <span style="font-size:11px;color:#94a3b8;font-weight:600">Ordre: #${idx + 1}</span>
+        </div>
+        ${desc ? `<p class="vitrine-item-desc" title="${esc(desc)}">${esc(desc)}</p>` : ''}
+        ${chipsHtml ? `<div class="vitrine-item-chips">${chipsHtml}</div>` : ''}
+      </div>
+      <div class="vitrine-item-actions">
+        <button type="button" class="vitrine-action-btn btn-move" onclick="moveVitrineItem('${tab}', ${idx}, -1)" ${idx === 0 ? 'disabled style="opacity:0.3;cursor:not-allowed"' : ''} title="Monter d'une position">▲</button>
+        <button type="button" class="vitrine-action-btn btn-move" onclick="moveVitrineItem('${tab}', ${idx}, 1)" ${idx === total - 1 ? 'disabled style="opacity:0.3;cursor:not-allowed"' : ''} title="Descendre d'une position">▼</button>
+        <button type="button" class="vitrine-action-btn" onclick="toggleVitrineItemStatus('${tab}', ${idx})" title="${isInactive ? 'Rendre visible sur le site' : 'Masquer du site'}">
+          ${isInactive ? '👁️ Afficher' : '👁️‍🗨️ Masquer'}
+        </button>
+        <button type="button" class="vitrine-action-btn" onclick="openVitrineItemModal('${tab}', ${idx})" title="Modifier cet élément">
+          ✏️ Modifier
+        </button>
+        <button type="button" class="vitrine-action-btn btn-delete" onclick="confirmDeleteVitrineItem('${tab}', ${idx})" title="Supprimer définitivement">
+          🗑️
+        </button>
+      </div>
+    </div>
+  `;
+}
+window.renderVitrineItemRow = renderVitrineItemRow;
+
+function toggleVitrineItemStatus(tab, idx) {
+  const vData = currentVitrineDataCache || getLocalVitrineData();
+  const arr = vData[tab];
+  if (!arr || !arr[idx]) return;
+
+  arr[idx].active = arr[idx].active === false ? true : false;
+  saveCloudVitrineData(vData);
+  saveLocalVitrineData(vData);
+  currentVitrineDataCache = vData;
+  renderDynamicVitrineSections(vData);
+  vitrineAdminPage();
+  showToast(arr[idx].active ? "🟢 Élément rendu visible sur le site." : "⚪ Élément masqué du site.");
+}
+window.toggleVitrineItemStatus = toggleVitrineItemStatus;
+
+function moveVitrineItem(tab, idx, dir) {
+  const vData = currentVitrineDataCache || getLocalVitrineData();
+  const arr = vData[tab];
+  if (!arr || !arr[idx]) return;
+  const targetIdx = idx + dir;
+  if (targetIdx < 0 || targetIdx >= arr.length) return;
+
+  const temp = arr[idx];
+  arr[idx] = arr[targetIdx];
+  arr[targetIdx] = temp;
+
+  arr.forEach((it, i) => { it.order = i + 1; });
+  saveCloudVitrineData(vData);
+  saveLocalVitrineData(vData);
+  currentVitrineDataCache = vData;
+  renderDynamicVitrineSections(vData);
+  vitrineAdminPage();
+  showToast("Position mise à jour.");
+}
+window.moveVitrineItem = moveVitrineItem;
+
+function confirmDeleteVitrineItem(tab, idx) {
+  const vData = currentVitrineDataCache || getLocalVitrineData();
+  const item = vData[tab]?.[idx];
+  if (!item) return;
+  const title = item.title || item.name || 'cet élément';
+
+  document.getElementById("modal").innerHTML = `
+    <div class="modal-head">
+      <div>
+        <h2 style="color:#b42318">🗑️ Confirmation de suppression</h2>
+        <small>Gestion de la vitrine LAPERLE</small>
+      </div>
+      <button class="close" onclick="closeModal()">×</button>
+    </div>
+    <div class="info" style="background:#fff5f5;border:1px solid #fed7d7;color:#b42318;padding:14px;border-radius:8px">
+      Êtes-vous sûr de vouloir supprimer définitivement <b>« ${esc(title)} »</b> ? Il ne sera plus visible sur le site public.
+    </div>
+    <div class="form-actions" style="margin-top:16px">
+      <button class="secondary" onclick="closeModal()">Annuler</button>
+      <button class="primary" style="background:#b42318;border-color:#b42318" onclick="executeDeleteVitrineItem('${tab}', ${idx})">
+        🗑️ Confirmer la suppression
+      </button>
+    </div>
+  `;
+  document.getElementById("modalBackdrop").classList.add("open");
+}
+window.confirmDeleteVitrineItem = confirmDeleteVitrineItem;
+
+function executeDeleteVitrineItem(tab, idx) {
+  const vData = currentVitrineDataCache || getLocalVitrineData();
+  if (vData[tab]) {
+    vData[tab].splice(idx, 1);
+    vData[tab].forEach((it, i) => { it.order = i + 1; });
+    saveCloudVitrineData(vData);
+    saveLocalVitrineData(vData);
+    currentVitrineDataCache = vData;
+    renderDynamicVitrineSections(vData);
+  }
+  closeModal();
+  vitrineAdminPage();
+  showToast("🗑️ Élément supprimé avec succès.");
+}
+window.executeDeleteVitrineItem = executeDeleteVitrineItem;
+
+function openVitrineItemModal(tab, idx) {
+  const vData = currentVitrineDataCache || getLocalVitrineData();
+  const isEdit = idx >= 0;
+  const item = isEdit ? (vData[tab]?.[idx] || {}) : {};
+
+  const presetImages = [
+    { label: "SUV VIP & Prestige", path: "vip-suv.jpg" },
+    { label: "Circuits & Tourisme", path: "tourisme-haiti.jpg" },
+    { label: "Navette Scolaire", path: "navette-scolaire.jpg" },
+    { label: "Grand Bus & Flotte", path: "hero-laperle.jpg" }
+  ];
+
+  let modalContent = '';
+
+  if (tab === 'services') {
+    const perksText = Array.isArray(item.perks) ? item.perks.join('\n') : '';
+    modalContent = `
+      <div class="form-grid">
+        <div class="field" style="grid-column:1/-1">
+          <label>Titre de la prestation *</label>
+          <input id="vFormTitle" value="${esc(item.title || '')}" placeholder="Ex: Circuits Touristiques & Découverte" required>
+        </div>
+        <div class="field">
+          <label>Catégorie / Tag *</label>
+          <input id="vFormCategory" value="${esc(item.category || '')}" placeholder="Ex: Tourisme & Excursions, Prestige...">
+        </div>
+        <div class="field">
+          <label>Service associé au simulateur</label>
+          <select id="vFormActionKey">
+            <option value="tourisme" ${item.actionKey === 'tourisme' ? 'selected' : ''}>Tourisme & Circuits</option>
+            <option value="vip" ${item.actionKey === 'vip' ? 'selected' : ''}>VIP & Location</option>
+            <option value="scolaire" ${item.actionKey === 'scolaire' ? 'selected' : ''}>Scolaire</option>
+            <option value="aeroport" ${item.actionKey === 'aeroport' ? 'selected' : ''}>Aéroport</option>
+            <option value="corporate" ${item.actionKey === 'corporate' ? 'selected' : ''}>Corporate & ONG</option>
+          </select>
+        </div>
+        <div class="field" style="grid-column:1/-1">
+          <label>Image de présentation</label>
+          <div style="display:flex;gap:8px">
+            <input id="vFormImage" value="${esc(item.image || 'tourisme-haiti.jpg')}" placeholder="vip-suv.jpg ou URL" style="flex:1">
+            <select onchange="document.getElementById('vFormImage').value=this.value" style="width:200px">
+              <option value="">Sélectionner une image...</option>
+              ${presetImages.map(img => `<option value="${img.path}" ${item.image === img.path ? 'selected' : ''}>${img.label}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="field" style="grid-column:1/-1">
+          <label>Description détaillée</label>
+          <textarea id="vFormDesc" rows="3" placeholder="Présentez les spécificités de ce service...">${esc(item.description || '')}</textarea>
+        </div>
+        <div class="field" style="grid-column:1/-1">
+          <label>Points forts & Avantages (un par ligne)</label>
+          <textarea id="vFormPerks" rows="4" placeholder="Guides bilingues certifiés&#10;Véhicules 4x4 climatisés&#10;Itinéraires sécurisés">${esc(perksText)}</textarea>
+        </div>
+        <div class="field">
+          <label>Libellé du bouton</label>
+          <input id="vFormActionLabel" value="${esc(item.actionLabel || 'Réserver ce service')}" placeholder="Ex: Réserver ce circuit">
+        </div>
+        <div class="field" style="display:flex;align-items:center;gap:10px;margin-top:24px">
+          <input type="checkbox" id="vFormActive" ${item.active !== false ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer">
+          <label for="vFormActive" style="margin:0;cursor:pointer"><b>Afficher ce service sur le site public</b></label>
+        </div>
+      </div>
+    `;
+  } else if (tab === 'flotte') {
+    const specsText = Array.isArray(item.specs) ? item.specs.join('\n') : '';
+    modalContent = `
+      <div class="form-grid">
+        <div class="field" style="grid-column:1/-1">
+          <label>Nom du véhicule / Modèle *</label>
+          <input id="vFormName" value="${esc(item.name || '')}" placeholder="Ex: Toyota Land Cruiser / Prado TXL" required>
+        </div>
+        <div class="field">
+          <label>Icône / Emoji *</label>
+          <input id="vFormIcon" value="${esc(item.icon || '🚙')}" placeholder="🚙, 🚐, 🚘, 🚌..." style="font-size:20px;text-align:center">
+        </div>
+        <div class="field">
+          <label>Sous-titre / Catégorie</label>
+          <input id="vFormSubtitle" value="${esc(item.subtitle || '')}" placeholder="Ex: SUV VIP Tout-Terrain & Escorte">
+        </div>
+        <div class="field">
+          <label>Service associé</label>
+          <select id="vFormServiceKey">
+            <option value="vip" ${item.serviceKey === 'vip' ? 'selected' : ''}>Location VIP</option>
+            <option value="tourisme" ${item.serviceKey === 'tourisme' ? 'selected' : ''}>Tourisme</option>
+            <option value="scolaire" ${item.serviceKey === 'scolaire' ? 'selected' : ''}>Navette Scolaire</option>
+            <option value="aeroport" ${item.serviceKey === 'aeroport' ? 'selected' : ''}>Transfert Aéroport</option>
+            <option value="corporate" ${item.serviceKey === 'corporate' ? 'selected' : ''}>Corporate</option>
+          </select>
+        </div>
+        <div class="field" style="grid-column:1/-1">
+          <label>Caractéristiques & Équipements (un par ligne)</label>
+          <textarea id="vFormSpecs" rows="4" placeholder="👥 4 à 6 passagers&#10;❄️ Climatisation bi-zone&#10;🔒 Vitres teintées">${esc(specsText)}</textarea>
+        </div>
+        <div class="field" style="display:flex;align-items:center;gap:10px;margin-top:10px;grid-column:1/-1">
+          <input type="checkbox" id="vFormActive" ${item.active !== false ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer">
+          <label for="vFormActive" style="margin:0;cursor:pointer"><b>Afficher ce véhicule dans la flotte publique</b></label>
+        </div>
+      </div>
+    `;
+  } else if (tab === 'circuits') {
+    modalContent = `
+      <div class="form-grid">
+        <div class="field" style="grid-column:1/-1">
+          <label>Titre de l'excursion / Circuit *</label>
+          <input id="vFormTitle" value="${esc(item.title || '')}" placeholder="Ex: Citadelle Henri Christophe & Cap-Haïtien" required>
+        </div>
+        <div class="field">
+          <label>Région / Destination</label>
+          <input id="vFormDestination" value="${esc(item.destination || '')}" placeholder="Ex: Nord - Patrimoine UNESCO">
+        </div>
+        <div class="field">
+          <label>Image de fond</label>
+          <div style="display:flex;gap:8px">
+            <input id="vFormImage" value="${esc(item.image || 'tourisme-haiti.jpg')}" placeholder="tourisme-haiti.jpg" style="flex:1">
+            <select onchange="document.getElementById('vFormImage').value=this.value" style="width:140px">
+              <option value="">Sélection...</option>
+              ${presetImages.map(img => `<option value="${img.path}" ${item.image === img.path ? 'selected' : ''}>${img.label}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="field" style="grid-column:1/-1">
+          <label>Description du circuit</label>
+          <textarea id="vFormDesc" rows="3" placeholder="Présentation du circuit, paysages, points d'intérêt...">${esc(item.description || '')}</textarea>
+        </div>
+        <div class="field" style="display:flex;align-items:center;gap:10px;grid-column:1/-1">
+          <input type="checkbox" id="vFormActive" ${item.active !== false ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer">
+          <label for="vFormActive" style="margin:0;cursor:pointer"><b>Afficher ce circuit sur le site public</b></label>
+        </div>
+      </div>
+    `;
+  } else if (tab === 'engagements') {
+    modalContent = `
+      <div class="form-grid">
+        <div class="field" style="grid-column:1/-1">
+          <label>Titre de l'engagement *</label>
+          <input id="vFormTitle" value="${esc(item.title || '')}" placeholder="Ex: Sécurité Inaltérable" required>
+        </div>
+        <div class="field">
+          <label>Icône / Emoji *</label>
+          <input id="vFormIcon" value="${esc(item.icon || '🛡️')}" placeholder="🛡️, ⏱️, 💺, 📄..." style="font-size:20px;text-align:center">
+        </div>
+        <div class="field" style="grid-column:1/-1">
+          <label>Texte explicatif *</label>
+          <textarea id="vFormText" rows="3" placeholder="Explication de notre démarche et garantie pour les clients..." required>${esc(item.text || item.description || '')}</textarea>
+        </div>
+        <div class="field" style="display:flex;align-items:center;gap:10px;grid-column:1/-1">
+          <input type="checkbox" id="vFormActive" ${item.active !== false ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer">
+          <label for="vFormActive" style="margin:0;cursor:pointer"><b>Afficher cet engagement sur le site public</b></label>
+        </div>
+      </div>
+    `;
+  }
+
+  const modalTitle = isEdit ? `Modifier : ${esc(item.title || item.name || 'Élément')}` : `Ajouter un élément (${tab})`;
+
+  document.getElementById("modal").innerHTML = `
+    <div class="modal-head">
+      <div>
+        <h2>${modalTitle}</h2>
+        <small>Gestion des contenus en direct sur le site vitrine</small>
+      </div>
+      <button class="close" onclick="closeModal()">×</button>
+    </div>
+    <form onsubmit="handleSaveVitrineItem(event, '${tab}', ${idx})">
+      <div style="padding:16px 20px">
+        ${modalContent}
+      </div>
+      <div class="modal-foot" style="padding:14px 20px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:10px">
+        <button type="button" class="secondary" onclick="closeModal()">Annuler</button>
+        <button type="submit" class="primary" style="background:#092e70">💾 Enregistrer & Publier</button>
+      </div>
+    </form>
+  `;
+  document.getElementById("modalBackdrop").classList.add("open");
+}
+window.openVitrineItemModal = openVitrineItemModal;
+
+async function handleSaveVitrineItem(event, tab, idx) {
+  event.preventDefault();
+  const vData = currentVitrineDataCache || getLocalVitrineData();
+  if (!vData[tab]) vData[tab] = [];
+  const isEdit = idx >= 0;
+  const existing = isEdit ? vData[tab][idx] : null;
+
+  const active = document.getElementById("vFormActive") ? document.getElementById("vFormActive").checked : true;
+
+  if (tab === 'services') {
+    const title = document.getElementById("vFormTitle")?.value.trim() || 'Service';
+    const category = document.getElementById("vFormCategory")?.value.trim() || 'Prestation';
+    const image = document.getElementById("vFormImage")?.value.trim() || 'vip-suv.jpg';
+    const description = document.getElementById("vFormDesc")?.value.trim() || '';
+    const perksRaw = document.getElementById("vFormPerks")?.value || '';
+    const perks = perksRaw.split('\n').map(p => p.trim()).filter(Boolean);
+    const actionKey = document.getElementById("vFormActionKey")?.value || 'vip';
+    const actionLabel = document.getElementById("vFormActionLabel")?.value.trim() || 'Réserver';
+
+    const itemObj = {
+      id: existing?.id || `srv-${Date.now()}`,
+      title,
+      category,
+      image,
+      description,
+      perks,
+      actionKey,
+      actionLabel,
+      active,
+      order: existing?.order || (vData[tab].length + 1)
+    };
+
+    if (isEdit) vData[tab][idx] = itemObj;
+    else vData[tab].push(itemObj);
+
+  } else if (tab === 'flotte') {
+    const name = document.getElementById("vFormName")?.value.trim() || 'Véhicule';
+    const icon = document.getElementById("vFormIcon")?.value.trim() || '🚙';
+    const subtitle = document.getElementById("vFormSubtitle")?.value.trim() || '';
+    const serviceKey = document.getElementById("vFormServiceKey")?.value || 'vip';
+    const specsRaw = document.getElementById("vFormSpecs")?.value || '';
+    const specs = specsRaw.split('\n').map(s => s.trim()).filter(Boolean);
+
+    const itemObj = {
+      id: existing?.id || `flt-${Date.now()}`,
+      name,
+      icon,
+      subtitle,
+      specs,
+      serviceKey,
+      active,
+      order: existing?.order || (vData[tab].length + 1)
+    };
+
+    if (isEdit) vData[tab][idx] = itemObj;
+    else vData[tab].push(itemObj);
+
+  } else if (tab === 'circuits') {
+    const title = document.getElementById("vFormTitle")?.value.trim() || 'Circuit';
+    const destination = document.getElementById("vFormDestination")?.value.trim() || 'Haïti';
+    const image = document.getElementById("vFormImage")?.value.trim() || 'tourisme-haiti.jpg';
+    const description = document.getElementById("vFormDesc")?.value.trim() || '';
+
+    const itemObj = {
+      id: existing?.id || `cct-${Date.now()}`,
+      title,
+      destination,
+      image,
+      description,
+      active,
+      order: existing?.order || (vData[tab].length + 1)
+    };
+
+    if (isEdit) vData[tab][idx] = itemObj;
+    else vData[tab].push(itemObj);
+
+  } else if (tab === 'engagements') {
+    const title = document.getElementById("vFormTitle")?.value.trim() || 'Engagement';
+    const icon = document.getElementById("vFormIcon")?.value.trim() || '🛡️';
+    const text = document.getElementById("vFormText")?.value.trim() || '';
+
+    const itemObj = {
+      id: existing?.id || `eng-${Date.now()}`,
+      title,
+      icon,
+      text,
+      active,
+      order: existing?.order || (vData[tab].length + 1)
+    };
+
+    if (isEdit) vData[tab][idx] = itemObj;
+    else vData[tab].push(itemObj);
+  }
+
+  saveLocalVitrineData(vData);
+  currentVitrineDataCache = vData;
+  saveCloudVitrineData(vData);
+  renderDynamicVitrineSections(vData);
+  closeModal();
+  vitrineAdminPage();
+  showToast("✨ Enregistré avec succès ! Vos modifications sont en direct sur le site.");
+}
+window.handleSaveVitrineItem = handleSaveVitrineItem;
+
+function confirmResetVitrineData() {
+  document.getElementById("modal").innerHTML = `
+    <div class="modal-head">
+      <div>
+        <h2 style="color:#b42318">🔄 Réinitialiser les contenus vitrine</h2>
+        <small>Site Web Public LAPERLE TOUR HT</small>
+      </div>
+      <button class="close" onclick="closeModal()">×</button>
+    </div>
+    <div class="info" style="background:#fff5f5;border:1px solid #fed7d7;color:#b42318;padding:14px;border-radius:8px">
+      Voulez-vous restaurer les contenus par défaut (Prestations phares, Flotte, Circuits touristiques et Engagements) ?
+    </div>
+    <div class="form-actions" style="margin-top:16px">
+      <button class="secondary" onclick="closeModal()">Annuler</button>
+      <button class="primary" style="background:#b42318;border-color:#b42318" onclick="executeResetVitrineData()">
+        🔄 Confirmer la restauration
+      </button>
+    </div>
+  `;
+  document.getElementById("modalBackdrop").classList.add("open");
+}
+window.confirmResetVitrineData = confirmResetVitrineData;
+
+function executeResetVitrineData() {
+  const resetData = JSON.parse(JSON.stringify(DEFAULT_VITRINE_DATA));
+  saveLocalVitrineData(resetData);
+  currentVitrineDataCache = resetData;
+  saveCloudVitrineData(resetData);
+  renderDynamicVitrineSections(resetData);
+  closeModal();
+  vitrineAdminPage();
+  showToast("🔄 Contenus par défaut restaurés avec succès sur le site.");
+}
+window.executeResetVitrineData = executeResetVitrineData;
+
+async function syncVitrineToFirestoreUI() {
+  const vData = currentVitrineDataCache || getLocalVitrineData();
+  await saveCloudVitrineData(vData);
+  showToast("🔥 Contenus synchronisés avec succès sur Firestore Cloud.");
+}
+window.syncVitrineToFirestoreUI = syncVitrineToFirestoreUI;
 
 async function requestDocumentFromReservation(index, type = 'proforma') {
   const r = list("reservations")[index];

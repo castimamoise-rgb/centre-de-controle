@@ -653,6 +653,10 @@ service cloud.firestore {
     }
 
     // 14. Settings
+    match /settings/vitrine {
+      allow get: if true;
+      allow create, update, delete: if isAdmin();
+    }
     match /settings/{settingId} {
       allow get, list: if isVerified() && isUserActive() && (isAdmin() || isDirection());
       allow create, update: if isAdmin() && isValidId(settingId) && isValidSetting(incoming());

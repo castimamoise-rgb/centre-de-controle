@@ -41,14 +41,11 @@
       </a>
 
       <div class="pl-nav-actions">
-        <a href="https://wa.me/50944408687?text=Bonjour%20LAPERLE%20TOUR%20HT%2C%20je%20souhaite%20obtenir%20des%20informations%20sur%20vos%20services." target="_blank" rel="noopener noreferrer" class="pl-wa-chip" title="Contacter un conseiller sur WhatsApp">
-          <span>💬</span> +509 4440 8687
-        </a>
-        <button type="button" class="pl-btn-secondary" id="plNavBtnLogin" title="Accéder à votre espace client sécurisé">
-          Espace Client
+        <button type="button" class="pl-btn-secondary" id="plNavBtnLogin" title="Accéder à votre espace sécurisé">
+          Connexion
         </button>
-        <button type="button" class="pl-btn-primary" id="plNavBtnRegister" title="Créer un compte client en 1 minute">
-          Devenir Client
+        <button type="button" class="pl-btn-primary" id="plNavBtnRegister" title="Créer un compte en 1 minute">
+          S'inscrire
         </button>
         <button type="button" class="pl-mobile-toggle" id="plMobileNavToggle" aria-label="Ouvrir le menu mobile">
           ☰
@@ -66,8 +63,8 @@
       <a href="#plEngagements" class="pl-nav-link" onclick="closeMobileDrawer()">Pourquoi Laperle</a>
       <a href="#plContact" class="pl-nav-link" onclick="closeMobileDrawer()">Contact</a>
       <div class="pl-nav-actions">
-        <button type="button" class="pl-btn-secondary" id="plMobileBtnLogin">Espace Client</button>
-        <button type="button" class="pl-btn-primary" id="plMobileBtnRegister">Devenir Client</button>
+        <button type="button" class="pl-btn-secondary" id="plMobileBtnLogin">Connexion</button>
+        <button type="button" class="pl-btn-primary" id="plMobileBtnRegister">S'inscrire</button>
       </div>
     </div>
   </header>
@@ -77,30 +74,30 @@
     <div class="pl-hero-container">
       <div class="pl-hero-content">
         <div class="pl-hero-kicker">
-          <span>★</span> LE PREMIER RÉSEAU DE TRANSPORT VIP & CIRCUITS D'EXCEPTION EN HAÏTI
+          <span>★</span> TRANSPORT VIP & CIRCUITS D'EXCEPTION
         </div>
         <h1 class="pl-hero-title">
-          L'Excellence du Transport & du Tourisme en Haïti avec <span class="pl-hero-title-accent">LAPERLE TOUR HT</span>
+          Voyagez avec Excellence en Haïti avec <span class="pl-hero-title-accent">LAPERLE TOUR HT</span>
         </h1>
         <div class="pl-hero-slogan">« Un coup d'œil sur Haïti »</div>
         <p class="pl-hero-desc">
-          Voyagez dans le plus grand confort et en toute sécurité à travers les dix départements. Flotte moderne de SUV et berlines avec chauffeurs assermentés, circuits touristiques inoubliables, navettes scolaires géolocalisées et service protocolaire 24h/24.
+          SUV de prestige, chauffeurs privés assermentés, circuits touristiques et navettes sécurisées 24h/24 à travers les dix départements.
         </p>
 
         <!-- Métadonnées sans gélule (Zero-Pill Discipline) -->
         <div class="pl-hero-meta">
-          <span>🛡️ Sécurité & Escorte certifiée</span>
+          <span>🛡️ Sécurité certifiée</span>
           <span class="pl-meta-sep">·</span>
-          <span>💺 Confort VIP & Climatisation</span>
+          <span>💺 Confort VIP</span>
           <span class="pl-meta-sep">·</span>
-          <span>⏱️ Ponctualité rigoureuse</span>
+          <span>⏱️ Ponctualité 24/7</span>
           <span class="pl-meta-sep">·</span>
-          <span>🇭🇹 Chauffeurs bilingues formés</span>
+          <span>🇭🇹 Chauffeurs dédiés</span>
         </div>
 
         <div class="pl-hero-actions">
           <button type="button" class="pl-hero-btn-primary" id="plHeroBtnRegister">
-            <span>Devenir Client & Réserver</span> <span>🚀</span>
+            <span>Planifier mon voyage</span> <span>➔</span>
           </button>
           <a href="#plDevis" class="pl-hero-btn-secondary">
             <span>Simulateur de Devis Instantané</span> <span>↓</span>
@@ -115,10 +112,10 @@
     <div class="pl-simulator-card">
       <div class="pl-sim-header">
         <div class="pl-sim-title-group">
-          <h3><span>🏷️</span> Simulateur de Réservation & Tarif Indicatif</h3>
-          <p>Obtenez une estimation immédiate pour votre trajet ou circuit, puis créez votre compte client pour valider votre proforma officielle.</p>
+          <h3><span>🏷️</span> Simulateur de Réservation & Demande de Devis</h3>
+          <p>Configurez votre trajet ou circuit en quelques secondes, puis validez votre demande pour obtenir votre devis officiel sur mesure.</p>
         </div>
-        <span class="pl-sim-badge">Devis en ligne instantané</span>
+        <span class="pl-sim-badge">Devis officiel sur mesure</span>
       </div>
 
       <div class="pl-sim-grid">
@@ -176,10 +173,13 @@
       <!-- Résultat interactif calculé en direct -->
       <div class="pl-sim-result-box" id="plSimResultBox">
         <div class="pl-result-left">
-          <span class="pl-result-kicker">ESTIMATION INDICATIVE DU TARIF</span>
-          <div class="pl-result-price-wrap">
-            <span class="pl-result-price-usd" id="plSimPriceUSD">$150 USD</span>
-            <span class="pl-result-price-htg" id="plSimPriceHTG">~ 19 800 HTG</span>
+          <span class="pl-result-kicker">DEVIS OFFICIEL SUR MESURE</span>
+          <div class="pl-result-custom-tag">
+            <span>✨</span> <span>Tarif personnalisé selon itinéraire & options VIP</span>
+          </div>
+          <div class="pl-result-price-wrap" style="display:none;">
+            <span class="pl-result-price-usd" id="plSimPriceUSD"></span>
+            <span class="pl-result-price-htg" id="plSimPriceHTG"></span>
           </div>
           <div class="pl-result-inclusions" id="plSimInclusions">
             ✓ Chauffeur professionnel assermenté · ✓ Carburant inclus · ✓ Climatisation haute puissance · ✓ Assurance & Assistance 24/7
@@ -188,10 +188,10 @@
 
         <div class="pl-result-actions">
           <button type="button" class="pl-btn-validate-quote" id="plBtnValidateQuote">
-            <span>Valider ce devis & Créer mon compte client</span> <span>➔</span>
+            <span>Valider ma demande de devis</span> <span>➔</span>
           </button>
           <a href="https://wa.me/50944408687" target="_blank" rel="noopener noreferrer" class="pl-btn-quote-wa" id="plSimWaLink">
-            <span>Confirmer par WhatsApp</span>
+            <span>Demander par WhatsApp</span>
           </a>
         </div>
       </div>
@@ -747,12 +747,12 @@
 
         <div class="auth-brand-hero">
           <h1 class="auth-brand-title">
-            CENTRE DE CONTRÔLE<br>
-            <span class="brand-accent-text">LAPERLE</span>
+            ESPACE CLIENT & MEMBRE<br>
+            <span class="brand-accent-text">LAPERLE TOUR HT</span>
           </h1>
           <div class="auth-brand-tagline">« Un coup d'œil sur Haïti »</div>
           <p class="auth-brand-desc">
-            Système opérationnel et centre de commande : gestion de la flotte de transport, circuits touristiques, abonnements scolaires, proformas et facturation sécurisée.
+            Connectez-vous pour gérer vos réservations VIP, suivre vos circuits touristiques, consulter vos devis et accéder à vos factures officielles.
           </p>
         </div>
 

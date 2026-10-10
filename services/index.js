@@ -17,3 +17,4 @@ export * from './authService.js';
 export * from './userService.js';
 export * from './employeePracticalService.js';
 export * from './messages.js';
+export * from './vitrineService.js';
