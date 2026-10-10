@@ -5689,6 +5689,1403 @@ button[disabled] {
   }
 }
 
+/* ==========================================================
+   PAGE D'ACCUEIL VITRINE PUBLIQUE LAPERLE TOUR HT
+   Inspirée de la référence haut de gamme (Transport & Concierge VIP)
+   ========================================================== */
+
+.public-landing-page {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  background: #f8fafc;
+  color: #0f172a;
+  font-family: inherit;
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+
+/* 1. Barre de navigation sticky haut de gamme */
+.pl-navbar {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  background: rgba(4, 22, 57, 0.94);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  transition: all 0.25s ease;
+}
+
+.pl-nav-inner {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.pl-nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.pl-nav-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  object-fit: cover;
+  border: 1.5px solid rgba(245, 158, 11, 0.6);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.pl-brand-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.pl-brand-name {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: #ffffff;
+  line-height: 1.1;
+}
+
+.pl-brand-name em {
+  font-style: normal;
+  color: #f59e0b;
+}
+
+.pl-brand-slogan {
+  font-size: 11px;
+  color: #94a3b8;
+  font-style: italic;
+  letter-spacing: 0.2px;
+}
+
+.pl-nav-menu {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+
+.pl-nav-link {
+  color: #e2e8f0;
+  text-decoration: none;
+  font-size: 13.5px;
+  font-weight: 500;
+  padding: 6px 0;
+  position: relative;
+  transition: color 0.2s ease;
+}
+
+.pl-nav-link:hover {
+  color: #fbbf24;
+}
+
+.pl-nav-link::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  height: 2px;
+  background: #f59e0b;
+  transition: width 0.2s ease;
+}
+
+.pl-nav-link:hover::after {
+  width: 100%;
+}
+
+.pl-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pl-wa-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(37, 211, 102, 0.12);
+  color: #25d366;
+  border: 1px solid rgba(37, 211, 102, 0.3);
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.pl-wa-chip:hover {
+  background: #25d366;
+  color: #ffffff;
+  border-color: #25d366;
+  transform: translateY(-1px);
+}
+
+.pl-btn-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.pl-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.35);
+  transform: translateY(-1px);
+}
+
+.pl-btn-primary {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: #0b1e48;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(217, 119, 6, 0.35);
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.pl-btn-primary:hover {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  box-shadow: 0 6px 16px rgba(217, 119, 6, 0.45);
+  transform: translateY(-1px);
+}
+
+.pl-mobile-toggle {
+  display: none;
+  background: transparent;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 7px 11px;
+  border-radius: 6px;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.pl-mobile-drawer {
+  display: none;
+  flex-direction: column;
+  background: #041639;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 16px 20px;
+  gap: 12px;
+}
+
+.pl-mobile-drawer.open {
+  display: flex;
+}
+
+.pl-mobile-drawer .pl-nav-link {
+  padding: 8px 0;
+  font-size: 15px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.pl-mobile-drawer .pl-nav-actions {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+/* 2. Hero Section d'envergure internationale */
+.pl-hero {
+  position: relative;
+  min-height: 620px;
+  display: flex;
+  align-items: center;
+  background-color: #041639;
+  background-image: linear-gradient(to right, rgba(4, 22, 57, 0.95) 0%, rgba(4, 22, 57, 0.82) 48%, rgba(4, 22, 57, 0.5) 100%), url('hero-laperle.jpg');
+  background-size: cover;
+  background-position: center right;
+  background-repeat: no-repeat;
+  color: #ffffff;
+  padding: 70px 24px 90px;
+  overflow: hidden;
+}
+
+.pl-hero-container {
+  max-width: 1320px;
+  margin: 0 auto;
+  width: 100%;
+  position: relative;
+  z-index: 2;
+}
+
+.pl-hero-content {
+  max-width: 780px;
+}
+
+.pl-hero-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #f59e0b;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+
+.pl-hero-title {
+  font-size: clamp(32px, 5vw, 54px);
+  font-weight: 850;
+  line-height: 1.12;
+  letter-spacing: -0.5px;
+  margin: 0 0 12px;
+  color: #ffffff;
+}
+
+.pl-hero-title-accent {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #f97316 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  display: inline-block;
+}
+
+.pl-hero-slogan {
+  font-size: 20px;
+  color: #93c5fd;
+  font-style: italic;
+  font-weight: 500;
+  margin-bottom: 18px;
+}
+
+.pl-hero-desc {
+  font-size: 16px;
+  color: #cbd5e1;
+  line-height: 1.65;
+  margin: 0 0 24px;
+  max-width: 700px;
+}
+
+/* Zero-Pill Discipline : métadonnées sobres sans gélules */
+.pl-hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 13.5px;
+  color: #94a3b8;
+  margin-bottom: 32px;
+}
+
+.pl-hero-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #e2e8f0;
+}
+
+.pl-meta-sep {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.pl-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+}
+
+.pl-hero-btn-primary {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: #041639;
+  border: none;
+  padding: 14px 28px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(217, 119, 6, 0.4);
+  transition: all 0.25s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pl-hero-btn-primary:hover {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  box-shadow: 0 10px 28px rgba(217, 119, 6, 0.55);
+  transform: translateY(-2px);
+}
+
+.pl-hero-btn-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  padding: 13px 24px;
+  border-radius: 10px;
+  font-size: 14.5px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: all 0.25s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pl-hero-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: translateY(-2px);
+}
+
+.pl-hero-wa-btn {
+  background: #25d366;
+  color: #ffffff;
+  border: none;
+  padding: 13px 22px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 16px rgba(37, 211, 102, 0.35);
+  transition: all 0.25s ease;
+}
+
+.pl-hero-wa-btn:hover {
+  background: #20ba59;
+  box-shadow: 0 6px 20px rgba(37, 211, 102, 0.5);
+  transform: translateY(-2px);
+}
+
+/* 3. Simulateur Interactif de Devis & Réservation */
+.pl-simulator-wrapper {
+  max-width: 1320px;
+  margin: -50px auto 40px;
+  padding: 0 24px;
+  position: relative;
+  z-index: 10;
+}
+
+.pl-simulator-card {
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 28px 32px;
+  box-shadow: 0 20px 50px rgba(4, 22, 57, 0.12), 0 0 0 1px rgba(226, 232, 240, 0.8);
+  border: 1px solid #e2e8f0;
+}
+
+.pl-sim-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 22px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.pl-sim-title-group h3 {
+  font-size: 20px;
+  font-weight: 800;
+  color: #041639;
+  margin: 0 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pl-sim-title-group p {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.pl-sim-badge {
+  background: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+.pl-sim-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.pl-sim-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pl-sim-field label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #334155;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pl-sim-select, .pl-sim-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 13.5px;
+  color: #0f172a;
+  background: #ffffff;
+  outline: none;
+  transition: border-color 0.2s ease;
+  box-sizing: border-box;
+}
+
+.pl-sim-select:focus, .pl-sim-input:focus {
+  border-color: #082862;
+  box-shadow: 0 0 0 3px rgba(8, 40, 98, 0.1);
+}
+
+.pl-sim-result-box {
+  background: linear-gradient(135deg, #041639 0%, #082862 100%);
+  color: #ffffff;
+  border-radius: 14px;
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.pl-result-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pl-result-kicker {
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #f59e0b;
+  font-weight: 700;
+}
+
+.pl-result-price-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.pl-result-price-usd {
+  font-size: 28px;
+  font-weight: 850;
+  color: #ffffff;
+}
+
+.pl-result-price-htg {
+  font-size: 16px;
+  color: #93c5fd;
+  font-weight: 600;
+}
+
+.pl-result-inclusions {
+  font-size: 12px;
+  color: #cbd5e1;
+  margin-top: 2px;
+}
+
+.pl-result-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pl-btn-validate-quote {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: #041639;
+  border: none;
+  padding: 12px 22px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.pl-btn-validate-quote:hover {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  transform: translateY(-1px);
+}
+
+.pl-btn-quote-wa {
+  background: rgba(37, 211, 102, 0.2);
+  color: #25d366;
+  border: 1px solid rgba(37, 211, 102, 0.4);
+  padding: 11px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.pl-btn-quote-wa:hover {
+  background: #25d366;
+  color: #ffffff;
+}
+
+/* 4. Sections Communes */
+.pl-section {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 60px 24px;
+}
+
+.pl-section-head {
+  text-align: center;
+  max-width: 760px;
+  margin: 0 auto 48px;
+}
+
+.pl-section-kicker {
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: #d97706;
+  margin-bottom: 8px;
+}
+
+.pl-section-title {
+  font-size: clamp(26px, 3.5vw, 38px);
+  font-weight: 850;
+  color: #041639;
+  line-height: 1.2;
+  margin: 0 0 12px;
+}
+
+.pl-section-sub {
+  font-size: 15.5px;
+  color: #64748b;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* 5. Services Grid - Défilement horizontal fluide sans rail */
+.pl-services-head-wrap {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.pl-services-arrows {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pl-arrow-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1.5px solid #cbd5e1;
+  background: #ffffff;
+  color: #041639;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(4, 22, 57, 0.08);
+  transition: all 0.2s ease;
+}
+
+.pl-arrow-btn:hover {
+  background: #041639;
+  color: #ffffff;
+  border-color: #041639;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(4, 22, 57, 0.16);
+}
+
+.pl-arrow-btn:active {
+  transform: scale(0.95);
+}
+
+.pl-services-grid {
+  display: flex;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scroll-snap-type: x mandatory;
+  gap: 28px;
+  padding: 10px 4px 24px 4px;
+  /* AUCUN RAIL : scrollbar totalement masquée sur tous navigateurs */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pl-services-grid::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.pl-service-card {
+  flex: 0 0 360px;
+  min-width: 350px;
+  max-width: 370px;
+  scroll-snap-align: start;
+  background: #ffffff;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 10px 30px rgba(4, 22, 57, 0.05);
+  transition: all 0.25s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (max-width: 640px) {
+  .pl-service-card {
+    flex: 0 0 85vw;
+    min-width: 270px;
+    max-width: 340px;
+  }
+}
+
+.pl-service-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 40px rgba(4, 22, 57, 0.1);
+  border-color: #cbd5e1;
+}
+
+.pl-service-img-wrap {
+  position: relative;
+  height: 200px;
+  overflow: hidden;
+  background: #041639;
+}
+
+.pl-service-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.35s ease;
+}
+
+.pl-service-card:hover .pl-service-img {
+  transform: scale(1.04);
+}
+
+.pl-service-tag {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  background: rgba(4, 22, 57, 0.85);
+  backdrop-filter: blur(6px);
+  color: #fbbf24;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.pl-service-body {
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.pl-service-title {
+  font-size: 19px;
+  font-weight: 800;
+  color: #041639;
+  margin: 0 0 10px;
+}
+
+.pl-service-desc {
+  font-size: 13.5px;
+  color: #475569;
+  line-height: 1.55;
+  margin: 0 0 16px;
+  flex: 1;
+}
+
+.pl-service-perks {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.pl-service-perks li {
+  font-size: 12.5px;
+  color: #334155;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pl-service-perks li::before {
+  content: '✓';
+  color: #082862;
+  font-weight: 800;
+}
+
+.pl-service-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid #f1f5f9;
+  padding-top: 16px;
+}
+
+.pl-service-price-from {
+  display: flex;
+  flex-direction: column;
+}
+
+.pl-service-price-label {
+  font-size: 11px;
+  color: #64748b;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.pl-service-price-val {
+  font-size: 16px;
+  font-weight: 800;
+  color: #041639;
+}
+
+.pl-service-btn {
+  background: #041639;
+  color: #ffffff;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pl-service-btn:hover {
+  background: #082862;
+  color: #fbbf24;
+}
+
+/* 6. Notre Flotte - Défilement horizontal sans rail */
+.pl-fleet-grid {
+  display: flex;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scroll-snap-type: x mandatory;
+  gap: 24px;
+  padding: 8px 4px 20px 4px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.pl-fleet-grid::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.pl-fleet-card {
+  flex: 0 0 320px;
+  max-width: 340px;
+  scroll-snap-align: start;
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 24px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 8px 24px rgba(4, 22, 57, 0.04);
+  transition: all 0.25s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.pl-fleet-card:hover {
+  border-color: #cbd5e1;
+  transform: translateY(-3px);
+  box-shadow: 0 14px 32px rgba(4, 22, 57, 0.08);
+}
+
+.pl-fleet-icon {
+  font-size: 36px;
+  margin-bottom: 12px;
+}
+
+.pl-fleet-name {
+  font-size: 18px;
+  font-weight: 800;
+  color: #041639;
+  margin: 0 0 6px;
+}
+
+.pl-fleet-sub {
+  font-size: 12.5px;
+  color: #64748b;
+  margin-bottom: 14px;
+}
+
+/* Zero-Pill Discipline : specs unboxed */
+.pl-fleet-specs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+  color: #334155;
+  margin-bottom: 18px;
+  flex: 1;
+}
+
+.pl-fleet-specs span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pl-fleet-btn {
+  background: #f1f5f9;
+  color: #041639;
+  border: 1px solid #cbd5e1;
+  padding: 9px 16px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.pl-fleet-btn:hover {
+  background: #041639;
+  color: #ffffff;
+  border-color: #041639;
+}
+
+/* 7. Circuits Touristiques d'Haïti - Défilement horizontal sans rail */
+.pl-circuits-grid {
+  display: flex;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scroll-snap-type: x mandatory;
+  gap: 22px;
+  padding: 8px 4px 20px 4px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.pl-circuits-grid::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.pl-circuit-card {
+  flex: 0 0 320px;
+  max-width: 340px;
+  scroll-snap-align: start;
+  position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+  height: 280px;
+  box-shadow: 0 10px 28px rgba(4, 22, 57, 0.12);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 20px;
+  color: #ffffff;
+  text-decoration: none;
+}
+
+.pl-circuit-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s ease;
+  z-index: 1;
+}
+
+.pl-circuit-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(4, 22, 57, 0.95) 0%, rgba(4, 22, 57, 0.45) 55%, transparent 100%);
+  z-index: 2;
+  transition: background 0.3s ease;
+}
+
+.pl-circuit-card:hover .pl-circuit-bg {
+  transform: scale(1.06);
+}
+
+.pl-circuit-card:hover .pl-circuit-overlay {
+  background: linear-gradient(to top, rgba(4, 22, 57, 0.98) 0%, rgba(4, 22, 57, 0.55) 65%, rgba(4, 22, 57, 0.1) 100%);
+}
+
+.pl-circuit-info {
+  position: relative;
+  z-index: 3;
+}
+
+.pl-circuit-dest {
+  font-size: 11px;
+  color: #fbbf24;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 4px;
+}
+
+.pl-circuit-name {
+  font-size: 18px;
+  font-weight: 800;
+  margin: 0 0 6px;
+  line-height: 1.2;
+}
+
+.pl-circuit-desc {
+  font-size: 12px;
+  color: #cbd5e1;
+  line-height: 1.45;
+  margin: 0;
+}
+
+/* 8. Engagements & Valeurs - Défilement horizontal sans rail */
+.pl-pillars-grid {
+  display: flex;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scroll-snap-type: x mandatory;
+  gap: 24px;
+  padding: 8px 4px 20px 4px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.pl-pillars-grid::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.pl-pillar-card {
+  flex: 0 0 300px;
+  max-width: 320px;
+  scroll-snap-align: start;
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 28px 24px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 16px rgba(4, 22, 57, 0.04);
+  transition: all 0.2s ease;
+}
+
+.pl-pillar-card:hover {
+  transform: translateY(-2px);
+  border-color: #cbd5e1;
+}
+
+.pl-pillar-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: #eff6ff;
+  color: #1e40af;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  margin-bottom: 16px;
+}
+
+.pl-pillar-title {
+  font-size: 17px;
+  font-weight: 800;
+  color: #041639;
+  margin: 0 0 8px;
+}
+
+.pl-pillar-text {
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* 9. Étapes pour Devenir Client - Défilement horizontal sans rail */
+.pl-steps-grid {
+  display: flex;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scroll-snap-type: x mandatory;
+  gap: 20px;
+  padding: 8px 4px 20px 4px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.pl-steps-grid::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.pl-step-card {
+  flex: 0 0 280px;
+  max-width: 300px;
+  scroll-snap-align: start;
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 24px 20px;
+  border: 1px solid #e2e8f0;
+  position: relative;
+}
+
+.pl-step-number {
+  font-size: 32px;
+  font-weight: 900;
+  color: #f59e0b;
+  line-height: 1;
+  margin-bottom: 10px;
+}
+
+.pl-step-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #041639;
+  margin: 0 0 6px;
+}
+
+.pl-step-desc {
+  font-size: 12.5px;
+  color: #64748b;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* 10. Bannière d'Appel à l'Action & Inscription Immédiate */
+.pl-cta-banner {
+  background: linear-gradient(135deg, #041639 0%, #082862 60%, #0d3b87 100%);
+  color: #ffffff;
+  border-radius: 24px;
+  padding: 56px 40px;
+  text-align: center;
+  margin: 40px 24px 60px;
+  max-width: 1272px;
+  margin-left: auto;
+  margin-right: auto;
+  box-shadow: 0 24px 60px rgba(4, 22, 57, 0.25);
+  position: relative;
+  overflow: hidden;
+}
+
+.pl-cta-banner-content {
+  max-width: 760px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 2;
+}
+
+.pl-cta-kicker {
+  font-size: 12px;
+  font-weight: 800;
+  color: #fbbf24;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.pl-cta-title {
+  font-size: clamp(28px, 4vw, 42px);
+  font-weight: 850;
+  line-height: 1.15;
+  margin: 0 0 16px;
+  color: #ffffff;
+}
+
+.pl-cta-desc {
+  font-size: 16px;
+  color: #cbd5e1;
+  line-height: 1.6;
+  margin: 0 0 32px;
+}
+
+.pl-cta-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.pl-banner-btn-primary {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: #041639;
+  border: none;
+  padding: 14px 30px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(217, 119, 6, 0.4);
+  transition: all 0.2s ease;
+}
+
+.pl-banner-btn-primary:hover {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(217, 119, 6, 0.55);
+}
+
+.pl-banner-btn-secondary {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  padding: 13px 24px;
+  border-radius: 10px;
+  font-size: 14.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pl-banner-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: translateY(-2px);
+}
+
+.pl-banner-wa-link {
+  background: #25d366;
+  color: #ffffff;
+  border: none;
+  padding: 13px 22px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.pl-banner-wa-link:hover {
+  background: #20ba59;
+  transform: translateY(-2px);
+}
+
+/* 11. Footer */
+.pl-footer {
+  background: #041639;
+  color: #94a3b8;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 60px 24px 30px;
+}
+
+.pl-footer-inner {
+  max-width: 1320px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1.5fr repeat(3, 1fr);
+  gap: 40px;
+  margin-bottom: 48px;
+}
+
+.pl-footer-brand-logo {
+  width: 50px;
+  height: 50px;
+  border-radius: 10px;
+  border: 1.5px solid rgba(245, 158, 11, 0.6);
+  margin-bottom: 12px;
+}
+
+.pl-footer-brand-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #ffffff;
+  margin: 0 0 4px;
+}
+
+.pl-footer-brand-slogan {
+  font-size: 12px;
+  color: #f59e0b;
+  font-style: italic;
+  margin-bottom: 14px;
+}
+
+.pl-footer-desc {
+  font-size: 13px;
+  color: #94a3b8;
+  line-height: 1.6;
+  max-width: 340px;
+  margin-bottom: 18px;
+}
+
+.pl-footer-col h4 {
+  font-size: 14px;
+  font-weight: 800;
+  color: #ffffff;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin: 0 0 16px;
+}
+
+.pl-footer-links {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pl-footer-links a {
+  color: #94a3b8;
+  text-decoration: none;
+  font-size: 13px;
+  transition: color 0.2s ease;
+}
+
+.pl-footer-links a:hover {
+  color: #fbbf24;
+}
+
+.pl-footer-contact-item {
+  font-size: 13px;
+  color: #94a3b8;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+
+.pl-footer-bottom {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* Bouton de retour vers la vitrine sur la page d'authentification */
+.auth-top-return-bar {
+  width: min(1040px, 100%);
+  margin: 0 auto 14px;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.auth-back-home-pill {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  backdrop-filter: blur(8px);
+}
+
+.auth-back-home-pill:hover {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.5);
+}
+
+@media (max-width: 980px) {
+  .pl-nav-menu {
+    display: none;
+  }
+  .pl-mobile-toggle {
+    display: block;
+  }
+  .pl-footer-inner {
+    grid-template-columns: 1fr 1fr;
+  }
+  .pl-hero {
+    padding: 50px 20px 80px;
+    background-position: center;
+  }
+  .pl-simulator-wrapper {
+    margin-top: -30px;
+  }
+}
+
+@media (max-width: 640px) {
+  .pl-footer-inner {
+    grid-template-columns: 1fr;
+  }
+  .pl-simulator-card {
+    padding: 20px 16px;
+  }
+  .pl-result-price-wrap {
+    flex-direction: column;
+    gap: 2px;
+  }
+  .pl-cta-banner {
+    padding: 36px 20px;
+    margin: 20px 12px 40px;
+  }
+}
+
 
 
 

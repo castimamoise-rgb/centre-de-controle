@@ -376,9 +376,11 @@ async function logoutUser() {
       }
     }
 
+    const publicLanding = document.getElementById("publicLandingPage");
     const authContainer = document.getElementById("authContainer");
     const appContainer = document.getElementById("app");
-    if (authContainer) authContainer.style.display = "flex";
+    if (publicLanding) publicLanding.style.display = "block";
+    if (authContainer) authContainer.style.display = "none";
     if (appContainer) appContainer.style.display = "none";
     renderAuthPage("unauthenticated");
     showToast("✅ Données sauvegardées et déconnexion effectuée avec succès.");
@@ -2421,6 +2423,14 @@ function initAuthUI(initialMode = "login") {
   const toggleRegisterPwd = document.getElementById("authToggleRegisterPassword");
   const toggleRegisterConfirm = document.getElementById("authToggleRegisterConfirm");
   const btnRegister = document.getElementById("authBtnRegister");
+  const btnReturnHome = document.getElementById("authBtnReturnHome");
+  if (btnReturnHome) {
+    btnReturnHome.onclick = () => {
+      if (typeof showPublicLandingPage === "function") {
+        showPublicLandingPage();
+      }
+    };
+  }
 
   // Gestion des états de chargement (Spinners & anti-double-clic)
   function setButtonState(btn, isLoading, loadingText, defaultText) {
@@ -3295,9 +3305,280 @@ window.promptProfileCompletionIfSuggested = promptProfileCompletionIfSuggested;
 
 let cachedAuthContainerHTML = "";
 
+function attachAuthReturnHome() {
+  const btnReturnHome = document.getElementById("authBtnReturnHome");
+  if (btnReturnHome) {
+    btnReturnHome.onclick = () => showPublicLandingPage();
+  }
+}
+
+function showPublicLandingPage() {
+  const publicLanding = document.getElementById("publicLandingPage");
+  const authContainer = document.getElementById("authContainer");
+  const appContainer = document.getElementById("app");
+  if (publicLanding) publicLanding.style.display = "block";
+  if (authContainer) authContainer.style.display = "none";
+  if (appContainer) appContainer.style.display = "none";
+
+  // Si l'utilisateur est déjà connecté, adapter les boutons pour revenir au dashboard
+  const navLoginBtn = document.getElementById("plNavBtnLogin");
+  const mobileLoginBtn = document.getElementById("plMobileBtnLogin");
+  if (currentUser) {
+    const userName = currentUserProfile?.prenom || currentUserProfile?.name || "Mon Espace";
+    if (navLoginBtn) {
+      navLoginBtn.innerHTML = `<span>🏠</span> <span>${esc(userName)}</span>`;
+      navLoginBtn.onclick = () => {
+        publicLanding.style.display = "none";
+        appContainer.style.display = "block";
+      };
+    }
+    if (mobileLoginBtn) {
+      mobileLoginBtn.innerHTML = `<span>🏠</span> <span>Tableau de Bord</span>`;
+      mobileLoginBtn.onclick = () => {
+        closeMobileDrawer();
+        publicLanding.style.display = "none";
+        appContainer.style.display = "block";
+      };
+    }
+  } else {
+    if (navLoginBtn) {
+      navLoginBtn.innerHTML = "Espace Client";
+      navLoginBtn.onclick = () => showAuthView("login");
+    }
+    if (mobileLoginBtn) {
+      mobileLoginBtn.innerHTML = "Espace Client";
+      mobileLoginBtn.onclick = () => {
+        closeMobileDrawer();
+        showAuthView("login");
+      };
+    }
+  }
+
+  try {
+    if (["#login", "#connexion", "#register", "#inscription"].includes(window.location.hash)) {
+      history.replaceState(null, "", window.location.pathname);
+    }
+  } catch (e) {}
+}
+window.showPublicLandingPage = showPublicLandingPage;
+
+function showAuthView(mode = "login") {
+  const publicLanding = document.getElementById("publicLandingPage");
+  const authContainer = document.getElementById("authContainer");
+  const appContainer = document.getElementById("app");
+  if (publicLanding) publicLanding.style.display = "none";
+  if (authContainer) authContainer.style.display = "flex";
+  if (appContainer) appContainer.style.display = "none";
+
+  if (!authContainer.querySelector("#authTabs") && cachedAuthContainerHTML) {
+    authContainer.innerHTML = cachedAuthContainerHTML;
+  }
+  initAuthUI(mode === "register" ? "register" : "login");
+  attachAuthReturnHome();
+
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+window.showAuthView = showAuthView;
+
+function closeMobileDrawer() {
+  const drawer = document.getElementById("plMobileDrawer");
+  if (drawer) drawer.classList.remove("open");
+}
+window.closeMobileDrawer = closeMobileDrawer;
+
+function updateSimulatorPrice() {
+  const service = document.getElementById("plSimService")?.value || "tourisme";
+  const depart = document.getElementById("plSimDepart")?.value || "Port-au-Prince Centre";
+  const dest = document.getElementById("plSimDestination")?.value || "Côte des Arcadins";
+  const pass = document.getElementById("plSimPassengers")?.value || "1-2";
+
+  let baseUSD = 120;
+  let desc = "✓ Chauffeur professionnel · ✓ Carburant inclus · ✓ Climatisation haute puissance · ✓ Assurance passagers";
+
+  if (service === "tourisme") {
+    if (dest.includes("Citadelle") || dest.includes("Cap-Haïtien")) {
+      baseUSD = 280;
+    } else if (dest.includes("Jacmel")) {
+      baseUSD = 160;
+    } else if (dest.includes("Arcadins")) {
+      baseUSD = 140;
+    } else {
+      baseUSD = 120;
+    }
+    if (pass === "6-12" || pass === "13-25") baseUSD = Math.round(baseUSD * 1.5);
+  } else if (service === "vip") {
+    baseUSD = 180;
+    if (dest.includes("Cap-Haïtien")) baseUSD = 320;
+    if (pass === "3-5") baseUSD = 220;
+  } else if (service === "scolaire") {
+    baseUSD = 95;
+    desc = "✓ Navette domicile-école · ✓ Véhicule inspecté · ✓ Alertes WhatsApp parents · ✓ Formule mensuelle";
+  } else if (service === "aeroport") {
+    baseUSD = 50;
+    if (pass === "6-12") baseUSD = 85;
+    desc = "✓ Accueil nominatif avec pancarte · ✓ Prise en charge des bagages · ✓ Trajet direct sans arrêt · ✓ Suivi de vol";
+  } else if (service === "corporate") {
+    baseUSD = 200;
+    desc = "✓ Mise à disposition journée · ✓ Facture proforma certifiée · ✓ Chauffeur protocolaire · ✓ Radio dispatch";
+  } else if (service === "course") {
+    baseUSD = 40;
+    desc = "✓ Course privée urbaine · ✓ Véhicule climatisé · ✓ Ponctualité garantie · ✓ Trajet sécurisé";
+  }
+
+  const htgRate = 132;
+  const baseHTG = baseUSD * htgRate;
+
+  const elUSD = document.getElementById("plSimPriceUSD");
+  const elHTG = document.getElementById("plSimPriceHTG");
+  const elInc = document.getElementById("plSimInclusions");
+  const waLink = document.getElementById("plSimWaLink");
+
+  if (elUSD) elUSD.textContent = `$${baseUSD} USD`;
+  if (elHTG) elHTG.textContent = `~ ${baseHTG.toLocaleString("fr-FR")} HTG`;
+  if (elInc) elInc.textContent = desc;
+
+  if (waLink) {
+    const msg = encodeURIComponent(`Bonjour LAPERLE TOUR HT, je souhaite un devis officiel pour : ${service.toUpperCase()} de ${depart} vers ${dest} pour ${pass} passagers (Estimation indicative : $${baseUSD} USD).`);
+    waLink.href = `https://wa.me/50944408687?text=${msg}`;
+  }
+}
+window.updateSimulatorPrice = updateSimulatorPrice;
+
+function selectServiceForQuote(serviceType) {
+  const select = document.getElementById("plSimService");
+  if (select) {
+    select.value = serviceType;
+    updateSimulatorPrice();
+  }
+  const simSection = document.getElementById("plDevis");
+  if (simSection) {
+    simSection.scrollIntoView({ behavior: "smooth" });
+  }
+}
+window.selectServiceForQuote = selectServiceForQuote;
+
+function scrollSectionSlider(selector, direction) {
+  const container = document.querySelector(selector);
+  if (container) {
+    const card = container.firstElementChild;
+    const scrollStep = card ? (card.offsetWidth + 24) * direction : 340 * direction;
+    container.scrollBy({ left: scrollStep, behavior: "smooth" });
+  }
+}
+window.scrollSectionSlider = scrollSectionSlider;
+
+function scrollServices(direction) {
+  scrollSectionSlider('#plServices .pl-services-grid', direction);
+}
+window.scrollServices = scrollServices;
+
+function scrollFlotte(direction) {
+  scrollSectionSlider('#plFlotte .pl-fleet-grid', direction);
+}
+window.scrollFlotte = scrollFlotte;
+
+function scrollCircuits(direction) {
+  scrollSectionSlider('#plCircuits .pl-circuits-grid', direction);
+}
+window.scrollCircuits = scrollCircuits;
+
+function scrollEngagements(direction) {
+  scrollSectionSlider('#plEngagements .pl-pillars-grid', direction);
+}
+window.scrollEngagements = scrollEngagements;
+
+function scrollProcess(direction) {
+  scrollSectionSlider('#plProcess .pl-steps-grid', direction);
+}
+window.scrollProcess = scrollProcess;
+
+function selectDestinationForQuote(destName) {
+  const select = document.getElementById("plSimDestination");
+  if (select) {
+    for (let i = 0; i < select.options.length; i++) {
+      if (select.options[i].text.includes(destName) || select.options[i].value.includes(destName)) {
+        select.selectedIndex = i;
+        break;
+      }
+    }
+    updateSimulatorPrice();
+  }
+  const simSection = document.getElementById("plDevis");
+  if (simSection) {
+    simSection.scrollIntoView({ behavior: "smooth" });
+  }
+}
+window.selectDestinationForQuote = selectDestinationForQuote;
+
+function initLandingPageUI() {
+  document.getElementById("plNavBtnLogin")?.addEventListener("click", () => showAuthView("login"));
+  document.getElementById("plMobileBtnLogin")?.addEventListener("click", () => {
+    closeMobileDrawer();
+    showAuthView("login");
+  });
+  document.getElementById("plCtaBtnLogin")?.addEventListener("click", () => showAuthView("login"));
+
+  document.getElementById("plNavBtnRegister")?.addEventListener("click", () => showAuthView("register"));
+  document.getElementById("plMobileBtnRegister")?.addEventListener("click", () => {
+    closeMobileDrawer();
+    showAuthView("register");
+  });
+  document.getElementById("plHeroBtnRegister")?.addEventListener("click", () => showAuthView("register"));
+  document.getElementById("plCtaBtnRegister")?.addEventListener("click", () => showAuthView("register"));
+
+  attachAuthReturnHome();
+
+  const toggleMobileNav = document.getElementById("plMobileNavToggle");
+  const mobileDrawer = document.getElementById("plMobileDrawer");
+  if (toggleMobileNav && mobileDrawer) {
+    toggleMobileNav.addEventListener("click", () => {
+      mobileDrawer.classList.toggle("open");
+    });
+  }
+
+  document.getElementById("plSimService")?.addEventListener("change", updateSimulatorPrice);
+  document.getElementById("plSimDepart")?.addEventListener("change", updateSimulatorPrice);
+  document.getElementById("plSimDestination")?.addEventListener("change", updateSimulatorPrice);
+  document.getElementById("plSimPassengers")?.addEventListener("change", updateSimulatorPrice);
+
+  const btnValidateQuote = document.getElementById("plBtnValidateQuote");
+  if (btnValidateQuote) {
+    btnValidateQuote.addEventListener("click", () => {
+      const service = document.getElementById("plSimService")?.value;
+      const depart = document.getElementById("plSimDepart")?.value;
+      const dest = document.getElementById("plSimDestination")?.value;
+      const pass = document.getElementById("plSimPassengers")?.value;
+      const priceUSD = document.getElementById("plSimPriceUSD")?.textContent;
+
+      try {
+        sessionStorage.setItem("laperle_simulated_quote", JSON.stringify({
+          service,
+          depart,
+          dest,
+          pass,
+          priceUSD,
+          date: new Date().toISOString()
+        }));
+      } catch (e) {}
+
+      showToast("✨ Votre estimation de devis a été enregistrée ! Créez votre compte client pour la valider.");
+      showAuthView("register");
+    });
+  }
+
+  updateSimulatorPrice();
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initLandingPageUI);
+} else {
+  initLandingPageUI();
+}
+
 function renderAuthPage(state = "unauthenticated") {
   const authContainer = document.getElementById("authContainer");
   const appContainer = document.getElementById("app");
+  const publicLanding = document.getElementById("publicLandingPage");
   if (!authContainer || !appContainer) return;
 
   if (!cachedAuthContainerHTML && authContainer.querySelector("#authTabs")) {
@@ -3305,12 +3586,14 @@ function renderAuthPage(state = "unauthenticated") {
   }
 
   if (state === "authenticated") {
+    if (publicLanding) publicLanding.style.display = "none";
     authContainer.style.display = "none";
     appContainer.style.display = "block";
     return;
   }
 
   if (state === "deactivated") {
+    if (publicLanding) publicLanding.style.display = "none";
     authContainer.style.display = "flex";
     appContainer.style.display = "none";
     authContainer.innerHTML = `
@@ -3334,12 +3617,25 @@ function renderAuthPage(state = "unauthenticated") {
   }
 
   // État standard : "unauthenticated"
-  authContainer.style.display = "flex";
-  appContainer.style.display = "none";
-  if (!authContainer.querySelector("#authTabs") && cachedAuthContainerHTML) {
-    authContainer.innerHTML = cachedAuthContainerHTML;
+  const hash = window.location.hash;
+  const isDirectAuth = hash === "#login" || hash === "#connexion" || hash === "#register" || hash === "#inscription";
+
+  if (isDirectAuth) {
+    if (publicLanding) publicLanding.style.display = "none";
+    authContainer.style.display = "flex";
+    appContainer.style.display = "none";
+    if (!authContainer.querySelector("#authTabs") && cachedAuthContainerHTML) {
+      authContainer.innerHTML = cachedAuthContainerHTML;
+    }
+    const initialMode = (hash === "#register" || hash === "#inscription") ? "register" : "login";
+    initAuthUI(initialMode);
+    attachAuthReturnHome();
+  } else {
+    // Par défaut : Affichage de la page d'accueil vitrine
+    if (publicLanding) publicLanding.style.display = "block";
+    authContainer.style.display = "none";
+    appContainer.style.display = "none";
   }
-  initAuthUI("login");
 }
 
 // Écouteur d'authentification Firebase : ne reconnecte JAMAIS si l'utilisateur s'est déconnecté

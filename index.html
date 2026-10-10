@@ -27,7 +27,693 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
-<div id="authContainer" class="auth-page" style="display:flex;">
+<!-- PAGE D'ACCUEIL VITRINE PUBLIQUE LAPERLE TOUR HT -->
+<div id="publicLandingPage" class="public-landing-page" style="display:block;">
+  <!-- 1. Barre de navigation officielle LAPERLE TOUR HT -->
+  <header class="pl-navbar">
+    <div class="pl-nav-inner">
+      <a href="#plHero" class="pl-nav-brand" title="LAPERLE TOUR HT - Accueil">
+        <img src="logo-laperle.jpg" alt="Logo LAPERLE TOUR HT" class="pl-nav-logo">
+        <div class="pl-brand-text">
+          <span class="pl-brand-name">LAPERLE <em>TOUR HT</em></span>
+          <span class="pl-brand-slogan">« Un coup d'œil sur Haïti »</span>
+        </div>
+      </a>
+
+      <div class="pl-nav-actions">
+        <a href="https://wa.me/50944408687?text=Bonjour%20LAPERLE%20TOUR%20HT%2C%20je%20souhaite%20obtenir%20des%20informations%20sur%20vos%20services." target="_blank" rel="noopener noreferrer" class="pl-wa-chip" title="Contacter un conseiller sur WhatsApp">
+          <span>💬</span> +509 4440 8687
+        </a>
+        <button type="button" class="pl-btn-secondary" id="plNavBtnLogin" title="Accéder à votre espace client sécurisé">
+          Espace Client
+        </button>
+        <button type="button" class="pl-btn-primary" id="plNavBtnRegister" title="Créer un compte client en 1 minute">
+          Devenir Client
+        </button>
+        <button type="button" class="pl-mobile-toggle" id="plMobileNavToggle" aria-label="Ouvrir le menu mobile">
+          ☰
+        </button>
+      </div>
+    </div>
+
+    <!-- Tiroir Mobile pour téléphones et petites tablettes -->
+    <div class="pl-mobile-drawer" id="plMobileDrawer">
+      <a href="#plHero" class="pl-nav-link" onclick="closeMobileDrawer()">Accueil</a>
+      <a href="#plServices" class="pl-nav-link" onclick="closeMobileDrawer()">Nos Services</a>
+      <a href="#plFlotte" class="pl-nav-link" onclick="closeMobileDrawer()">Notre Flotte</a>
+      <a href="#plCircuits" class="pl-nav-link" onclick="closeMobileDrawer()">Circuits & Visites</a>
+      <a href="#plDevis" class="pl-nav-link" onclick="closeMobileDrawer()">Simulateur de Devis</a>
+      <a href="#plEngagements" class="pl-nav-link" onclick="closeMobileDrawer()">Pourquoi Laperle</a>
+      <a href="#plContact" class="pl-nav-link" onclick="closeMobileDrawer()">Contact</a>
+      <div class="pl-nav-actions">
+        <button type="button" class="pl-btn-secondary" id="plMobileBtnLogin">Espace Client</button>
+        <button type="button" class="pl-btn-primary" id="plMobileBtnRegister">Devenir Client</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 2. Hero Section : Présentation de prestige LAPERLE TOUR HT -->
+  <section class="pl-hero" id="plHero">
+    <div class="pl-hero-container">
+      <div class="pl-hero-content">
+        <div class="pl-hero-kicker">
+          <span>★</span> LE PREMIER RÉSEAU DE TRANSPORT VIP & CIRCUITS D'EXCEPTION EN HAÏTI
+        </div>
+        <h1 class="pl-hero-title">
+          L'Excellence du Transport & du Tourisme en Haïti avec <span class="pl-hero-title-accent">LAPERLE TOUR HT</span>
+        </h1>
+        <div class="pl-hero-slogan">« Un coup d'œil sur Haïti »</div>
+        <p class="pl-hero-desc">
+          Voyagez dans le plus grand confort et en toute sécurité à travers les dix départements. Flotte moderne de SUV et berlines avec chauffeurs assermentés, circuits touristiques inoubliables, navettes scolaires géolocalisées et service protocolaire 24h/24.
+        </p>
+
+        <!-- Métadonnées sans gélule (Zero-Pill Discipline) -->
+        <div class="pl-hero-meta">
+          <span>🛡️ Sécurité & Escorte certifiée</span>
+          <span class="pl-meta-sep">·</span>
+          <span>💺 Confort VIP & Climatisation</span>
+          <span class="pl-meta-sep">·</span>
+          <span>⏱️ Ponctualité rigoureuse</span>
+          <span class="pl-meta-sep">·</span>
+          <span>🇭🇹 Chauffeurs bilingues formés</span>
+        </div>
+
+        <div class="pl-hero-actions">
+          <button type="button" class="pl-hero-btn-primary" id="plHeroBtnRegister">
+            <span>Devenir Client & Réserver</span> <span>🚀</span>
+          </button>
+          <a href="#plDevis" class="pl-hero-btn-secondary">
+            <span>Simulateur de Devis Instantané</span> <span>↓</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. Simulateur Interactif de Devis & Réservation -->
+  <section class="pl-simulator-wrapper" id="plDevis">
+    <div class="pl-simulator-card">
+      <div class="pl-sim-header">
+        <div class="pl-sim-title-group">
+          <h3><span>🏷️</span> Simulateur de Réservation & Tarif Indicatif</h3>
+          <p>Obtenez une estimation immédiate pour votre trajet ou circuit, puis créez votre compte client pour valider votre proforma officielle.</p>
+        </div>
+        <span class="pl-sim-badge">Devis en ligne instantané</span>
+      </div>
+
+      <div class="pl-sim-grid">
+        <div class="pl-sim-field">
+          <label for="plSimService"><span>📋</span> Prestation souhaitée :</label>
+          <select id="plSimService" class="pl-sim-select">
+            <option value="tourisme">Circuit Touristique & Découverte</option>
+            <option value="vip">Location SUV / Berline VIP avec Chauffeur</option>
+            <option value="scolaire">Abonnement Transport Scolaire Sécurisé</option>
+            <option value="aeroport">Transfert Aéroport Toussaint Louverture</option>
+            <option value="corporate">Transport Corporate & Missions d'Entreprise / ONG</option>
+            <option value="course">Course Privée Urbaine & Taxi VIP</option>
+          </select>
+        </div>
+
+        <div class="pl-sim-field">
+          <label for="plSimDepart"><span>📍</span> Point de départ :</label>
+          <select id="plSimDepart" class="pl-sim-select">
+            <option value="Port-au-Prince Centre">Port-au-Prince (Centre-ville)</option>
+            <option value="Pétion-Ville">Pétion-Ville</option>
+            <option value="Delmas">Delmas</option>
+            <option value="Aéroport Toussaint Louverture">Aéroport Toussaint Louverture</option>
+            <option value="Tabarre">Tabarre</option>
+            <option value="Cap-Haïtien">Cap-Haïtien</option>
+            <option value="Jacmel">Jacmel</option>
+            <option value="Autre commune">Autre commune</option>
+          </select>
+        </div>
+
+        <div class="pl-sim-field">
+          <label for="plSimDestination"><span>🎯</span> Destination :</label>
+          <select id="plSimDestination" class="pl-sim-select">
+            <option value="Côte des Arcadins">Côte des Arcadins / Montrouis (Plages & Resorts)</option>
+            <option value="Cap-Haïtien & Citadelle">Cap-Haïtien & Citadelle Laferrière</option>
+            <option value="Jacmel & Bassin Bleu">Jacmel & Chutes de Bassin Bleu</option>
+            <option value="Kenscoff & Furcy">Kenscoff & Furcy (Fraîcheur & Montagne)</option>
+            <option value="Saut-d'Eau">Saut-d'Eau (Nature & Pèlerinage)</option>
+            <option value="Pétion-Ville">Pétion-Ville (Trajet urbain)</option>
+            <option value="Aéroport International">Aéroport Toussaint Louverture</option>
+            <option value="Circuit personnalisé">Circuit personnalisé (Sur mesure)</option>
+          </select>
+        </div>
+
+        <div class="pl-sim-field">
+          <label for="plSimPassengers"><span>👥</span> Passagers :</label>
+          <select id="plSimPassengers" class="pl-sim-select">
+            <option value="1-2">1 à 2 passagers (Berline / SUV Privé)</option>
+            <option value="3-5">3 à 5 passagers (Grand SUV Prado TXL)</option>
+            <option value="6-12">6 à 12 passagers (Minibus HiAce VIP)</option>
+            <option value="13-25">13 à 25 passagers (Autocar Confort)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Résultat interactif calculé en direct -->
+      <div class="pl-sim-result-box" id="plSimResultBox">
+        <div class="pl-result-left">
+          <span class="pl-result-kicker">ESTIMATION INDICATIVE DU TARIF</span>
+          <div class="pl-result-price-wrap">
+            <span class="pl-result-price-usd" id="plSimPriceUSD">$150 USD</span>
+            <span class="pl-result-price-htg" id="plSimPriceHTG">~ 19 800 HTG</span>
+          </div>
+          <div class="pl-result-inclusions" id="plSimInclusions">
+            ✓ Chauffeur professionnel assermenté · ✓ Carburant inclus · ✓ Climatisation haute puissance · ✓ Assurance & Assistance 24/7
+          </div>
+        </div>
+
+        <div class="pl-result-actions">
+          <button type="button" class="pl-btn-validate-quote" id="plBtnValidateQuote">
+            <span>Valider ce devis & Créer mon compte client</span> <span>➔</span>
+          </button>
+          <a href="https://wa.me/50944408687" target="_blank" rel="noopener noreferrer" class="pl-btn-quote-wa" id="plSimWaLink">
+            <span>Confirmer par WhatsApp</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. Section : Présentation de TOUS nos Services & Produits -->
+  <section class="pl-section" id="plServices">
+    <div class="pl-section-head pl-services-head-wrap">
+      <div style="max-width:820px;">
+        <div class="pl-section-kicker">NOS PRESTATIONS PHARES</div>
+        <h2 class="pl-section-title">Une Offre Complète pour Tous vos Déplacements</h2>
+        <p class="pl-section-sub">
+          Que vous soyez un particulier, une famille, une délégation diplomatique ou une entreprise internationale, découvrez l'excellence opérationnelle LAPERLE TOUR HT.
+        </p>
+      </div>
+      <div class="pl-services-arrows">
+        <button type="button" class="pl-arrow-btn" onclick="scrollServices(-1)" aria-label="Défiler vers la gauche" title="Services précédents">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <button type="button" class="pl-arrow-btn" onclick="scrollServices(1)" aria-label="Défiler vers la droite" title="Services suivants">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="pl-services-grid">
+      <!-- Service 1 : Circuits Touristiques & Découverte -->
+      <div class="pl-service-card">
+        <div class="pl-service-img-wrap">
+          <img src="tourisme-haiti.jpg" alt="Circuits Touristiques en Haïti" class="pl-service-img">
+          <span class="pl-service-tag">Tourisme & Excursions</span>
+        </div>
+        <div class="pl-service-body">
+          <h3 class="pl-service-title">Circuits Touristiques & Découverte d'Haïti</h3>
+          <p class="pl-service-desc">
+            Vivez une expérience inoubliable au cœur du patrimoine naturel et historique : Côte des Arcadins, Citadelle Laferrière, Jacmel, Bassin Bleu et les sommets de Kenscoff.
+          </p>
+          <ul class="pl-service-perks">
+            <li>Guides bilingues certifiés & chauffeurs passionnés</li>
+            <li>Véhicules 4x4 tout-terrain ou minibus climatisés</li>
+            <li>Itinéraires sécurisés et rafraîchissements à bord</li>
+            <li>Partenariats avec les meilleurs hôtels et restaurants</li>
+          </ul>
+          <div class="pl-service-foot">
+            <div class="pl-service-price-from">
+              <span class="pl-service-price-label">À partir de</span>
+              <span class="pl-service-price-val">$120 USD / pers.</span>
+            </div>
+            <button type="button" class="pl-service-btn" onclick="selectServiceForQuote('tourisme')">
+              Réserver ce circuit
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Service 2 : Location VIP avec Chauffeur -->
+      <div class="pl-service-card">
+        <div class="pl-service-img-wrap">
+          <img src="vip-suv.jpg" alt="Location de véhicules VIP avec chauffeur" class="pl-service-img">
+          <span class="pl-service-tag">Prestige & Diplomatie</span>
+        </div>
+        <div class="pl-service-body">
+          <h3 class="pl-service-title">Location de Véhicules VIP avec Chauffeur</h3>
+          <p class="pl-service-desc">
+            Flotte de berlines et SUV haut de gamme (Toyota Land Cruiser, Prado TXL) pour diplomates, personnalités, mariages, délégations d'affaires et réceptions officielles.
+          </p>
+          <ul class="pl-service-perks">
+            <li>Vitres teintées, intérieur cuir et insonorisation</li>
+            <li>Chauffeurs en tenue protocolaire assermentés</li>
+            <li>Mise à disposition à l'heure, à la journée ou au mois</li>
+            <li>Discrétion absolue et sécurité renforcée</li>
+          </ul>
+          <div class="pl-service-foot">
+            <div class="pl-service-price-from">
+              <span class="pl-service-price-label">Journée dès</span>
+              <span class="pl-service-price-val">$180 USD / jour</span>
+            </div>
+            <button type="button" class="pl-service-btn" onclick="selectServiceForQuote('vip')">
+              Demander un SUV VIP
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Service 3 : Circuits & Navettes Scolaires Sécurisées -->
+      <div class="pl-service-card">
+        <div class="pl-service-img-wrap">
+          <img src="navette-scolaire.jpg" alt="Transport scolaire sécurisé" class="pl-service-img">
+          <span class="pl-service-tag">Scolaire & Famille</span>
+        </div>
+        <div class="pl-service-body">
+          <h3 class="pl-service-title">Circuits & Navettes Scolaires Sécurisées</h3>
+          <p class="pl-service-desc">
+            Prise en charge quotidienne des élèves à domicile et dépose sécurisée aux collèges et lycées partenaires. La tranquillité d'esprit absolue pour tous les parents.
+          </p>
+          <ul class="pl-service-perks">
+            <li>Prise en charge personnalisée au pas de la porte</li>
+            <li>Ceintures de sécurité obligatoires et vitesse régulée</li>
+            <li>Alertes quotidiennes aux parents via WhatsApp</li>
+            <li>Abonnements mensuels et trimestriels dégressifs</li>
+          </ul>
+          <div class="pl-service-foot">
+            <div class="pl-service-price-from">
+              <span class="pl-service-price-label">Abonnement dès</span>
+              <span class="pl-service-price-val">12 500 HTG / mois</span>
+            </div>
+            <button type="button" class="pl-service-btn" onclick="selectServiceForQuote('scolaire')">
+              Inscrire mon enfant
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Service 4 : Transport Corporate & Missions ONG -->
+      <div class="pl-service-card">
+        <div class="pl-service-img-wrap">
+          <img src="hero-laperle.jpg" alt="Transport Corporate & Missions d'Entreprises" class="pl-service-img">
+          <span class="pl-service-tag">Corporate & ONG</span>
+        </div>
+        <div class="pl-service-body">
+          <h3 class="pl-service-title">Transport Corporate & Missions ONG</h3>
+          <p class="pl-service-desc">
+            Logistique complète pour entreprises, missions diplomatiques, ONG internationales, séminaires, congrès et délégations humanitaires à travers le pays.
+          </p>
+          <ul class="pl-service-perks">
+            <li>Facturation officielle et proformas aux normes comptables</li>
+            <li>Chauffeurs formés aux protocoles de sécurité de terrain</li>
+            <li>Liaison permanente avec notre centre de dispatch radio</li>
+            <li>Gestion de flottes multiples et contrats flexibles</li>
+          </ul>
+          <div class="pl-service-foot">
+            <div class="pl-service-price-from">
+              <span class="pl-service-price-label">Contrat sur mesure</span>
+              <span class="pl-service-price-val">Devis Proforma sous 2h</span>
+            </div>
+            <button type="button" class="pl-service-btn" onclick="selectServiceForQuote('corporate')">
+              Devis Entreprise
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Service 5 : Transferts Aéroport Toussaint Louverture & Taxis VIP -->
+      <div class="pl-service-card">
+        <div class="pl-service-img-wrap">
+          <img src="vip-suv.jpg" alt="Transfert aéroport et taxis privés" class="pl-service-img">
+          <span class="pl-service-tag">Aéroport & Transferts</span>
+        </div>
+        <div class="pl-service-body">
+          <h3 class="pl-service-title">Transferts Aéroport & Taxis Privés</h3>
+          <p class="pl-service-desc">
+            Accueil personnalisé et nominatif avec pancarte au hall d'arrivée de l'aéroport international Toussaint Louverture, prise en charge de vos bagages et trajet sans escale.
+          </p>
+          <ul class="pl-service-perks">
+            <li>Accueil nominatif dès la sortie du terminal</li>
+            <li>Assistance complète bagages et véhicule climatisé prêt</li>
+            <li>Zéro attente, transfert direct vers hôtel ou résidence</li>
+            <li>Disponible 24h/24, 7j/7 avec suivi des vols en temps réel</li>
+          </ul>
+          <div class="pl-service-foot">
+            <div class="pl-service-price-from">
+              <span class="pl-service-price-label">Trajet dès</span>
+              <span class="pl-service-price-val">$50 USD</span>
+            </div>
+            <button type="button" class="pl-service-btn" onclick="selectServiceForQuote('aeroport')">
+              Réserver mon transfert
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. Section : Notre Flotte d'Excellence -->
+  <section class="pl-section" id="plFlotte" style="background:#ffffff;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;max-width:100%;padding:70px 24px;">
+    <div style="max-width:1320px;margin:0 auto;">
+      <div class="pl-section-head pl-services-head-wrap">
+        <div style="max-width:820px;">
+          <div class="pl-section-kicker">VÉHICULES MODERNES & RÉCENTS</div>
+          <h2 class="pl-section-title">Notre Flotte d'Excellence</h2>
+          <p class="pl-section-sub">
+            Tous nos véhicules sont rigoureusement révisés, climatisés, géolocalisés et conformes aux plus hauts standards de sécurité routière.
+          </p>
+        </div>
+        <div class="pl-services-arrows" aria-label="Navigation défilement flotte">
+          <button type="button" class="pl-arrow-btn" onclick="scrollSectionSlider('#plFlotte .pl-fleet-grid', -1)" title="Faire défiler vers la gauche" aria-label="Précédent">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </button>
+          <button type="button" class="pl-arrow-btn" onclick="scrollSectionSlider('#plFlotte .pl-fleet-grid', 1)" title="Faire défiler vers la droite" aria-label="Suivant">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="pl-fleet-grid">
+        <div class="pl-fleet-card">
+          <div class="pl-fleet-icon">🚙</div>
+          <h3 class="pl-fleet-name">Toyota Land Cruiser / Prado TXL</h3>
+          <div class="pl-fleet-sub">SUV VIP Tout-Terrain & Escorte</div>
+          <div class="pl-fleet-specs">
+            <span>👥 4 à 6 passagers</span>
+            <span>❄️ Climatisation bi-zone renforcée</span>
+            <span>🔒 Vitres teintées & intérieur cuir</span>
+            <span>🧳 4 grands bagages</span>
+            <span>⚙️ Transmission 4x4 tout-terrain</span>
+          </div>
+          <button type="button" class="pl-fleet-btn" onclick="selectServiceForQuote('vip')">Sélectionner ce véhicule</button>
+        </div>
+
+        <div class="pl-fleet-card">
+          <div class="pl-fleet-icon">🚐</div>
+          <h3 class="pl-fleet-name">Minibus HiAce VIP Exécutif</h3>
+          <div class="pl-fleet-sub">Groupes, Tourisme & Navettes</div>
+          <div class="pl-fleet-specs">
+            <span>👥 10 à 14 passagers</span>
+            <span>❄️ Climatisation intégrale pavillon</span>
+            <span>💺 Sièges ergonomiques inclinables</span>
+            <span>🧳 Grande capacité bagagerie</span>
+            <span>🎵 Audio stéréo & micro guide</span>
+          </div>
+          <button type="button" class="pl-fleet-btn" onclick="selectServiceForQuote('tourisme')">Sélectionner ce véhicule</button>
+        </div>
+
+        <div class="pl-fleet-card">
+          <div class="pl-fleet-icon">🚘</div>
+          <h3 class="pl-fleet-name">Berline Premium Confort</h3>
+          <div class="pl-fleet-sub">Déplacements d'Affaires & Taxis</div>
+          <div class="pl-fleet-specs">
+            <span>👥 3 passagers</span>
+            <span>❄️ Climatisation silencieuse</span>
+            <span>💼 Confort feutré & silencieux</span>
+            <span>🧳 2 valises moyennes</span>
+            <span>⚡ Idéal trajets urbains et aéroport</span>
+          </div>
+          <button type="button" class="pl-fleet-btn" onclick="selectServiceForQuote('aeroport')">Sélectionner ce véhicule</button>
+        </div>
+
+        <div class="pl-fleet-card">
+          <div class="pl-fleet-icon">🚌</div>
+          <h3 class="pl-fleet-name">Grand Autocar Touristique</h3>
+          <div class="pl-fleet-sub">Événements, Sorties & Congrès</div>
+          <div class="pl-fleet-specs">
+            <span>👥 25 à 35 passagers</span>
+            <span>❄️ Climatisation centrale haute puissance</span>
+            <span>🎤 Système de sonorisation pour conférencier</span>
+            <span>🧳 Soutes à bagages grand volume</span>
+            <span>🛡️ Chauffeur longue distance expérimenté</span>
+          </div>
+          <button type="button" class="pl-fleet-btn" onclick="selectServiceForQuote('tourisme')">Sélectionner ce véhicule</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. Section : Circuits Touristiques d'Exception en Haïti -->
+  <section class="pl-section" id="plCircuits">
+    <div class="pl-section-head pl-services-head-wrap">
+      <div style="max-width:820px;">
+        <div class="pl-section-kicker">« UN COUP D'ŒIL SUR HAÏTI »</div>
+        <h2 class="pl-section-title">Circuits & Destinations Phares</h2>
+        <p class="pl-section-sub">
+          Explorez la richesse culturelle, historique et balnéaire d'Haïti dans les conditions de confort et de sécurité les plus exigeantes.
+        </p>
+      </div>
+      <div class="pl-services-arrows" aria-label="Navigation défilement circuits">
+        <button type="button" class="pl-arrow-btn" onclick="scrollSectionSlider('#plCircuits .pl-circuits-grid', -1)" title="Faire défiler vers la gauche" aria-label="Précédent">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        </button>
+        <button type="button" class="pl-arrow-btn" onclick="scrollSectionSlider('#plCircuits .pl-circuits-grid', 1)" title="Faire défiler vers la droite" aria-label="Suivant">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="pl-circuits-grid">
+      <!-- Destination 1 -->
+      <div class="pl-circuit-card" onclick="selectDestinationForQuote('Côte des Arcadins')">
+        <img src="tourisme-haiti.jpg" alt="Côte des Arcadins" class="pl-circuit-bg">
+        <div class="pl-circuit-overlay"></div>
+        <div class="pl-circuit-info">
+          <div class="pl-circuit-dest">Artibonite & Ouest</div>
+          <h3 class="pl-circuit-name">Côte des Arcadins & Montrouis</h3>
+          <p class="pl-circuit-desc">Plages de sable blanc, eaux turquoise, resorts côtiers et gastronomie créole au bord de l'eau.</p>
+        </div>
+      </div>
+
+      <!-- Destination 2 -->
+      <div class="pl-circuit-card" onclick="selectDestinationForQuote('Cap-Haïtien & Citadelle')">
+        <img src="hero-laperle.jpg" alt="Citadelle Laferrière Cap-Haïtien" class="pl-circuit-bg">
+        <div class="pl-circuit-overlay"></div>
+        <div class="pl-circuit-info">
+          <div class="pl-circuit-dest">Nord d'Haïti</div>
+          <h3 class="pl-circuit-name">Citadelle Henri Christophe & Cap-Haïtien</h3>
+          <p class="pl-circuit-desc">La plus grande forteresse des Amériques, le Palais Sans-Souci et le charme colonial du Cap.</p>
+        </div>
+      </div>
+
+      <!-- Destination 3 -->
+      <div class="pl-circuit-card" onclick="selectDestinationForQuote('Jacmel & Bassin Bleu')">
+        <img src="tourisme-haiti.jpg" alt="Jacmel & Bassin Bleu" class="pl-circuit-bg">
+        <div class="pl-circuit-overlay"></div>
+        <div class="pl-circuit-info">
+          <div class="pl-circuit-dest">Sud-Est</div>
+          <h3 class="pl-circuit-name">Jacmel & Cascades de Bassin Bleu</h3>
+          <p class="pl-circuit-desc">Capitale culturelle de l'artisanat d'art, maisons en fer forgé et cascades turquoises spectaculaires.</p>
+        </div>
+      </div>
+
+      <!-- Destination 4 -->
+      <div class="pl-circuit-card" onclick="selectDestinationForQuote('Kenscoff & Furcy')">
+        <img src="vip-suv.jpg" alt="Kenscoff et Furcy" class="pl-circuit-bg">
+        <div class="pl-circuit-overlay"></div>
+        <div class="pl-circuit-info">
+          <div class="pl-circuit-dest">Hauteurs de l'Ouest</div>
+          <h3 class="pl-circuit-name">Kenscoff & Sommets de Furcy</h3>
+          <p class="pl-circuit-desc">La fraîcheur vivifiante des montagnes, forêts de pins, fermes maraîchères et vues panoramiques.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7. Section : Pourquoi Choisir LAPERLE TOUR HT -->
+  <section class="pl-section" id="plEngagements" style="background:#ffffff;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;max-width:100%;padding:70px 24px;">
+    <div style="max-width:1320px;margin:0 auto;">
+      <div class="pl-section-head pl-services-head-wrap">
+        <div style="max-width:820px;">
+          <div class="pl-section-kicker">NOS ENGAGEMENTS QUALITÉ</div>
+          <h2 class="pl-section-title">Pourquoi Choisir LAPERLE TOUR HT ?</h2>
+          <p class="pl-section-sub">
+            Une réputation bâtie sur l'intégrité, l'écoute client et une rigueur logistique sans compromis.
+          </p>
+        </div>
+        <div class="pl-services-arrows" aria-label="Navigation défilement engagements">
+          <button type="button" class="pl-arrow-btn" onclick="scrollSectionSlider('#plEngagements .pl-pillars-grid', -1)" title="Faire défiler vers la gauche" aria-label="Précédent">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </button>
+          <button type="button" class="pl-arrow-btn" onclick="scrollSectionSlider('#plEngagements .pl-pillars-grid', 1)" title="Faire défiler vers la droite" aria-label="Suivant">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="pl-pillars-grid">
+        <div class="pl-pillar-card">
+          <div class="pl-pillar-icon">🛡️</div>
+          <h3 class="pl-pillar-title">Sécurité Inaltérable</h3>
+          <p class="pl-pillar-text">
+            Chaque itinéraire fait l'objet d'un suivi opérationnel en direct par notre centre de contrôle. Véhicules équipés et chauffeurs entraînés aux réflexes défensifs.
+          </p>
+        </div>
+
+        <div class="pl-pillar-card">
+          <div class="pl-pillar-icon">💺</div>
+          <h3 class="pl-pillar-title">Confort de Premier Ordre</h3>
+          <p class="pl-pillar-text">
+            Intérieurs nettoyés et désinfectés avant chaque mission. Climatisation puissante et réglable, rafraîchissements et insonorisation de qualité.
+          </p>
+        </div>
+
+        <div class="pl-pillar-card">
+          <div class="pl-pillar-icon">⏱️</div>
+          <h3 class="pl-pillar-title">Ponctualité Rigoureuse</h3>
+          <p class="pl-pillar-text">
+            Nos chauffeurs se présentent systématiquement 15 minutes avant l'heure convenue à votre point de départ. Votre temps est précieux.
+          </p>
+        </div>
+
+        <div class="pl-pillar-card">
+          <div class="pl-pillar-icon">📄</div>
+          <h3 class="pl-pillar-title">Transparence & Proformas</h3>
+          <p class="pl-pillar-text">
+            Aucun frais caché ni mauvaise surprise. Émission de devis proformas et factures officielles détaillées conformes aux exigences comptables.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8. Section : Comment Devenir Client Laperle -->
+  <section class="pl-section" id="plProcess">
+    <div class="pl-section-head pl-services-head-wrap">
+      <div style="max-width:820px;">
+        <div class="pl-section-kicker">PARCOURS FLUIDE & RAPIDE</div>
+        <h2 class="pl-section-title">Comment Devenir Client en 4 Étapes</h2>
+        <p class="pl-section-sub">
+          Créez votre compte en quelques instants pour centraliser vos réservations, consulter vos factures et bénéficier de nos remises fidélité.
+        </p>
+      </div>
+      <div class="pl-services-arrows" aria-label="Navigation défilement étapes">
+        <button type="button" class="pl-arrow-btn" onclick="scrollSectionSlider('#plProcess .pl-steps-grid', -1)" title="Faire défiler vers la gauche" aria-label="Précédent">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        </button>
+        <button type="button" class="pl-arrow-btn" onclick="scrollSectionSlider('#plProcess .pl-steps-grid', 1)" title="Faire défiler vers la droite" aria-label="Suivant">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="pl-steps-grid">
+      <div class="pl-step-card">
+        <div class="pl-step-number">01</div>
+        <h3 class="pl-step-title">Explorez nos Services</h3>
+        <p class="pl-step-desc">Consultez nos prestations ou utilisez notre simulateur pour sélectionner votre trajet et type de véhicule.</p>
+      </div>
+
+      <div class="pl-step-card">
+        <div class="pl-step-number">02</div>
+        <h3 class="pl-step-title">Créez votre Compte</h3>
+        <p class="pl-step-desc">Renseignez votre e-mail et numéro WhatsApp pour activer votre espace personnel en 1 minute.</p>
+      </div>
+
+      <div class="pl-step-card">
+        <div class="pl-step-number">03</div>
+        <h3 class="pl-step-title">Recevez votre Proforma</h3>
+        <p class="pl-step-desc">Votre devis officiel et vos documents administratifs sont générés instantanément dans votre espace.</p>
+      </div>
+
+      <div class="pl-step-card">
+        <div class="pl-step-number">04</div>
+        <h3 class="pl-step-title">Voyagez en Sérénité</h3>
+        <p class="pl-step-desc">Votre chauffeur professionnel prend en charge votre mission avec toute la ponctualité LAPERLE.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9. Grande Bannière d'Appel à l'Action & Inscription -->
+  <section class="pl-cta-banner">
+    <div class="pl-cta-banner-content">
+      <div class="pl-cta-kicker">COMMENCEZ DÈS AUJOURD'HUI</div>
+      <h2 class="pl-cta-title">Prêt à Vivre l'Excellence du Transport avec LAPERLE TOUR HT ?</h2>
+      <p class="pl-cta-desc">
+        Créez dès maintenant votre profil client pour demander votre devis proforma personnalisé ou planifier vos déplacements professionnels et privés en Haïti.
+      </p>
+
+      <div class="pl-cta-actions">
+        <button type="button" class="pl-banner-btn-primary" id="plCtaBtnRegister">
+          <span>Créer mon Compte Client (Gratuit)</span> <span>🚀</span>
+        </button>
+        <button type="button" class="pl-banner-btn-secondary" id="plCtaBtnLogin">
+          <span>Accéder à mon Espace Client</span> <span>🔑</span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10. Footer Complet Officiel LAPERLE TOUR HT -->
+  <footer class="pl-footer" id="plContact">
+    <div class="pl-footer-inner">
+      <div>
+        <img src="logo-laperle.jpg" alt="LAPERLE TOUR HT" class="pl-footer-brand-logo">
+        <div class="pl-footer-brand-title">LAPERLE TOUR HT</div>
+        <div class="pl-footer-brand-slogan">« Un coup d'œil sur Haïti »</div>
+        <p class="pl-footer-desc">
+          Société haïtienne de transport haut de gamme, circuits touristiques d'exception, navettes scolaires sécurisées, location VIP de véhicules avec chauffeur et transferts officiels.
+        </p>
+      </div>
+
+      <div class="pl-footer-col">
+        <h4>Nos Services</h4>
+        <ul class="pl-footer-links">
+          <li><a href="#plServices">Circuits Touristiques</a></li>
+          <li><a href="#plServices">Location VIP avec Chauffeur</a></li>
+          <li><a href="#plServices">Abonnement Scolaire</a></li>
+          <li><a href="#plServices">Transport Corporate & ONG</a></li>
+          <li><a href="#plServices">Transferts Aéroport Toussaint Louverture</a></li>
+          <li><a href="#plFlotte">Notre Flotte de Véhicules</a></li>
+        </ul>
+      </div>
+
+      <div class="pl-footer-col">
+        <h4>Espace Client</h4>
+        <ul class="pl-footer-links">
+          <li><a href="#" onclick="showAuthView('register'); return false;">Devenir Client (S'inscrire)</a></li>
+          <li><a href="#" onclick="showAuthView('login'); return false;">Se connecter (Espace Membre)</a></li>
+          <li><a href="#plDevis">Simulateur de Devis Gratuit</a></li>
+          <li><a href="#" onclick="showAuthView('forgot'); return false;">Mot de passe oublié</a></li>
+        </ul>
+      </div>
+
+      <div class="pl-footer-col">
+        <h4>Coordonnées & Contact</h4>
+        <div class="pl-footer-contact-item">
+          <span>📍</span> <span>Port-au-Prince, Delmas & Pétion-Ville, Haïti</span>
+        </div>
+        <div class="pl-footer-contact-item">
+          <span>📞</span> <span>Téléphone : +509 4440 8687</span>
+        </div>
+        <div class="pl-footer-contact-item">
+          <span>✉️</span> <span>E-mail : laperletourht@gmail.com</span>
+        </div>
+        <div class="pl-footer-contact-item">
+          <span>⏱️</span> <span>Disponibilité : 24h/24, 7j/7 sur réservation</span>
+        </div>
+        <div style="margin-top:14px;">
+          <a href="https://wa.me/50944408687" target="_blank" rel="noopener noreferrer" class="pl-wa-chip">
+            <span>💬</span> <span>Échanger sur WhatsApp (+509 4440 8687)</span>
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <div class="pl-footer-bottom">
+      <div>
+        © 2026 LAPERLE TOUR HT • « Un coup d'œil sur Haïti » • Tous droits réservés.
+      </div>
+      <div>
+        Transport • Tourisme • Location VIP • Navette Scolaire • Taxi Haut de Gamme
+      </div>
+    </div>
+  </footer>
+</div>
+
+<!-- CONTENEUR D'AUTHENTIFICATION (Connexion, Inscription, Récupération) -->
+<div id="authContainer" class="auth-page" style="display:none;">
+  <!-- Barre supérieure de retour vers le site vitrine -->
+  <div class="auth-top-return-bar">
+    <button type="button" class="auth-back-home-pill" id="authBtnReturnHome" title="Retourner à la page d'accueil">
+      <span>←</span> <span>Retour au site d'accueil LAPERLE</span>
+    </button>
+  </div>
+
   <div class="auth-card-split">
     <!-- VOLET GAUCHE : Branding LAPERLE & Visuel Inspiré du design de référence -->
     <div class="auth-brand-side">
@@ -426,6 +1112,9 @@
       <b>LAPERLE TOUR HT</b>
       <span>Un coup d'œil sur Haïti</span>
       <small>Version 3.0</small>
+      <button class="public-landing-link-btn" type="button" onclick="showPublicLandingPage()" style="display:flex;align-items:center;gap:6px;width:100%;padding:7px 10px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);border-radius:6px;color:#ffffff;font-size:11.5px;font-weight:600;cursor:pointer;margin-bottom:8px;justify-content:center;transition:all 0.2s;" title="Consulter la page d'accueil vitrine">
+        <span>🌐</span> <span>Voir le site vitrine</span>
+      </button>
       <button id="sidebarLogoutBtn" class="sidebar-logout-btn" type="button" title="Se déconnecter">
         <span>🚪</span> <span>Déconnexion</span>
       </button>
@@ -445,6 +1134,7 @@
       </div>
       <div class="header-right">
         <div class="top-icons">
+          <button class="public-preview-btn" onclick="showPublicLandingPage()" title="Voir la vitrine publique du site" style="display:inline-flex;align-items:center;gap:5px;background:#f8fafc;border:1px solid #cbd5e1;padding:6px 10px;border-radius:8px;font-size:12px;font-weight:700;color:#092e70;cursor:pointer;"><span>🌐</span> <span>Site Public</span></button>
           <button class="firebase-chip" id="firebaseBtn" title="Connexion & Synchronisation Firebase Cloud"><span class="firebase-icon">🔥</span><span id="firebaseStatusText">Firebase</span></button>
           <div class="chat-wrapper" id="chatWrapper">
             <button class="icon-btn" id="chatToggleBtn" onclick="toggleChatModal()" title="Messagerie & Live Dispatch (Radio de bord)" aria-label="Messagerie en direct">💬<span id="chatUnreadDot" style="display:none;">0</span></button>
