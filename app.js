@@ -2447,6 +2447,48 @@ function initAuthUI(initialMode = "login") {
     }
   }
 
+  // Configuration dynamique des messages du volet gauche
+  const BRAND_CONTENT_BY_MODE = {
+    login: {
+      badge: "ESPACE SÉCURISÉ",
+      title: 'ESPACE CLIENT & MEMBRE<br><span class="brand-accent-text">LAPERLE TOUR HT</span>',
+      tagline: '« Bon retour parmi nous »',
+      desc: 'Connectez-vous pour gérer vos réservations VIP, suivre vos circuits touristiques, consulter vos devis et accéder à vos factures officielles.',
+      pills: ['🛡️ Sécurité', '💺 Confort', '⏱️ Ponctualité', '👥 Confiance']
+    },
+    register: {
+      badge: "NOUVEAU COMPTE",
+      title: 'REJOIGNEZ LE CLUB<br><span class="brand-accent-text">LAPERLE TOUR HT</span>',
+      tagline: '« L\'excellence de vos déplacements »',
+      desc: 'Créez votre compte en quelques instants pour réserver vos trajets, recevoir vos devis sous 2h et bénéficier de tarifs exclusifs.',
+      pills: ['⚡ Inscription Rapide', '📄 Devis Immédiat', '⭐ Service VIP', '🔒 100% Sécurisé']
+    },
+    forgot: {
+      badge: "RÉCUPÉRATION",
+      title: 'ACCÈS SÉCURISÉ<br><span class="brand-accent-text">LAPERLE TOUR HT</span>',
+      tagline: '« Nous vous accompagnons »',
+      desc: 'Recevez un lien direct pour réinitialiser votre accès ou contactez notre conciergerie WhatsApp disponible 24/7.',
+      pills: ['✉️ E-mail Sécurisé', '💬 Support WhatsApp', '🛡️ Confidentialité']
+    }
+  };
+
+  function updateDynamicBrandPanel(mode) {
+    const cfg = BRAND_CONTENT_BY_MODE[mode] || BRAND_CONTENT_BY_MODE.login;
+    const badgeTextEl = document.getElementById("authBrandBadgeText");
+    const titleEl = document.getElementById("authBrandTitle");
+    const taglineEl = document.getElementById("authBrandTagline");
+    const descEl = document.getElementById("authBrandDesc");
+    const pillsEl = document.getElementById("authBrandPills");
+
+    if (badgeTextEl) badgeTextEl.textContent = cfg.badge;
+    if (titleEl) titleEl.innerHTML = cfg.title;
+    if (taglineEl) taglineEl.textContent = cfg.tagline;
+    if (descEl) descEl.textContent = cfg.desc;
+    if (pillsEl && Array.isArray(cfg.pills)) {
+      pillsEl.innerHTML = cfg.pills.map(p => `<span class="trust-pill">${esc(p)}</span>`).join('');
+    }
+  }
+
   // Bascule dynamique entre "Se Connecter", "S'inscrire" et "Mot de passe oublié"
   function setMode(mode) {
     currentAuthMode = mode;
@@ -2456,6 +2498,8 @@ function initAuthUI(initialMode = "login") {
     if (viewRegister) viewRegister.style.display = mode === "register" ? "block" : "none";
     if (viewForgot) viewForgot.style.display = mode === "forgot" ? "block" : "none";
     setAuthMessage("idle", "");
+
+    updateDynamicBrandPanel(mode);
 
     if (mode === "forgot" && forgotIdentifier && loginEmail?.value.trim()) {
       forgotIdentifier.value = loginEmail.value.trim();
