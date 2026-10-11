@@ -129,9 +129,13 @@ button, input, select, textarea {
   transition: all 0.3s ease;
 }
 
-/* Décoration d'arrière-plan épurée (suppression des capsules désordonnées) */
+/* Décoration d'arrière-plan avec capsules obliques comme le modèle original */
 .auth-decor-bg {
-  display: none !important;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
 }
 
 /* Orbes lumineux en arrière-plan */
@@ -366,37 +370,45 @@ button, input, select, textarea {
 }
 .auth-trust-pills {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
   margin-bottom: 16px;
 }
 .trust-pill {
-  background: rgba(255, 255, 255, 0.12);
+  flex: 1;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.15);
   backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 20px;
-  padding: 5px 12px;
+  padding: 6px 4px;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   color: #ffffff;
+  white-space: nowrap;
 }
 .auth-wa-link {
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  padding: 9px 15px;
-  background: #25d366;
+  width: 100%;
+  padding: 12px 18px;
+  background: #22c55e;
   color: #ffffff;
-  border-radius: 12px;
+  border-radius: 9999px;
   text-decoration: none;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
-  box-shadow: 0 3px 12px rgba(37, 211, 102, 0.35);
+  box-shadow: 0 4px 14px rgba(34, 197, 94, 0.4);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-sizing: border-box;
 }
 .auth-wa-link:hover {
+  background: #16a34a;
   transform: translateY(-1px);
-  box-shadow: 0 5px 16px rgba(37, 211, 102, 0.45);
+  box-shadow: 0 6px 18px rgba(34, 197, 94, 0.5);
 }
 
 /* ==========================================================
@@ -408,7 +420,7 @@ button, input, select, textarea {
   padding: 24px 28px;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   box-sizing: border-box;
   overflow-y: auto;
 }
@@ -841,11 +853,11 @@ button, input, select, textarea {
 /* Bouton Principal façon LOGIN Pill dans l'image de référence */
 .auth-btn-primary {
   width: 100%;
-  background: linear-gradient(95deg, #082b70 0%, #123c98 60%, #1769e0 100%);
+  background: #082b70;
   color: #ffffff;
   border: none;
-  border-radius: 12px;
-  padding: 13px 18px;
+  border-radius: 8px;
+  padding: 12px 18px;
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
@@ -854,13 +866,13 @@ button, input, select, textarea {
   justify-content: center;
   gap: 8px;
   box-sizing: border-box;
-  box-shadow: 0 4px 14px rgba(8, 43, 112, 0.25);
+  box-shadow: 0 4px 14px rgba(8, 43, 112, 0.2);
   transition: all 0.2s ease;
 }
 .auth-btn-primary:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: 0 6px 20px rgba(8, 43, 112, 0.35);
-  background: linear-gradient(95deg, #0c3584 0%, #1646ad 60%, #1c73f2 100%);
+  background: #0c3584;
 }
 .auth-btn-primary:active:not(:disabled) {
   transform: translateY(0);
@@ -876,7 +888,7 @@ button, input, select, textarea {
   background: #f8fafc;
   color: #475569;
   border: 1px solid #cbd5e1;
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 10px;
   font-size: 13px;
   font-weight: 600;
@@ -893,7 +905,7 @@ button, input, select, textarea {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 18px 0;
+  margin: 16px 0;
 }
 .auth-sep-line {
   flex: 1;
@@ -910,13 +922,13 @@ button, input, select, textarea {
 /* Bouton Google conservé comme demandé ("laisse la ligne se continuer avec google") */
 .google-signin-btn {
   width: 100%;
-  height: 48px;
+  height: 46px;
   border: 1.5px solid #e2e8f0;
   background: #ffffff;
-  border-radius: 12px;
+  border-radius: 8px;
   color: #0f2942;
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 13.5px;
+  font-weight: 600;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -7330,6 +7342,12 @@ button[disabled] {
 }
 .vitrine-action-btn.btn-move {
   padding: 6px 8px;
+}
+
+/* Focus-mode suppression ciblée */
+div#app:nth-of-type(3) > div:nth-of-type(2) > main#page:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(4),
+div#app > div.main > main#page > div:nth-of-type(2) > div:nth-of-type(4) {
+  display: none !important;
 }
 
 

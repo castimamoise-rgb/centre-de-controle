@@ -2384,6 +2384,11 @@ function setAuthMessage(type, message, htmlContent = null) {
       </div>
     `;
   }
+
+  if (type === 'error' || type === 'warning') {
+    const formSide = container.closest('.auth-form-side');
+    if (formSide) formSide.scrollTop = 0;
+  }
 }
 
 function initAuthUI(initialMode = "login") {
@@ -2450,10 +2455,10 @@ function initAuthUI(initialMode = "login") {
   // Configuration dynamique des messages du volet gauche
   const BRAND_CONTENT_BY_MODE = {
     login: {
-      badge: "ESPACE SÉCURISÉ",
-      title: 'ESPACE CLIENT & MEMBRE<br><span class="brand-accent-text">LAPERLE TOUR HT</span>',
-      tagline: '« Bon retour parmi nous »',
-      desc: 'Connectez-vous pour gérer vos réservations VIP, suivre vos circuits touristiques, consulter vos devis et accéder à vos factures officielles.',
+      badge: "PORTAIL OFFICIEL",
+      title: 'CENTRE DE CONTRÔLE<br><span class="brand-accent-text">LAPERLE</span>',
+      tagline: '« Un coup d\'œil sur Haïti »',
+      desc: 'Système opérationnel et centre de commande : gestion de la flotte de transport, circuits touristiques, abonnements scolaires, proformas et facturation sécurisée.',
       pills: ['🛡️ Sécurité', '💺 Confort', '⏱️ Ponctualité', '👥 Confiance']
     },
     register: {
@@ -2676,12 +2681,12 @@ function initAuthUI(initialMode = "login") {
 
       if (!identifier) {
         setAuthMessage("error", "Veuillez saisir votre adresse e-mail.");
-        loginEmail?.focus();
+        try { loginEmail?.focus({ preventScroll: true }); } catch { loginEmail?.focus(); }
         return;
       }
       if (!password) {
         setAuthMessage("error", "Veuillez saisir votre mot de passe.");
-        loginPassword?.focus();
+        try { loginPassword?.focus({ preventScroll: true }); } catch { loginPassword?.focus(); }
         return;
       }
 
@@ -3373,20 +3378,25 @@ function showPublicLandingPage() {
   // Si l'utilisateur est déjà connecté, adapter les boutons pour revenir au dashboard
   const navLoginBtn = document.getElementById("plNavBtnLogin");
   const mobileLoginBtn = document.getElementById("plMobileBtnLogin");
-  if (currentUser) {
-    const userName = currentUserProfile?.prenom || currentUserProfile?.name || "Mon Espace";
+  const activeUser = currentUser || (typeof getUserSession === "function" ? getUserSession() : null) || auth?.currentUser;
+  if (activeUser) {
+    const userName = currentUserProfile?.prenom || currentUserProfile?.name || activeUser.displayName || "Mon Espace";
     if (navLoginBtn) {
       navLoginBtn.innerHTML = `<span>🏠</span> <span>${esc(userName)}</span>`;
-      navLoginBtn.onclick = () => {
+      navLoginBtn.onclick = (e) => {
+        if (e) { e.preventDefault(); e.stopImmediatePropagation(); }
         publicLanding.style.display = "none";
+        if (authContainer) authContainer.style.display = "none";
         appContainer.style.display = "block";
       };
     }
     if (mobileLoginBtn) {
       mobileLoginBtn.innerHTML = `<span>🏠</span> <span>Tableau de Bord</span>`;
-      mobileLoginBtn.onclick = () => {
+      mobileLoginBtn.onclick = (e) => {
+        if (e) { e.preventDefault(); e.stopImmediatePropagation(); }
         closeMobileDrawer();
         publicLanding.style.display = "none";
+        if (authContainer) authContainer.style.display = "none";
         appContainer.style.display = "block";
       };
     }
@@ -3416,6 +3426,16 @@ function showAuthView(mode = "login") {
   const publicLanding = document.getElementById("publicLandingPage");
   const authContainer = document.getElementById("authContainer");
   const appContainer = document.getElementById("app");
+
+  // Si l'utilisateur est déjà connecté, retourner directement au Tableau de Bord sans redemander le mot de passe
+  const activeUser = currentUser || (typeof getUserSession === "function" ? getUserSession() : null) || auth?.currentUser;
+  if (activeUser) {
+    if (publicLanding) publicLanding.style.display = "none";
+    if (authContainer) authContainer.style.display = "none";
+    if (appContainer) appContainer.style.display = "block";
+    return;
+  }
+
   if (publicLanding) publicLanding.style.display = "none";
   if (authContainer) authContainer.style.display = "flex";
   if (appContainer) appContainer.style.display = "none";
@@ -3561,17 +3581,43 @@ function selectDestinationForQuote(destName) {
 window.selectDestinationForQuote = selectDestinationForQuote;
 
 function initLandingPageUI() {
-  document.getElementById("plNavBtnLogin")?.addEventListener("click", () => showAuthView("login"));
+  const handleVitrineLoginClick = () => {
+    const activeUser = currentUser || (typeof getUserSession === "function" ? getUserSession() : null) || auth?.currentUser;
+    if (activeUser) {
+      const publicLanding = document.getElementById("publicLandingPage");
+      const authContainer = document.getElementById("authContainer");
+      const appContainer = document.getElementById("app");
+      if (publicLanding) publicLanding.style.display = "none";
+      if (authContainer) authContainer.style.display = "none";
+      if (appContainer) appContainer.style.display = "block";
+    } else {
+      showAuthView("login");
+    }
+  };
+
+  document.getElementById("plNavBtnLogin")?.addEventListener("click", handleVitrineLoginClick);
   document.getElementById("plMobileBtnLogin")?.addEventListener("click", () => {
     closeMobileDrawer();
-    showAuthView("login");
+    handleVitrineLoginClick();
   });
-  document.getElementById("plCtaBtnLogin")?.addEventListener("click", () => showAuthView("login"));
+  document.getElementById("plCtaBtnLogin")?.addEventListener("click", handleVitrineLoginClick);
 
-  document.getElementById("plNavBtnRegister")?.addEventListener("click", () => showAuthView("register"));
+  document.getElementById("plNavBtnRegister")?.addEventListener("click", () => {
+    const activeUser = currentUser || (typeof getUserSession === "function" ? getUserSession() : null) || auth?.currentUser;
+    if (activeUser) {
+      handleVitrineLoginClick();
+    } else {
+      showAuthView("register");
+    }
+  });
   document.getElementById("plMobileBtnRegister")?.addEventListener("click", () => {
     closeMobileDrawer();
-    showAuthView("register");
+    const activeUser = currentUser || (typeof getUserSession === "function" ? getUserSession() : null) || auth?.currentUser;
+    if (activeUser) {
+      handleVitrineLoginClick();
+    } else {
+      showAuthView("register");
+    }
   });
   document.getElementById("plHeroBtnRegister")?.addEventListener("click", () => showAuthView("register"));
   document.getElementById("plCtaBtnRegister")?.addEventListener("click", () => showAuthView("register"));
@@ -3880,8 +3926,8 @@ function injectPageNavigationHeader(currentKey) {
       </button>
 
       <div class="page-breadcrumbs" aria-label="Fil d'ariane">
-        <button type="button" class="bc-crumb bc-home" onclick="go('dashboard')" title="Aller à la page d'accueil">
-          <span>🏠 Accueil</span>
+        <button type="button" class="bc-crumb bc-home" onclick="go('dashboard')" title="Aller au Tableau de Bord">
+          <span>🏠 Tableau de Bord</span>
         </button>
         ${!isDashboard ? `
           <span class="bc-sep">›</span>
@@ -5989,70 +6035,7 @@ function dashboard() {
           </div>
         </div>
 
-        <!-- ================================================================ -->
-        <!-- SECTION 3 : HISTORIQUE DES TRANSACTIONS & DERNIERS FLUX         -->
-        <!-- ================================================================ -->
-        <div class="pm-history-card">
-          <div class="pm-history-head">
-            <div>
-              <h3 class="pm-history-title">Historique des Opérations & Transactions Récentes</h3>
-              <div class="pm-history-sub">Dernières entrées validées, devis et réservations de la flotte Laperle</div>
-            </div>
-            <button onclick="go('paiements')" class="pm-action-btn">
-              Voir tout l'historique ›
-            </button>
-          </div>
 
-          <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
-            <table class="pm-history-table">
-              <thead>
-                <tr>
-                  <th>Client / Opération</th>
-                  <th>Horodatage</th>
-                  <th>Montant</th>
-                  <th>Catégorie / Service</th>
-                  <th>Statut</th>
-                  <th style="text-align:right">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${displayActivities.map(item => {
-                  const initials = item.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase() || 'LP';
-                  return `
-                    <tr class="pm-history-row" onclick="go('${item.target || 'paiements'}')">
-                      <td>
-                        <div style="display:flex;align-items:center">
-                          <div class="pm-avatar-pill">${initials}</div>
-                          <div>
-                            <b style="color:#0f172a;font-size:13px">${esc(item.name)}</b>
-                            <div style="font-size:11px;color:#94a3b8">${esc(item.sub)}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td style="color:#64748b;font-size:12px">
-                        ⏱️ ${esc(item.time)}
-                      </td>
-                      <td style="font-weight:800;color:${item.amount > 0 ? '#0f172a' : '#64748b'}">
-                        ${money(item.amount)}
-                      </td>
-                      <td>
-                        <span style="font-size:12px;color:#475569">${esc(item.category)}</span>
-                      </td>
-                      <td>
-                        <span class="pm-badge ${item.statusClass || 'green'}">
-                          ● ${esc(item.status)}
-                        </span>
-                      </td>
-                      <td style="text-align:right">
-                        <span style="color:#6e3cbc;font-weight:700;font-size:12px">Consulter ›</span>
-                      </td>
-                    </tr>
-                  `;
-                }).join("")}
-              </tbody>
-            </table>
-          </div>
-        </div>
 
         <!-- ================================================================ -->
         <!-- SECTION 4 : GESTION D'ÉQUIPE, FLOTTE & OUTILS MANAGER            -->
@@ -9158,6 +9141,11 @@ function renderAdminOrStaffProfilePage() {
               </div>
             </div>
           </div>
+          <div style="display: flex; align-items: center; gap: 10px; margin-left: auto;">
+            <button type="button" onclick="openProfile()" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; background: #ffffff; color: #082b70; border: none; border-radius: 10px; font-size: 13px; font-weight: 800; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.2); transition: all 0.2s ease;">
+              <span>✏️</span> <span>Modifier le profil</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -9183,44 +9171,7 @@ function renderAdminOrStaffProfilePage() {
       </div>
       ` : ''}
 
-      <!-- Détails du Compte -->
-      <div class="panel" style="margin-bottom: 22px; border-radius: 12px; padding: 22px; background: #ffffff; border: 1px solid #e2e8f0;">
-        <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-          <h3 style="margin: 0; color: #092e70; font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
-            <span>👤</span> Informations de mon compte
-          </h3>
-          <button onclick="openProfile()" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: #092e70; color: #ffffff; border: none; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer;">
-            <span>✏️</span> Modifier mon profil
-          </button>
-        </div>
 
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px;">
-          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
-            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Nom & Prénom</div>
-            <div style="color: #0f172a; font-weight: 700; font-size: 14px;">${esc(displayName)}</div>
-          </div>
-
-          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
-            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Nom de profil (Identifiant)</div>
-            <div style="color: #0f172a; font-weight: 700; font-size: 14px; word-break: break-all;">@${esc(profile.username || (email !== "—" ? email.split('@')[0] : 'admin'))}</div>
-          </div>
-
-          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
-            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Identifiant E-mail Officiel</div>
-            <div style="color: #0f172a; font-weight: 700; font-size: 14px; word-break: break-all;">${esc(email !== "—" ? email : telephone)}</div>
-          </div>
-
-          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
-            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Rôles système attribués</div>
-            <div style="color: #082b70; font-weight: 800; font-size: 14px;">👑 ["${rolesList.join('", "')}"]</div>
-          </div>
-
-          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
-            <div style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-bottom: 4px;">Statut Direction</div>
-            <div style="color: #166534; font-weight: 800; font-size: 14px;">${isSuper ? "Super Administrateur" : "Administrateur"}</div>
-          </div>
-        </div>
-      </div>
 
       <!-- Raccourcis Rapides de Gestion -->
       <div class="panel" style="margin-bottom: 22px; border-radius: 12px; padding: 22px; background: #ffffff; border: 1px solid #e2e8f0;">
@@ -9311,6 +9262,11 @@ function renderLectureSeuleProfilePage() {
                 <span>👤</span> Statut client : <b>${esc(statutClient)}</b>
               </div>
             </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px; margin-left: auto;">
+            <button type="button" onclick="openProfile()" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; background: #ffffff; color: #092e70; border: none; border-radius: 10px; font-size: 13px; font-weight: 800; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.2); transition: all 0.2s ease;">
+              <span>✏️</span> <span>Modifier le profil</span>
+            </button>
           </div>
         </div>
       </div>
